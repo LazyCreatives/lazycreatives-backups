@@ -43,5 +43,6 @@ def resolve_refs(refs: list[FileRef], project_dir: Path) -> list[ResolvedRef]:
                 exists=False,
                 inside_project=False,
                 size=0,
+                expected_path=ref.relative_path or ref.absolute_path or ref.name,
             ))
     return resolved
