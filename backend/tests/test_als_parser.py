@@ -24,3 +24,16 @@ def test_parses_relative_path_value_ref(tmp_path):
     assert refs[0].name == "loop.wav"
     assert refs[0].absolute_path is None
     assert refs[0].relative_path == "Samples/Imported/loop.wav"
+
+
+from tests.helpers import fileref_legacy
+
+
+def test_parses_legacy_relative_path_element_chain(tmp_path):
+    als = write_als(tmp_path / "song.als", [
+        fileref_legacy(["Samples", "Imported"], "old.wav"),
+    ])
+    refs = parse_als(als)
+    assert len(refs) == 1
+    assert refs[0].name == "old.wav"
+    assert refs[0].relative_path == "Samples/Imported/old.wav"
