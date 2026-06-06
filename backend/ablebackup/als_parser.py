@@ -20,7 +20,17 @@ def _relative_path(fileref: _ET.Element) -> str | None:
     # Live 11/12: <RelativePath Value="Samples/Imported/loop.wav"/>
     if "Value" in rel.attrib and rel.attrib["Value"]:
         return rel.attrib["Value"]
-    return None
+    # Live 9/10: <RelativePathElement Dir="Samples"/> chain + separate <Name/>
+    dirs = [
+        e.attrib["Dir"]
+        for e in rel.findall("RelativePathElement")
+        if e.attrib.get("Dir")
+    ]
+    if not dirs:
+        return None
+    name = _value_of(fileref, "Name") or ""
+    parts = dirs + ([name] if name else [])
+    return "/".join(parts)
 
 
 def _fileref_to_model(fileref: _ET.Element) -> FileRef:
