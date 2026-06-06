@@ -25,20 +25,22 @@ def _cmd_backup(args) -> int:
     dest_root = Path(args.dest) / "AbletonBackups"
     timestamp = args.timestamp or _default_timestamp()
     cat = Catalog(Path(args.db))
-    projects = scan_projects([Path(s) for s in args.source])
-    for p in projects:
-        result = backup_project(p, dest_root, timestamp)
-        cat.record_snapshot(
-            project_name=result.project_name,
-            timestamp=result.timestamp,
-            total_size=result.total_size,
-            file_count=result.file_count,
-            status="ok",
-            missing=result.missing,
-        )
-        print(f"backed up {result.project_name}: "
-              f"{result.file_count} files, {len(result.missing)} missing")
-    cat.close()
+    try:
+        projects = scan_projects([Path(s) for s in args.source])
+        for p in projects:
+            result = backup_project(p, dest_root, timestamp)
+            cat.record_snapshot(
+                project_name=result.project_name,
+                timestamp=result.timestamp,
+                total_size=result.total_size,
+                file_count=result.file_count,
+                status="ok",
+                missing=result.missing,
+            )
+            print(f"backed up {result.project_name}: "
+                  f"{result.file_count} files, {len(result.missing)} missing")
+    finally:
+        cat.close()
     return 0
 
 
