@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 
@@ -15,6 +16,10 @@ CREATE TABLE IF NOT EXISTS missing_refs (
     snapshot_id INTEGER NOT NULL,
     expected_path TEXT NOT NULL,
     FOREIGN KEY (snapshot_id) REFERENCES snapshots(id)
+);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
 );
 """
 
@@ -56,6 +61,39 @@ class Catalog:
             (snapshot_id,),
         ).fetchall()
         return [r["expected_path"] for r in rows]
+
+    def set_setting(self, key, value) -> None:
+        self.conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, json.dumps(value)),
+        )
+        self.conn.commit()
+
+    def get_setting(self, key, default=None):
+        row = self.conn.execute(
+            "SELECT value FROM settings WHERE key = ?", (key,)
+        ).fetchone()
+        if row is None:
+            return default
+        return json.loads(row["value"])
+
+    def recent_snapshots(self, limit=50) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM snapshots ORDER BY timestamp DESC, id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def projects_summary(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT project_name, "
+            "COUNT(*) AS snapshot_count, "
+            "MAX(timestamp) AS last_timestamp, "
+            "SUM(total_size) AS total_size "
+            "FROM snapshots GROUP BY project_name ORDER BY project_name"
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def close(self):
         self.conn.close()
