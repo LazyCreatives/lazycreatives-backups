@@ -44,11 +44,13 @@ def test_cli_backup_then_dedup(tmp_path):
 def test_cli_backup_isolates_per_project_errors(tmp_path, monkeypatch, capsys):
     _build_project(tmp_path)
     import ablebackup.cli as cli
+    import ablebackup.service as svc
 
     def boom(scan, dest_root, timestamp):
         raise RuntimeError("disk full")
 
-    monkeypatch.setattr(cli, "backup_project", boom)
+    # error isolation now lives in the service layer the CLI delegates to
+    monkeypatch.setattr(svc, "backup_project", boom)
     code = cli.run(["backup", "--source", str(tmp_path), "--dest", str(tmp_path / "NAS"),
                     "--db", str(tmp_path / "c.db"), "--timestamp", "t1"])
     assert code == 1

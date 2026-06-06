@@ -1,14 +1,9 @@
 import argparse
-from datetime import datetime
 from pathlib import Path
 
-from ablebackup.backup_engine import backup_project
 from ablebackup.catalog import Catalog
 from ablebackup.scanner import scan_projects
-
-
-def _default_timestamp() -> str:
-    return datetime.now().strftime("%Y-%m-%d_%H%M")
+from ablebackup.service import default_timestamp, run_backup
 
 
 def _cmd_scan(args) -> int:
@@ -22,41 +17,20 @@ def _cmd_scan(args) -> int:
 
 
 def _cmd_backup(args) -> int:
-    dest_root = Path(args.dest) / "AbletonBackups"
-    timestamp = args.timestamp or _default_timestamp()
+    timestamp = args.timestamp or default_timestamp()
     cat = Catalog(Path(args.db))
     try:
-        projects = scan_projects([Path(s) for s in args.source])
-        exit_code = 0
-        for p in projects:
-            try:
-                result = backup_project(p, dest_root, timestamp)
-            except Exception as e:  # isolate one project's failure from the rest
-                cat.record_snapshot(
-                    project_name=p.name,
-                    timestamp=timestamp,
-                    total_size=0,
-                    file_count=0,
-                    status="error",
-                    missing=[],
-                    error=str(e),
-                )
-                print(f"ERROR backing up {p.name}: {e}")
-                exit_code = 1
-                continue
-            cat.record_snapshot(
-                project_name=result.project_name,
-                timestamp=result.timestamp,
-                total_size=result.total_size,
-                file_count=result.file_count,
-                status="ok",
-                missing=result.missing,
-            )
-            print(f"backed up {result.project_name}: "
-                  f"{result.file_count} files, {len(result.missing)} missing")
+        def progress(ev):
+            if ev["type"] == "project_done":
+                print(f"backed up {ev['project_name']}: "
+                      f"{ev['file_count']} files, {ev['missing_count']} missing")
+            elif ev["type"] == "project_error":
+                print(f"ERROR backing up {ev['project_name']}: {ev['error']}")
+        summary = run_backup([Path(s) for s in args.source], Path(args.dest),
+                             cat, timestamp=timestamp, progress=progress)
     finally:
         cat.close()
-    return exit_code
+    return 1 if summary["error_count"] else 0
 
 
 def build_parser() -> argparse.ArgumentParser:
