@@ -19,6 +19,7 @@ class ResolvedRef:
     exists: bool
     inside_project: bool
     size: int = 0
+    expected_path: Optional[str] = None   # relative path we looked for, when missing
 
 
 @dataclass
