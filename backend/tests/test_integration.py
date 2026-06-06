@@ -39,3 +39,23 @@ def test_cli_backup_then_dedup(tmp_path):
          "--db", str(db), "--timestamp", "2026-06-06_1500"])
     after = {p.name for p in pool.rglob("*") if p.is_file()}
     assert before == after
+
+
+def test_cli_backup_isolates_per_project_errors(tmp_path, monkeypatch, capsys):
+    _build_project(tmp_path)
+    import ablebackup.cli as cli
+
+    def boom(scan, dest_root, timestamp):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(cli, "backup_project", boom)
+    code = cli.run(["backup", "--source", str(tmp_path), "--dest", str(tmp_path / "NAS"),
+                    "--db", str(tmp_path / "c.db"), "--timestamp", "t1"])
+    assert code == 1
+    assert "ERROR" in capsys.readouterr().out
+
+    from ablebackup.catalog import Catalog
+    cat = Catalog(tmp_path / "c.db")
+    rows = cat.snapshots_for("Song")
+    assert rows and rows[0]["status"] == "error"
+    cat.close()

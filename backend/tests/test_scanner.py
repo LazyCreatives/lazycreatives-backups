@@ -32,3 +32,18 @@ def test_skips_backup_and_output_folders(tmp_path):
 
     assert len(results) == 1
     assert results[0].project_dir == proj
+
+
+def test_scan_skips_unparseable_als(tmp_path):
+    good = tmp_path / "Good Project"
+    good.mkdir()
+    write_als(good / "Good.als", [])
+    bad = tmp_path / "Bad Project"
+    bad.mkdir()
+    (bad / "Bad.als").write_bytes(b"this is not gzip")
+
+    results = scan_projects([tmp_path])
+
+    names = {r.name for r in results}
+    assert "Good" in names
+    assert "Bad" not in names

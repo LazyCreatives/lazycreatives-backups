@@ -118,3 +118,18 @@ def test_external_name_collision_disambiguated(tmp_path):
     snap = dest / "projects" / "Song" / "2026-06-06_1430" / "_External"
     contents = sorted(p.read_bytes() for p in snap.iterdir())
     assert contents == [b"kickA", b"kickB"]
+
+
+def test_pool_entry_is_complete_and_no_tmp_residue(tmp_path):
+    scan = _make_project(tmp_path)
+    dest = tmp_path / "NAS" / "AbletonBackups"
+    backup_project(scan, dest, timestamp="2026-06-06_1430")
+
+    pool = dest / "_pool"
+    pooled = [p for p in pool.rglob("*") if p.is_file()]
+    # every pool entry's filename equals the sha256 of its contents (complete, uncorrupted)
+    import hashlib
+    for p in pooled:
+        assert hashlib.sha256(p.read_bytes()).hexdigest() == p.name
+    # no leftover .tmp files in the pool
+    assert not any(p.name.endswith(".tmp") for p in pool.rglob("*"))

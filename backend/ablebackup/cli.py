@@ -27,8 +27,23 @@ def _cmd_backup(args) -> int:
     cat = Catalog(Path(args.db))
     try:
         projects = scan_projects([Path(s) for s in args.source])
+        exit_code = 0
         for p in projects:
-            result = backup_project(p, dest_root, timestamp)
+            try:
+                result = backup_project(p, dest_root, timestamp)
+            except Exception as e:  # isolate one project's failure from the rest
+                cat.record_snapshot(
+                    project_name=p.name,
+                    timestamp=timestamp,
+                    total_size=0,
+                    file_count=0,
+                    status="error",
+                    missing=[],
+                    error=str(e),
+                )
+                print(f"ERROR backing up {p.name}: {e}")
+                exit_code = 1
+                continue
             cat.record_snapshot(
                 project_name=result.project_name,
                 timestamp=result.timestamp,
@@ -41,7 +56,7 @@ def _cmd_backup(args) -> int:
                   f"{result.file_count} files, {len(result.missing)} missing")
     finally:
         cat.close()
-    return 0
+    return exit_code
 
 
 def build_parser() -> argparse.ArgumentParser:

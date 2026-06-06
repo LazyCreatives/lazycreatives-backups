@@ -51,7 +51,9 @@ def _place(pool: Path, src: Path, dest_file: Path, use_hardlinks: bool, digest: 
     pooled = pool / digest[:2] / digest
     if not pooled.exists():
         pooled.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, pooled)
+        tmp = pooled.with_name(f"{pooled.name}.{os.getpid()}.tmp")
+        shutil.copy2(src, tmp)
+        os.replace(tmp, pooled)  # atomic on same filesystem; no partial final file
     dest_file.parent.mkdir(parents=True, exist_ok=True)
     if use_hardlinks:
         os.link(pooled, dest_file)
