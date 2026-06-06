@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import threading
 from pathlib import Path
 
 _SCHEMA = """
@@ -27,73 +28,84 @@ CREATE TABLE IF NOT EXISTS settings (
 class Catalog:
     def __init__(self, db_path: Path):
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(db_path))
+        # check_same_thread=False: the connection is shared across FastAPI's
+        # threadpool + the backup worker thread; the lock serializes access.
+        self.conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        self._lock = threading.Lock()
         self.conn.executescript(_SCHEMA)
         self.conn.commit()
 
     def record_snapshot(self, project_name, timestamp, total_size,
                         file_count, status, missing, error=None) -> int:
-        cur = self.conn.execute(
-            "INSERT INTO snapshots "
-            "(project_name, timestamp, total_size, file_count, status, error) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (project_name, timestamp, total_size, file_count, status, error),
-        )
-        sid = cur.lastrowid
-        self.conn.executemany(
-            "INSERT INTO missing_refs (snapshot_id, expected_path) VALUES (?, ?)",
-            [(sid, p) for p in missing],
-        )
-        self.conn.commit()
-        return sid
+        with self._lock:
+            cur = self.conn.execute(
+                "INSERT INTO snapshots "
+                "(project_name, timestamp, total_size, file_count, status, error) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (project_name, timestamp, total_size, file_count, status, error),
+            )
+            sid = cur.lastrowid
+            self.conn.executemany(
+                "INSERT INTO missing_refs (snapshot_id, expected_path) VALUES (?, ?)",
+                [(sid, p) for p in missing],
+            )
+            self.conn.commit()
+            return sid
 
     def snapshots_for(self, project_name) -> list[dict]:
-        rows = self.conn.execute(
-            "SELECT * FROM snapshots WHERE project_name = ? ORDER BY timestamp",
-            (project_name,),
-        ).fetchall()
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM snapshots WHERE project_name = ? ORDER BY timestamp",
+                (project_name,),
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def missing_for(self, snapshot_id) -> list[str]:
-        rows = self.conn.execute(
-            "SELECT expected_path FROM missing_refs WHERE snapshot_id = ?",
-            (snapshot_id,),
-        ).fetchall()
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT expected_path FROM missing_refs WHERE snapshot_id = ?",
+                (snapshot_id,),
+            ).fetchall()
         return [r["expected_path"] for r in rows]
 
     def set_setting(self, key, value) -> None:
-        self.conn.execute(
-            "INSERT INTO settings (key, value) VALUES (?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (key, json.dumps(value)),
-        )
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, json.dumps(value)),
+            )
+            self.conn.commit()
 
     def get_setting(self, key, default=None):
-        row = self.conn.execute(
-            "SELECT value FROM settings WHERE key = ?", (key,)
-        ).fetchone()
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT value FROM settings WHERE key = ?", (key,)
+            ).fetchone()
         if row is None:
             return default
         return json.loads(row["value"])
 
     def recent_snapshots(self, limit=50) -> list[dict]:
-        rows = self.conn.execute(
-            "SELECT * FROM snapshots ORDER BY timestamp DESC, id DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM snapshots ORDER BY timestamp DESC, id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def projects_summary(self) -> list[dict]:
-        rows = self.conn.execute(
-            "SELECT project_name, "
-            "COUNT(*) AS snapshot_count, "
-            "MAX(timestamp) AS last_timestamp, "
-            "SUM(total_size) AS total_size "
-            "FROM snapshots GROUP BY project_name ORDER BY project_name"
-        ).fetchall()
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT project_name, "
+                "COUNT(*) AS snapshot_count, "
+                "MAX(timestamp) AS last_timestamp, "
+                "SUM(total_size) AS total_size "
+                "FROM snapshots GROUP BY project_name ORDER BY project_name"
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def close(self):
-        self.conn.close()
+        with self._lock:
+            self.conn.close()
