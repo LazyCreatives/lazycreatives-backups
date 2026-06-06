@@ -1,10 +1,13 @@
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
 const { startSidecar } = require("./sidecar");
+const { createTray } = require("./tray");
 
 const isDev = !!process.env.ABLEBACKUP_DEV;
 let win = null;
 let sidecar = null;
+let tray = null;
+let isQuitting = false;
 
 function backendDir() {
   // dev: repo backend/. packaged: resourcesPath/backend (set up at packaging time).
@@ -31,6 +34,10 @@ function createWindow() {
   });
   if (isDev) win.loadURL("http://localhost:5173");
   else win.loadFile(path.join(__dirname, "..", "dist", "index.html"));
+
+  win.on("close", (e) => {
+    if (!isQuitting) { e.preventDefault(); win.hide(); }
+  });
 }
 
 ipcMain.handle("pick-folder", async () => {
@@ -41,12 +48,14 @@ ipcMain.handle("pick-folder", async () => {
 app.whenReady().then(async () => {
   sidecar = await startSidecar({ backendDir: backendDir(), dbPath: dbPath() });
   createWindow();
+  tray = createTray({
+    onShow: () => { win.show(); },
+    onQuit: () => { isQuitting = true; app.quit(); },
+  });
+  app.setLoginItemSettings({ openAtLogin: true });
 });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
+app.on("window-all-closed", () => { /* stay alive in tray */ });
 
-app.on("will-quit", () => {
-  if (sidecar?.proc) sidecar.proc.kill();
-});
+app.on("before-quit", () => { isQuitting = true; });
+app.on("will-quit", () => { if (sidecar?.proc) sidecar.proc.kill(); });
