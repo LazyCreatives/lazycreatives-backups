@@ -13,10 +13,21 @@ def _value_of(parent: _ET.Element, tag: str) -> str | None:
     return None
 
 
+def _relative_path(fileref: _ET.Element) -> str | None:
+    rel = fileref.find("RelativePath")
+    if rel is None:
+        return None
+    # Live 11/12: <RelativePath Value="Samples/Imported/loop.wav"/>
+    if "Value" in rel.attrib and rel.attrib["Value"]:
+        return rel.attrib["Value"]
+    return None
+
+
 def _fileref_to_model(fileref: _ET.Element) -> FileRef:
     absolute = _value_of(fileref, "Path")
+    relative = _relative_path(fileref)
     name = _value_of(fileref, "Name") or ""
-    return FileRef(name=name, absolute_path=absolute, relative_path=None)
+    return FileRef(name=name, absolute_path=absolute, relative_path=relative)
 
 
 def parse_als(als_path: Path) -> list[FileRef]:
