@@ -25,7 +25,10 @@ def resolve_refs(refs: list[FileRef], project_dir: Path) -> list[ResolvedRef]:
     for ref in refs:
         chosen: Path | None = None
         for cand in _candidates(ref, project_dir):
-            if cand.exists():
+            # Only real files are backable. A reference can resolve to a directory
+            # (e.g. an Ableton built-in device bundle like Simpler inside the .app);
+            # those are not user samples and must not be hashed/copied as files.
+            if cand.is_file():
                 chosen = cand
                 break
         if chosen is not None:
