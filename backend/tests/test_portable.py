@@ -1,7 +1,33 @@
+import gzip
+import re
+
 from ablebackup.backup_engine import backup_project
 from ablebackup.scanner import scan_one
 from ablebackup.verifier import verify_snapshot
 from tests.helpers import write_als, fileref_abs, fileref_rel
+
+
+def test_portable_keeps_same_basename_externals_distinct(tmp_path):
+    # Two different samples both named kick.wav from different libraries: the
+    # portable .als must point each ref at a DISTINCT stored file (regression for
+    # the silent-wrong-sample collision).
+    libA = tmp_path / "A"; libA.mkdir(); (libA / "kick.wav").write_bytes(b"AAAAAAAA")
+    libB = tmp_path / "B"; libB.mkdir(); (libB / "kick.wav").write_bytes(b"BBBBBBBBBBBB")
+    proj = tmp_path / "Song Project"; proj.mkdir()
+    write_als(proj / "Song.als", [
+        fileref_abs(str(libA / "kick.wav"), "kick.wav"),
+        fileref_abs(str(libB / "kick.wav"), "kick.wav"),
+    ])
+    res = backup_project(scan_one(proj / "Song.als"), tmp_path / "NAS" / "AbletonBackups",
+                         "t", portable=True)
+
+    stored = list((res.snapshot_dir / "_External").glob("kick*.wav"))
+    assert len(stored) == 2  # two distinct files kept (one disambiguated)
+    xml = gzip.open(next(res.snapshot_dir.glob("*.als")), "rt", encoding="utf-8").read()
+    rels = re.findall(r'RelativePath Value="(_External/[^"]+)"', xml)
+    assert len(rels) == 2 and len(set(rels)) == 2          # two DISTINCT relative paths
+    for r in rels:
+        assert (res.snapshot_dir / r).exists()             # each resolves to a real file
 
 
 def _project_with_external(tmp_path):

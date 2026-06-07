@@ -43,10 +43,12 @@ def _path_tail_score(ref_path: str, cand: Path) -> int:
 def _match_located(ref: FileRef, locate: Locator) -> Optional[Path]:
     """Pick a library file that genuinely matches the referenced sample.
 
-    A basename alone is not enough — many different samples share a name. We
-    require the size Ableton recorded (OriginalFileSize) to match, then break ties
-    by path overlap. If the correctly-sized file isn't present, we relink NOTHING
-    rather than silently back up a different same-named sample.
+    A basename alone is not enough — many different samples share a name. When a
+    size is recorded (Ableton's OriginalFileSize), we require it to match, then
+    break ties by path overlap. When NO size is recorded (FL/Reaper/DAWproject
+    refs carry size=0), we only relink on a strong AND UNIQUE path-tail match, so
+    we never silently back up a different same-named sample on a tie. If we can't
+    be confident, we relink nothing.
     """
     if locate is None:
         return None
@@ -61,11 +63,14 @@ def _match_located(ref: FileRef, locate: Locator) -> Optional[Path]:
         cands = [c for c in cands if _safe_size(c) == ref.size]
         if not cands:
             return None  # the file with the recorded size isn't here — don't guess
+        cands.sort(key=lambda c: _path_tail_score(ref_path, c), reverse=True)
+        return cands[0]  # size-verified — the recorded size already disambiguates
+    # No recorded size: require a strong, UNIQUE path-tail match (dir + name) with
+    # no other candidate tying the best score, else it's ambiguous — don't guess.
     cands.sort(key=lambda c: _path_tail_score(ref_path, c), reverse=True)
-    best = cands[0]
-    # Accept only when we verified by size, or matched a strong path tail (dir + name).
-    if ref.size or _path_tail_score(ref_path, best) >= 2:
-        return best
+    best_score = _path_tail_score(ref_path, cands[0])
+    if best_score >= 2 and all(_path_tail_score(ref_path, c) < best_score for c in cands[1:]):
+        return cands[0]
     return None
 
 

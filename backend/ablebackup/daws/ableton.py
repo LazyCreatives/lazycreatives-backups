@@ -44,11 +44,16 @@ class AbletonAdapter:
         # Splice is where Ableton users' downloaded samples live.
         return _splice_libraries()
 
-    def rewrite_portable(self, project_path: Path) -> Optional[bytes]:
+    def rewrite_portable(self, project_path: Path, placement: Optional[dict] = None) -> Optional[bytes]:
         """Return a gzipped .als where every EXTERNAL sample now points at its
-        collected copy inside the snapshot (_External/<name>), so the project
-        opens on any machine. Returns None if there's nothing external to rewrite.
-        Mirrors backup_engine._logical_path (external -> _External/<basename>)."""
+        collected copy inside the snapshot, so the project opens on any machine.
+
+        `placement` maps str(resolved source path) -> the EXACT logical path the
+        engine stored it at (incl. any disambiguation for same-basename collisions),
+        so two different samples sharing a basename never both point at the same
+        _External/<basename>. Falls back to _External/<name>. Returns None when
+        there's nothing external to rewrite."""
+        placement = placement or {}
         project_dir = Path(project_path).parent
         with gzip.open(project_path, "rt", encoding="utf-8") as fh:
             root = ET.parse(fh).getroot()
@@ -61,7 +66,7 @@ class AbletonAdapter:
             chosen = next((c for c in _candidates(model, project_dir) if c.is_file()), None)
             if chosen is None or _is_inside(chosen, project_dir):
                 continue  # missing or already inside the project — leave it
-            _set_value(fr, "RelativePath", f"_External/{chosen.name}")
+            _set_value(fr, "RelativePath", placement.get(str(chosen)) or f"_External/{chosen.name}")
             _set_value(fr, "RelativePathType", "1")  # relative to the project folder
             _set_value(fr, "Path", "")               # don't try the original absolute path
             changed = True

@@ -51,6 +51,21 @@ def test_unparseable_flp_raises(tmp_path):
         FlStudioAdapter().parse_project(bad)
 
 
+def test_corrupt_flp_is_skipped_not_fatal(tmp_path):
+    # A truncated .flp used to raise struct.error and abort the ENTIRE scan.
+    from ablebackup.scanner import scan_projects
+    good = tmp_path / "Good Project"
+    good.mkdir()
+    (good / "Good.flp").write_bytes(_make_flp(["/x/loop.wav"]))
+    bad = tmp_path / "Bad Project"
+    bad.mkdir()
+    (bad / "Bad.flp").write_bytes(b"FLhd")  # 4 bytes -> old code struct.error'd here
+
+    names = {s.name for s in scan_projects([tmp_path])}
+    assert "Good" in names      # the scan completed
+    assert "Bad" not in names   # the corrupt file was skipped, not fatal
+
+
 def test_scan_one_dispatches_flp_via_registry(tmp_path):
     from ablebackup.scanner import scan_one
     proj = tmp_path / "Beat Project"

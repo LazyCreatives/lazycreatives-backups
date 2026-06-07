@@ -14,10 +14,13 @@ _FACTORY = "%FLStudioFactoryData%"  # stock samples that ship with FL
 
 
 def _iter_events(data: bytes):
-    if data[:4] != b"FLhd":
+    # Bounds-checked throughout: a truncated/corrupt .flp must raise ValueError
+    # (which the scanner skips), never an unguarded struct.error that aborts the
+    # whole scan.
+    if len(data) < 8 or data[:4] != b"FLhd":
         raise ValueError("not an FLP file (missing FLhd header)")
     pos = 8 + struct.unpack_from("<I", data, 4)[0]  # skip FLhd + its payload
-    if data[pos:pos + 4] != b"FLdt":
+    if pos + 8 > len(data) or data[pos:pos + 4] != b"FLdt":
         raise ValueError("FLP missing FLdt chunk")
     pos += 4
     end = min(pos + 4 + struct.unpack_from("<I", data, pos)[0], len(data))

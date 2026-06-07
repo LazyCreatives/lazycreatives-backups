@@ -1,5 +1,6 @@
 import hashlib
 import os
+import struct
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
@@ -80,7 +81,7 @@ def _parse_in_worker(project_path_str: str) -> Optional[list[FileRef]]:
         if adapter is None:
             return None
         return adapter.parse_project(project_path)
-    except (OSError, EOFError, ParseError, ValueError):
+    except (OSError, EOFError, ParseError, ValueError, struct.error):
         return None
 
 
@@ -107,7 +108,7 @@ def _scan_safely(project_path: Path, locate) -> Optional[ProjectScan]:
     """scan_one but swallow per-file failures (serial path)."""
     try:
         return scan_one(project_path, locate=locate)
-    except (OSError, EOFError, ParseError, ValueError):
+    except (OSError, EOFError, ParseError, ValueError, struct.error):
         return None
 
 
@@ -164,7 +165,7 @@ def scan_projects(roots: list[Path], progress: ProgressCb = None,
                     if raw is not None:
                         try:
                             scan = _resolve_parsed(project_files[idx], raw, locate)
-                        except (OSError, EOFError, ParseError, ValueError):
+                        except (OSError, EOFError, ParseError, ValueError, struct.error):
                             scan = None
                     _tick(idx, scan)
         except BrokenProcessPool:

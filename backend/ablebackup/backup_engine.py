@@ -112,8 +112,30 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
             "source_path": source, "inside_project": inside, "relinked": relinked,
         })
 
-    # The project file itself (.als, .flp, …). In portable mode, the adapter can
-    # rewrite it so external samples resolve from inside the snapshot.
+    # Place every resolved reference FIRST, recording the exact on-disk logical
+    # path per source. The portable rewrite then points each .als ref at the REAL
+    # (possibly disambiguated) name — so two external samples that share a basename
+    # but differ in content never collide into one (which would silently play the
+    # wrong sample and still pass verify).
+    placement: dict[str, str] = {}  # str(resolved source path) -> placed logical path
+    for ref in scan.refs:
+        if not ref.exists or ref.resolved_path is None:
+            missing.append(ref.expected_path or ref.name)
+            continue
+        logical = _logical_path(scan, ref)
+        digest = hash_file(ref.resolved_path)
+        if placed.get(logical) not in (None, digest):
+            logical = _disambiguate(logical, digest)  # same name, different content
+        placement[str(ref.resolved_path)] = logical
+        if placed.get(logical) == digest:
+            continue  # this exact file already placed at this logical path
+        sz = _place(pool, ref.resolved_path, temp_dir / logical, use_hardlinks, digest)
+        total_size += sz
+        placed[logical] = digest
+        record(logical, digest, sz, str(ref.resolved_path), ref.inside_project, ref.relinked)
+
+    # The project file itself (.als, .flp, …). In portable mode the adapter rewrites
+    # it so external samples resolve from inside the snapshot, using `placement`.
     proj_src = scan.project_path
     tmp_proj = None
     if portable:
@@ -121,7 +143,7 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
         rewrite = getattr(adapter, "rewrite_portable", None) if adapter else None
         if rewrite:
             try:
-                data = rewrite(scan.project_path)
+                data = rewrite(scan.project_path, placement)
             except Exception:
                 data = None
             if data is not None:
@@ -135,25 +157,6 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
     total_size += sz
     placed[scan.project_path.name] = proj_digest
     record(scan.project_path.name, proj_digest, sz, str(scan.project_path), True, False)
-
-    # Each resolved reference.
-    for ref in scan.refs:
-        if not ref.exists or ref.resolved_path is None:
-            missing.append(ref.expected_path or ref.name)
-            continue
-        logical = _logical_path(scan, ref)
-        digest = hash_file(ref.resolved_path)
-        existing = placed.get(logical)
-        if existing is not None:
-            if existing == digest:
-                continue  # identical file already placed (e.g. sample reused across clips)
-            logical = _disambiguate(logical, digest)
-            if placed.get(logical) == digest:
-                continue  # this exact different-content file already disambiguated+placed
-        sz = _place(pool, ref.resolved_path, temp_dir / logical, use_hardlinks, digest)
-        total_size += sz
-        placed[logical] = digest
-        record(logical, digest, sz, str(ref.resolved_path), ref.inside_project, ref.relinked)
 
     file_count = len(files)
     relinked_count = sum(1 for f in files if f["relinked"])
