@@ -43,6 +43,30 @@ def test_run_backup_records_and_emits_progress(tmp_path):
     cat.close()
 
 
+def test_same_named_projects_do_not_collide_or_false_skip(tmp_path):
+    # Two different projects that share the filename "Song.als" in different folders.
+    for sub, sample in (("A", b"alpha-loop"), ("B", b"beta-different")):
+        proj = tmp_path / sub / "Song Project"
+        (proj / "Samples").mkdir(parents=True)
+        (proj / "Samples" / "loop.wav").write_bytes(sample)
+        write_als(proj / "Song.als", [fileref_rel("Samples/loop.wav", "loop.wav")])
+    als_a = str(tmp_path / "A" / "Song Project" / "Song.als")
+    als_b = str(tmp_path / "B" / "Song Project" / "Song.als")
+    dest = tmp_path / "NAS"
+    cat = Catalog(tmp_path / "c.db")
+
+    summary = run_backup([tmp_path], dest, cat, timestamp="t1", als_paths=[als_a, als_b])
+    # Both backed up — neither false-skips the other, neither overwrites the other.
+    assert summary["ok_count"] == 2 and summary["skipped_count"] == 0
+    rows = cat.snapshots_for("Song")
+    assert len(rows) == 2
+    assert len({r["project_id"] for r in rows}) == 2  # distinct identities
+    assert len({r["dir"] for r in rows}) == 2          # distinct folders on disk
+    for r in rows:
+        assert (Path(r["dir"]) / "Song.als").exists()  # both snapshots intact
+    cat.close()
+
+
 def test_run_backup_skips_unchanged_project(tmp_path):
     _build_project(tmp_path)
     dest = tmp_path / "NAS"

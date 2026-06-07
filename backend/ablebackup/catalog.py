@@ -43,7 +43,8 @@ class Catalog:
         # Add columns introduced after the first release to pre-existing catalogs.
         cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(snapshots)")}
         new = {"label": "TEXT", "dir": "TEXT", "signature": "TEXT",
-               "relinked_count": "INTEGER", "verified": "INTEGER", "verified_at": "TEXT"}
+               "relinked_count": "INTEGER", "verified": "INTEGER", "verified_at": "TEXT",
+               "project_id": "TEXT"}
         for col, typ in new.items():
             if col not in cols:
                 self.conn.execute(f"ALTER TABLE snapshots ADD COLUMN {col} {typ}")
@@ -51,15 +52,15 @@ class Catalog:
     def record_snapshot(self, project_name, timestamp, total_size,
                         file_count, status, missing, error=None,
                         label=None, dir="", signature="", relinked_count=0,
-                        verified=0, verified_at=None) -> int:
+                        verified=0, verified_at=None, project_id=None) -> int:
         with self._lock:
             cur = self.conn.execute(
                 "INSERT INTO snapshots "
                 "(project_name, timestamp, total_size, file_count, status, error, "
-                " label, dir, signature, relinked_count, verified, verified_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " label, dir, signature, relinked_count, verified, verified_at, project_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (project_name, timestamp, total_size, file_count, status, error,
-                 label, dir, signature, relinked_count, verified, verified_at),
+                 label, dir, signature, relinked_count, verified, verified_at, project_id),
             )
             sid = cur.lastrowid
             self.conn.executemany(
@@ -144,18 +145,20 @@ class Catalog:
         return [dict(r) for r in rows]
 
     def latest_signatures(self) -> dict:
-        """project_name -> content signature of its most recent successful snapshot.
+        """project_id -> content signature of its most recent *fully ok* snapshot.
 
-        Used to skip backing up a project that hasn't changed since last time.
+        Keyed on project_id (not name) so two same-named projects don't false-skip
+        each other; only status='ok' counts, so a partial snapshot keeps retrying.
         """
         with self._lock:
             rows = self.conn.execute(
-                "SELECT s.project_name, s.signature FROM snapshots s "
-                "JOIN (SELECT project_name, MAX(id) AS mid FROM snapshots "
-                "      WHERE status = 'ok' GROUP BY project_name) l "
+                "SELECT s.project_id, s.signature FROM snapshots s "
+                "JOIN (SELECT project_id, MAX(id) AS mid FROM snapshots "
+                "      WHERE status = 'ok' AND project_id IS NOT NULL "
+                "      GROUP BY project_id) l "
                 "  ON s.id = l.mid"
             ).fetchall()
-        return {r["project_name"]: r["signature"] for r in rows if r["signature"]}
+        return {r["project_id"]: r["signature"] for r in rows if r["signature"]}
 
     def snapshot_totals(self) -> dict:
         """Aggregate counts/sizes across all snapshots, for the dashboard."""

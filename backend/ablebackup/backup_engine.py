@@ -69,11 +69,17 @@ def _disambiguate(logical: str, digest: str) -> str:
     return p.with_name(f"{p.stem}.{digest[:8]}{p.suffix}").as_posix()
 
 
-def _snapshot_base(dest_root: Path, name: str, timestamp: str, layout: str) -> Path:
-    """The snapshot's folder, per the chosen on-disk organization."""
-    if layout == "date_project":
-        return dest_root / "by-date" / timestamp / name
-    return dest_root / "projects" / name / timestamp
+def _claimed_folder(parent: Path, name: str, project_id: str) -> Path:
+    """A folder under `parent` reserved for this project_id. If a DIFFERENT project
+    already claimed the plain name (marked with .abid), this project gets a short
+    id-suffixed folder, so two same-named projects never share/overwrite storage."""
+    parent.mkdir(parents=True, exist_ok=True)
+    folder = parent / name
+    marker = folder / ".abid"
+    if project_id and folder.exists() and marker.is_file() \
+            and marker.read_text().strip() != project_id:
+        folder = parent / f"{name} ({project_id[:6]})"
+    return folder
 
 
 def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
@@ -81,7 +87,12 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
     """Write one project to dest_root as a deduplicated dated snapshot."""
     pool = dest_root / "_pool"
     use_hardlinks = supports_hardlinks(dest_root)
-    final_dir = _snapshot_base(dest_root, scan.name, timestamp, layout)
+    if layout == "date_project":
+        claim_dir = _claimed_folder(dest_root / "by-date" / timestamp, scan.name, scan.project_id)
+        final_dir = claim_dir
+    else:
+        claim_dir = _claimed_folder(dest_root / "projects", scan.name, scan.project_id)
+        final_dir = claim_dir / timestamp
     temp_dir = final_dir.parent / f".{final_dir.name}.tmp"
     if temp_dir.exists():
         shutil.rmtree(temp_dir)
@@ -142,6 +153,10 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
     if final_dir.exists():
         shutil.rmtree(final_dir)
     temp_dir.rename(final_dir)
+    # Reserve this folder for this project so a different same-named project can't reuse it.
+    if scan.project_id:
+        claim_dir.mkdir(parents=True, exist_ok=True)
+        (claim_dir / ".abid").write_text(scan.project_id)
 
     return BackupResult(
         project_name=scan.name,

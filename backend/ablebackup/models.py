@@ -33,6 +33,7 @@ class ProjectScan:
     project_dir: Path
     mtime: float
     size: int
+    project_id: str = ""  # stable identity from the .als path; distinguishes same-named projects
     refs: list[ResolvedRef] = field(default_factory=list)
 
     @property

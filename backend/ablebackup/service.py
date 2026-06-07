@@ -163,7 +163,7 @@ def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
         _emit(progress, {"type": "project_start", "index": i,
                          "project_name": p.name, "total": len(projects)})
         signature = project_signature(p)
-        if last_sigs.get(p.name) == signature:
+        if last_sigs.get(p.project_id) == signature:
             # Identical to the last successful backup — don't make a redundant snapshot.
             skipped_count += 1
             _emit(progress, {"type": "project_skipped", "index": i, "project_name": p.name})
@@ -174,6 +174,7 @@ def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
             catalog.record_snapshot(
                 project_name=p.name, timestamp=timestamp, total_size=0,
                 file_count=0, status="error", missing=[], error=str(e), label=label,
+                project_id=p.project_id,
             )
             error_count += 1
             _emit(progress, {"type": "project_error", "index": i,
@@ -195,6 +196,7 @@ def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
             dir=str(result.snapshot_dir), signature=signature,
             relinked_count=result.relinked_count,
             verified=1 if v["ok"] else 0, verified_at=timestamp,
+            project_id=p.project_id,
         )
         ok_count += 1
         _emit(progress, {"type": "project_done", "index": i,

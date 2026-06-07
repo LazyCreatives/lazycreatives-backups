@@ -1,3 +1,4 @@
+import hashlib
 import os
 from pathlib import Path
 from typing import Callable, Optional
@@ -10,6 +11,12 @@ from ablebackup.resolver import resolve_refs
 SKIP_DIRS = {"Backup", "AbletonBackups"}
 
 ProgressCb = Optional[Callable[[dict], None]]
+
+
+def project_id(als_path: Path) -> str:
+    """A stable id for a project from its .als location, so two projects that
+    share a filename (e.g. two Untitled.als) never share identity or storage."""
+    return hashlib.sha1(str(als_path.resolve()).encode("utf-8")).hexdigest()[:12]
 
 
 def find_als(roots: list[Path]) -> list[Path]:
@@ -35,6 +42,7 @@ def scan_one(als_path: Path, locate=None) -> ProjectScan:
         project_dir=project_dir,
         mtime=stat.st_mtime,
         size=stat.st_size,
+        project_id=project_id(als_path),
         refs=refs,
     )
 
