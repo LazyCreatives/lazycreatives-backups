@@ -42,21 +42,34 @@ def _fileref_to_model(fileref: _ET.Element) -> FileRef:
     return FileRef(name=name, absolute_path=absolute, relative_path=relative, size=size)
 
 
-def parse_als(als_path: Path) -> list[FileRef]:
-    """Decompress an .als and return its audio sample references.
+_VIDEO_EXTS = (".mov", ".mp4", ".m4v", ".avi", ".mkv", ".mpg", ".mpeg")
 
-    Only <FileRef> elements wrapped in <SampleRef> are real samples. The .als also
-    carries FileRefs for built-in devices and factory/Core-Library presets (Simpler,
-    EQ Eight, .adv presets, cached plugin .aupreset files); those ship with Ableton,
-    are not part of the project, and would otherwise show up as bogus "missing" refs —
-    so they are intentionally excluded.
+
+def parse_als(als_path: Path) -> list[FileRef]:
+    """Decompress an .als and return its user media references.
+
+    <FileRef>s wrapped in <SampleRef> are real audio samples. The .als also carries
+    FileRefs for built-in devices and factory/Core-Library presets (Simpler, EQ
+    Eight, .adv, cached plugin .aupreset); those ship with Ableton and are excluded
+    so they don't show up as bogus "missing" refs. Video files (referenced outside
+    SampleRef) are also included — a video extension can't be a factory preset, so
+    this stays noise-free.
     """
     with gzip.open(als_path, "rt", encoding="utf-8") as fh:
         tree = ET.parse(fh)
     root = tree.getroot()
-    refs = []
+    refs: list[FileRef] = []
+    seen: set[int] = set()
     for sample_ref in root.iter("SampleRef"):
         fr = sample_ref.find("FileRef")
         if fr is not None:
             refs.append(_fileref_to_model(fr))
+            seen.add(id(fr))
+    for fr in root.iter("FileRef"):
+        if id(fr) in seen:
+            continue
+        model = _fileref_to_model(fr)
+        path = (model.relative_path or model.absolute_path or model.name or "").lower()
+        if path.endswith(_VIDEO_EXTS):
+            refs.append(model)
     return refs

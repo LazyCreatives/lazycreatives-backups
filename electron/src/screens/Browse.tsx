@@ -45,7 +45,7 @@ export function Browse() {
             <button key={p.project_name} onClick={() => setActive(p.project_name)} className="row"
               style={{
                 width: "100%", textAlign: "left", cursor: "pointer",
-                background: active === p.project_name ? "var(--bg-elev-2)" : "var(--bg-elev)",
+                background: active === p.project_name ? "var(--surface-2)" : "var(--surface)",
                 borderColor: active === p.project_name ? "var(--accent)" : "var(--border)",
               }}>
               <div style={{ minWidth: 0 }}>

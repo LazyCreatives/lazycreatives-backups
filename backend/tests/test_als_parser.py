@@ -52,3 +52,16 @@ def test_ignores_factory_and_device_filerefs(tmp_path):
     refs = parse_als(als)
     assert len(refs) == 1
     assert refs[0].name == "kick.wav"
+
+
+def test_includes_video_but_not_devices(tmp_path):
+    als = write_als(tmp_path / "song.als", [
+        fileref_abs("/Users/me/kick.wav", "kick.wav"),  # SampleRef audio
+        '<FileRef><Path Value="/Applications/Ableton Live 12 Suite.app/'
+        'Contents/App-Resources/Builtin/Devices/Instruments/Simpler"/></FileRef>',
+        '<VideoClip><FileRef><Path Value="/Users/me/scene.mov"/></FileRef></VideoClip>',
+    ])
+    paths = {r.absolute_path for r in parse_als(als)}
+    assert "/Users/me/kick.wav" in paths    # audio kept
+    assert "/Users/me/scene.mov" in paths   # video kept
+    assert not any(p and "Simpler" in p for p in paths)  # device still excluded

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { makeApi } from "../api";
 import type { ProjectSummary } from "../types";
 import type { ScanProgress } from "../useProgress";
@@ -21,9 +21,22 @@ export function Scan({ projects, onProjects, scan, onReview }: {
   const [findMissing, setFindMissing] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const known = useRef<Set<string> | null>(null);
 
+  // Keep the user's curation across rescans: previously-deselected projects stay
+  // off, and newly-discovered projects default to selected.
   useEffect(() => {
-    if (projects) setSelected(new Set(projects.map((p) => p.als_path)));
+    if (!projects) return;
+    const current = projects.map((p) => p.als_path);
+    setSelected((prev) => {
+      if (known.current === null) return new Set(current); // first scan: all on
+      const next = new Set<string>();
+      for (const a of current) {
+        if (!known.current.has(a) || prev.has(a)) next.add(a);
+      }
+      return next;
+    });
+    known.current = new Set(current);
   }, [projects]);
 
   async function runScan() {

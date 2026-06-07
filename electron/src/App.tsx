@@ -26,16 +26,25 @@ export default function App() {
   const [activeJob, setActiveJob] = useState<string | null>(null);
   const live = useLiveProgress();
 
+  // Ask for notification permission once, up front.
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
   // Fire a single OS notification when a backup finishes, from anywhere in the app.
   const prevDone = useRef(false);
   useEffect(() => {
-    if (live.backup.done && !prevDone.current) {
+    if (live.backup.done && !prevDone.current && "Notification" in window && Notification.permission === "granted") {
       new Notification("Ableton Backup", {
-        body: `Backup finished — ${live.backup.completed} ok, ${live.backup.errors} error(s).`,
+        body: live.backup.cancelled
+          ? `Backup cancelled — ${live.backup.completed} done.`
+          : `Backup finished — ${live.backup.completed} ok, ${live.backup.errors} error(s).`,
       });
     }
     prevDone.current = live.backup.done;
-  }, [live.backup.done, live.backup.completed, live.backup.errors]);
+  }, [live.backup.done, live.backup.completed, live.backup.errors, live.backup.cancelled]);
 
   const busy = live.scan.active || live.backup.active;
 
