@@ -18,7 +18,8 @@ function backendDir() {
 }
 
 function dbPath() {
-  return path.join(app.getPath("userData"), "catalog.db");
+  // Honor an explicit override (handy for demos/tests); default to userData.
+  return process.env.ABLEBACKUP_DB || path.join(app.getPath("userData"), "catalog.db");
 }
 
 function createWindow() {
