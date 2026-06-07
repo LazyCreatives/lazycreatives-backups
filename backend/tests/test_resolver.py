@@ -62,25 +62,53 @@ def test_dedupes_repeated_sample_refs(tmp_path):
     assert resolved[0].size == 4
 
 
-def test_relinks_missing_ref_via_locator(tmp_path):
+def test_relinks_missing_ref_by_recorded_size(tmp_path):
     proj = tmp_path / "proj"
     proj.mkdir()
-    # The project points at a sample that no longer exists there...
-    refs = [FileRef(name="kick.wav", absolute_path="/old/place/kick.wav")]
-    # ...but a copy lives in the user's library.
     lib = tmp_path / "Splice"
     lib.mkdir()
-    (lib / "kick.wav").write_bytes(b"kickkick")
+    (lib / "kick.wav").write_bytes(b"kickkick")  # 8 bytes
     from ablebackup.locator import make_locator
     locate = make_locator([lib])
+    # the project recorded this sample as 8 bytes -> the library copy matches
+    refs = [FileRef(name="kick.wav", absolute_path="/old/place/kick.wav", size=8)]
 
-    # without a locator -> missing
-    assert resolve_refs(refs, project_dir=proj)[0].exists is False
-    # with a locator -> found and relinked
+    assert resolve_refs(refs, project_dir=proj)[0].exists is False  # no locator
     r = resolve_refs(refs, project_dir=proj, locate=locate)[0]
-    assert r.exists is True
-    assert r.relinked is True
+    assert r.exists is True and r.relinked is True
     assert r.resolved_path == lib / "kick.wav"
+
+
+def test_does_not_relink_wrong_sized_same_named_file(tmp_path):
+    # The dangerous case: a DIFFERENT sample shares the filename. It must NOT be
+    # silently backed up in place of the real one.
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    lib = tmp_path / "Splice"
+    lib.mkdir()
+    (lib / "kick.wav").write_bytes(b"a-totally-different-kick")  # 24 bytes
+    from ablebackup.locator import make_locator
+    locate = make_locator([lib])
+    refs = [FileRef(name="kick.wav", absolute_path="/old/place/kick.wav", size=8)]
+
+    r = resolve_refs(refs, project_dir=proj, locate=locate)[0]
+    assert r.exists is False  # refused to relink the wrong file
+    assert r.relinked is False
+
+
+def test_relinks_by_path_tail_when_size_unknown(tmp_path):
+    # Older projects may not record a size; require a strong path-tail match instead.
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    lib = tmp_path / "lib" / "Drums" / "Kicks"
+    lib.mkdir(parents=True)
+    (lib / "kick.wav").write_bytes(b"x")
+    from ablebackup.locator import make_locator
+    locate = make_locator([tmp_path / "lib"])
+    refs = [FileRef(name="kick.wav", relative_path="Drums/Kicks/kick.wav", size=0)]
+
+    r = resolve_refs(refs, project_dir=proj, locate=locate)[0]
+    assert r.exists is True and r.relinked is True
 
 
 def test_dedupes_repeated_missing_refs(tmp_path):

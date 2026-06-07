@@ -37,7 +37,9 @@ def _fileref_to_model(fileref: _ET.Element) -> FileRef:
     absolute = _value_of(fileref, "Path")
     relative = _relative_path(fileref)
     name = _value_of(fileref, "Name") or ""
-    return FileRef(name=name, absolute_path=absolute, relative_path=relative)
+    size_val = _value_of(fileref, "OriginalFileSize")  # Live records the sample's size
+    size = int(size_val) if size_val and size_val.isdigit() else 0
+    return FileRef(name=name, absolute_path=absolute, relative_path=relative, size=size)
 
 
 def parse_als(als_path: Path) -> list[FileRef]:

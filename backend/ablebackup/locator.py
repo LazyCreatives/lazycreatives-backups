@@ -27,9 +27,11 @@ def default_libraries() -> list[Path]:
     return out
 
 
-def build_index(roots: list[Path]) -> dict[str, Path]:
-    """Map lowercased filename -> a path, for audio files under roots. First wins."""
-    index: dict[str, Path] = {}
+def build_index(roots: list[Path]) -> dict[str, list[Path]]:
+    """Map lowercased filename -> all paths with that name, for audio files under
+    roots. Returns every candidate (not first-wins) so the caller can verify which
+    one actually matches — a basename can be shared by many different samples."""
+    index: dict[str, list[Path]] = {}
     for root in roots:
         if not Path(root).is_dir():
             continue
@@ -37,19 +39,17 @@ def build_index(roots: list[Path]) -> dict[str, Path]:
             dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
             for fn in filenames:
                 if Path(fn).suffix.lower() in AUDIO_EXTS:
-                    key = fn.lower()
-                    if key not in index:
-                        index[key] = Path(dirpath) / fn
+                    index.setdefault(fn.lower(), []).append(Path(dirpath) / fn)
     return index
 
 
-def make_locator(roots: list[Path]) -> Callable[[str], Optional[Path]]:
-    """Build the index once and return locate(name) -> a found path or None."""
+def make_locator(roots: list[Path]) -> Callable[[str], list[Path]]:
+    """Build the index once and return locate(name) -> all same-named candidates."""
     index = build_index(roots)
 
-    def locate(name: str) -> Optional[Path]:
+    def locate(name: str) -> list[Path]:
         if not name:
-            return None
-        return index.get(Path(name).name.lower())
+            return []
+        return index.get(Path(name).name.lower(), [])
 
     return locate
