@@ -25,7 +25,12 @@
   header small{display:block;color:var(--muted);font-size:14px;font-weight:600;margin-top:2px}
   h1{font-size:clamp(30px,5vw,46px);font-weight:800;letter-spacing:-.025em;line-height:1.08;margin-bottom:14px}
   h1 .g{color:var(--gold)}
-  .lede{color:var(--muted);font-size:18px;max-width:62ch;margin-bottom:34px}
+  .lede{color:var(--muted);font-size:18px;max-width:62ch;margin-bottom:24px}
+  .notify{display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:space-between;
+    border:1px solid rgba(245,196,81,.35);background:rgba(245,196,81,.06);border-radius:14px;padding:14px 18px;margin-bottom:30px}
+  .notify p{font-size:14.5px;color:var(--ink)} .notify p b{color:var(--gold)}
+  a.btn.star{background:var(--gold);color:#1a1304;border-color:var(--gold);white-space:nowrap}
+  a.btn.star:hover{filter:brightness(1.05)}
   .player{border:1px solid var(--line);border-radius:18px;overflow:hidden;
     background:#000;box-shadow:0 20px 70px rgba(0,0,0,.5)}
   .player iframe{display:block;width:100%;aspect-ratio:16/9;border:0}
@@ -59,6 +64,11 @@
 
   <h1>Never lose a session <span class="g">again.</span></h1>
   <p class="lede">Verified, deduplicated backups for your music projects — that you own. It finds every session, follows its sounds, and proves each backup actually opens.</p>
+
+  <div class="notify">
+    <p><b>Launching soon.</b> Star the repo to get notified the moment it ships — the first 100 get early-adopter pricing.</p>
+    <a class="btn star" href="https://github.com/rshearer1/lazycreatives-backups" target="_blank" rel="noopener">★ Star to get notified</a>
+  </div>
 
   <div class="player">
     <iframe src="pitch-video.html" title="LazyCreatives Backups — animated pitch" allowfullscreen loading="lazy"></iframe>
