@@ -75,7 +75,10 @@ h2 { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: 
 .nav__item--active::before {
   content: ""; position: absolute; left: -14px; top: 8px; bottom: 8px; width: 3px;
   border-radius: 0 3px 3px 0; background: var(--accent);
+  box-shadow: 0 0 10px rgba(245, 196, 81, 0.55);
+  animation: navGlow 0.38s ease both;
 }
+@keyframes navGlow { from { opacity: 0; transform: scaleY(0.3); } to { opacity: 1; transform: scaleY(1); } }
 .nav__icon { width: 17px; height: 17px; flex-shrink: 0; opacity: 0.9; }
 .nav__dot { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--accent-2); box-shadow: 0 0 0 4px var(--ok-soft); animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
@@ -270,6 +273,14 @@ select { cursor: pointer; }
 }
 @keyframes dedupCollapse { from { width: 100%; } }
 
+/* --- hover micro-interactions + log stream-in + empty-state float --- */
+.row { transition: transform .14s ease, border-color .14s ease, background .14s ease; }
+.row:hover { transform: translateY(-1px); border-color: var(--border-strong); }
+.logline { animation: logIn 0.26s ease both; }
+@keyframes logIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
+.empty__icon { animation: floaty 3.2s ease-in-out infinite; }
+@keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
 /* --- shimmer for not-yet-computed values --- */
 .shimmer {
   background: linear-gradient(100deg, var(--text-faint) 30%, var(--text-dim) 50%, var(--text-faint) 70%);
@@ -281,7 +292,8 @@ select { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   .seal__badge, .seal__check, .seal__ray, .tile--enter, .scanrow--enter, .sonar span, .shimmer,
   .celebrate, .celebrate::before, .eq--on i, .view-enter, .progress__fill--active::after,
-  .waveform span, .dedupbar__actual, .mark--on .mark__wave line {
+  .waveform span, .dedupbar__actual, .mark--on .mark__wave line,
+  .nav__item--active::before, .logline, .empty__icon {
     animation: none !important; opacity: 1 !important; stroke-dashoffset: 0 !important; transform: none !important;
   }
 }
