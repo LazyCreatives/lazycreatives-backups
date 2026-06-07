@@ -17,18 +17,33 @@ def test_subscriber_receives_published_events():
     assert second == {"type": "b"}
 
 
-def test_new_subscriber_gets_history_first():
+def test_mid_run_subscriber_gets_run_history():
     async def scenario():
         hub = ProgressHub()
-        await hub.publish({"type": "old1"})
-        await hub.publish({"type": "old2"})
-        q = hub.subscribe()  # subscribes AFTER events were published
+        await hub.publish({"type": "backup_start", "project_count": 2})
+        await hub.publish({"type": "project_start", "project_name": "A"})
+        q = hub.subscribe()  # reconnects mid-run -> catches up
         a = await asyncio.wait_for(q.get(), timeout=1)
         b = await asyncio.wait_for(q.get(), timeout=1)
         return a, b
     a, b = asyncio.run(scenario())
-    assert a == {"type": "old1"}
-    assert b == {"type": "old2"}
+    assert a["type"] == "backup_start"
+    assert b["type"] == "project_start"
+
+
+def test_finished_run_is_not_replayed():
+    # The fix: a socket connecting AFTER a run finished must NOT see the old run.
+    async def scenario():
+        hub = ProgressHub()
+        await hub.publish({"type": "backup_start", "project_count": 1})
+        await hub.publish({"type": "backup_done", "ok_count": 1, "error_count": 0, "skipped_count": 0})
+        q = hub.subscribe()
+        try:
+            await asyncio.wait_for(q.get(), timeout=0.2)
+            return False  # got a replayed event -> bug
+        except asyncio.TimeoutError:
+            return True
+    assert asyncio.run(scenario()) is True
 
 
 def test_multiple_subscribers_each_receive():

@@ -1,6 +1,9 @@
-"""Async pub/sub for streaming backup progress to WebSocket subscribers."""
+"""Async pub/sub for streaming scan/backup progress to WebSocket subscribers."""
 import asyncio
 from typing import Optional
+
+_START = ("scan_start", "backup_start")
+_DONE = ("scan_done", "backup_done")
 
 
 class ProgressHub:
@@ -8,6 +11,7 @@ class ProgressHub:
         self._subscribers: list[asyncio.Queue] = []
         self._history: list[dict] = []
         self._history_limit = history_limit
+        self._active = False  # is an operation currently running?
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
@@ -16,8 +20,12 @@ class ProgressHub:
 
     def subscribe(self) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue()
-        for event in self._history:  # replay so late subscribers catch up
-            q.put_nowait(event)
+        # Only replay while a run is in progress — so a socket that connects (or
+        # reconnects) AFTER a run finished doesn't resurrect a stale "Complete"
+        # and re-fire the completion notification.
+        if self._active:
+            for event in self._history:
+                q.put_nowait(event)
         self._subscribers.append(q)
         return q
 
@@ -26,13 +34,15 @@ class ProgressHub:
             self._subscribers.remove(q)
 
     async def publish(self, event: dict) -> None:
-        # A new operation starts a fresh history so a late/reconnecting subscriber
-        # replays only the current run, not stale events from previous ones.
-        if event.get("type") in ("scan_start", "backup_start"):
-            self._history = []
+        t = event.get("type")
+        if t in _START:
+            self._history = []  # fresh run -> fresh catch-up history
+            self._active = True
         self._record(event)
         for q in list(self._subscribers):
             q.put_nowait(event)
+        if t in _DONE:
+            self._active = False
 
     def publish_threadsafe(self, event: dict) -> None:
         """Publish from a non-loop thread (the scan/backup worker)."""
