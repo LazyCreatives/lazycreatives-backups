@@ -11,14 +11,17 @@ function fmtSize(n: number) {
   return n + " B";
 }
 
-export function Scan({ onBackupStarted }: { onBackupStarted: () => void }) {
-  const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
+export function Scan({ projects, onProjects, onBackupStarted }: {
+  projects: ProjectSummary[] | null;
+  onProjects: (p: ProjectSummary[] | null) => void;
+  onBackupStarted: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function scan() {
     setBusy(true); setErr(null);
-    try { setProjects(await api.scan()); }
+    try { onProjects(await api.scan()); }
     catch (e: any) { setErr(e.message); }
     finally { setBusy(false); }
   }
