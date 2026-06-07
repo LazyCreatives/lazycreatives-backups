@@ -15,9 +15,18 @@ const PRESETS = [
 
 export function Sources() {
   const [cfg, setCfg] = useState<Config>({ sources: [], dest: "", interval_minutes: 0, libraries: [] });
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => { api.getSettings().then(setCfg).catch(() => {}); }, []);
+  function load() {
+    setLoadError(false);
+    api.getSettings()
+      .then((c) => { setCfg(c); setLoaded(true); })
+      .catch(() => setLoadError(true));
+  }
+  useEffect(load, []);
 
   async function addSource() {
     const dir = await (window as any).ablebackup.pickFolder();
@@ -31,26 +40,47 @@ export function Sources() {
     setCfg({ ...cfg, sources: cfg.sources.filter((x) => x !== s) });
   }
   async function save() {
-    const next = await api.saveSettings(cfg);
-    setCfg(next); setSaved(true); setTimeout(() => setSaved(false), 1500);
+    if (!loaded) return;  // never overwrite stored settings with an un-loaded default
+    setSaveError(null);
+    try {
+      const next = await api.saveSettings({ ...cfg, interval_minutes: Math.max(0, cfg.interval_minutes) });
+      setCfg(next); setSaved(true); setTimeout(() => setSaved(false), 1500);
+    } catch (e: any) {
+      setSaveError(e.message || "Save failed");
+    }
   }
 
   const presetMatch = PRESETS.some((p) => p.min === cfg.interval_minutes);
+
+  if (loadError) {
+    return (
+      <>
+        <PageHeader title="Sources & NAS" subtitle="Where to look for projects, and where to store backups." />
+        <div className="card" style={{ borderColor: "var(--danger)" }}>
+          <strong style={{ color: "var(--danger)" }}>Couldn't reach the backup service.</strong>
+          <p className="sub" style={{ margin: "8px 0 14px" }}>Settings weren't loaded — saving is disabled so your stored config isn't overwritten.</p>
+          <Button variant="ghost" onClick={load}>Retry</Button>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
       <PageHeader
         title="Sources & NAS"
         subtitle="Where to look for projects, and where to store backups."
-        actions={<Button onClick={save}>{saved ? "Saved ✓" : "Save settings"}</Button>}
+        actions={<Button onClick={save} disabled={!loaded}>{saved ? "Saved ✓" : "Save settings"}</Button>}
       />
+
+      {saveError && <div className="card" style={{ borderColor: "var(--danger)", color: "var(--danger)", marginBottom: 16 }}>{saveError}</div>}
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
           <h2 style={{ margin: 0 }}>Source folders</h2>
-          <Button variant="ghost" onClick={addSource}>+ Add folder</Button>
+          <Button variant="ghost" onClick={addSource} disabled={!loaded}>+ Add folder</Button>
         </div>
-        {cfg.sources.length === 0 && <p className="sub" style={{ margin: 0 }}>No folders yet.</p>}
+        {cfg.sources.length === 0 && <p className="sub" style={{ margin: 0 }}>{loaded ? "No folders yet." : "Loading…"}</p>}
         {cfg.sources.map((s) => (
           <div key={s} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", gap: 12 }}>
             <span style={{ color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s}</span>
@@ -63,8 +93,8 @@ export function Sources() {
         <h2>NAS destination</h2>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           <input readOnly value={cfg.dest} placeholder="No destination set"
-            style={{ flex: 1, background: "var(--bg-elev-2)", border: "1px solid var(--border)", color: "var(--text)", padding: "10px 12px", borderRadius: 8 }} />
-          <Button variant="ghost" onClick={pickDest}>Choose…</Button>
+            style={{ flex: 1, background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text)", padding: "10px 12px", borderRadius: 8 }} />
+          <Button variant="ghost" onClick={pickDest} disabled={!loaded}>Choose…</Button>
         </div>
         <div className="sub" style={{ margin: "8px 0 0", fontSize: 12 }}>
           <span style={{ color: cfg.dest ? "var(--accent-2)" : "var(--text-dim)" }}>●</span>{" "}
@@ -77,10 +107,11 @@ export function Sources() {
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           <select
             value={presetMatch ? cfg.interval_minutes : -1}
-            onChange={(e) => setCfg({ ...cfg, interval_minutes: Number(e.target.value) })}
+            disabled={!loaded}
+            onChange={(e) => { const v = Number(e.target.value); if (v >= 0) setCfg({ ...cfg, interval_minutes: v }); }}
           >
             {PRESETS.map((p) => <option key={p.min} value={p.min}>{p.label}</option>)}
-            {!presetMatch && <option value={-1}>Custom ({cfg.interval_minutes} min)</option>}
+            {!presetMatch && <option value={-1} disabled>Custom ({cfg.interval_minutes} min)</option>}
           </select>
           <span className="sub" style={{ margin: 0, fontSize: 12 }}>Runs while the app is open (tray counts).</span>
         </div>

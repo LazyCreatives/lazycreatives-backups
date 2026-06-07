@@ -22,8 +22,17 @@ function Tile({ label, value, hint, tone }: {
 
 export function Dashboard({ onNavigate }: { onNavigate: (s: Screen) => void }) {
   const [ov, setOv] = useState<Overview | null>(null);
-  useEffect(() => { api.overview().then(setOv).catch(() => {}); }, []);
+  const [err, setErr] = useState(false);
+  useEffect(() => { api.overview().then(setOv).catch(() => setErr(true)); }, []);
 
+  if (err) return (
+    <>
+      <PageHeader title="Dashboard" />
+      <div className="card" style={{ borderColor: "var(--danger)", color: "var(--danger)" }}>
+        Couldn't reach the backup service.
+      </div>
+    </>
+  );
   if (!ov) return (<><PageHeader title="Dashboard" subtitle="Loading…" /></>);
 
   const savedPct = ov.logical_size > 0 ? Math.round((ov.saved_bytes / ov.logical_size) * 100) : 0;
