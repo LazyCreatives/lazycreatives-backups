@@ -91,6 +91,34 @@ def test_run_backup_skips_unchanged_project(tmp_path):
     cat.close()
 
 
+def test_run_backup_skips_unchanged_partial_project(tmp_path):
+    # A project that references a sample not on disk -> status 'partial'. It must
+    # still be skip-eligible when nothing changes, or it duplicates forever.
+    proj = tmp_path / "Song Project"
+    proj.mkdir(parents=True)
+    write_als(proj / "Song.als", [fileref_rel("Samples/missing.wav", "missing.wav")])
+    dest = tmp_path / "NAS"
+    cat = Catalog(tmp_path / "c.db")
+    als = [str(proj / "Song.als")]
+
+    first = run_backup([tmp_path], dest, cat, timestamp="t1", als_paths=als)
+    assert first["ok_count"] == 1
+    assert cat.snapshots_for("Song")[0]["status"] == "partial"
+
+    # Still missing, nothing else changed -> no redundant duplicate snapshot.
+    second = run_backup([tmp_path], dest, cat, timestamp="t2", als_paths=als)
+    assert second["skipped_count"] == 1 and second["ok_count"] == 0
+    assert len(cat.snapshots_for("Song")) == 1
+
+    # The missing sample reappears -> signature changes -> it backs up again.
+    (proj / "Samples").mkdir()
+    (proj / "Samples" / "missing.wav").write_bytes(b"found-it")
+    third = run_backup([tmp_path], dest, cat, timestamp="t3", als_paths=als)
+    assert third["ok_count"] == 1
+    assert len(cat.snapshots_for("Song")) == 2
+    cat.close()
+
+
 def test_run_backup_records_label_and_layout(tmp_path):
     _build_project(tmp_path)
     dest = tmp_path / "NAS"

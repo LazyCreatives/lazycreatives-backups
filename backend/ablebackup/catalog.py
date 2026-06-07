@@ -176,16 +176,21 @@ class Catalog:
         return [dict(r) for r in rows]
 
     def latest_signatures(self) -> dict:
-        """project_id -> content signature of its most recent *fully ok* snapshot.
+        """project_id -> content signature of its most recent successful snapshot.
 
         Keyed on project_id (not name) so two same-named projects don't false-skip
-        each other; only status='ok' counts, so a partial snapshot keeps retrying.
+        each other. Includes 'partial' (some samples missing) as well as 'ok',
+        because the signature already encodes which samples are present — so if a
+        missing sample reappears the signature changes and a new backup is made;
+        an identical-signature partial has genuinely nothing new to capture and is
+        skipped (this is what stops endless duplicate backups of projects that have
+        a permanently-missing sample). Only failed ('error') snapshots are excluded.
         """
         with self._lock:
             rows = self.conn.execute(
                 "SELECT s.project_id, s.signature FROM snapshots s "
                 "JOIN (SELECT project_id, MAX(id) AS mid FROM snapshots "
-                "      WHERE status = 'ok' AND project_id IS NOT NULL "
+                "      WHERE status IN ('ok', 'partial') AND project_id IS NOT NULL "
                 "      GROUP BY project_id) l "
                 "  ON s.id = l.mid"
             ).fetchall()
