@@ -34,8 +34,8 @@ export function Setup({ onDone }: { onDone: (c: Config) => void }) {
     <div className="splash">
       <div className="wizard">
         <div className="wizard__head">
-          <div className="nav__logo">AB</div>
-          <div style={{ flex: 1 }}><strong>Ableton Backup</strong></div>
+          <div className="nav__logo">LC</div>
+          <div style={{ flex: 1 }}><strong>LazyCreatives Backups</strong></div>
           <span className="sub" style={{ margin: 0 }}>Step {step + 1} of 3</span>
         </div>
         <div className="wizard__dots">

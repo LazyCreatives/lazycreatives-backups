@@ -27,8 +27,8 @@ export function Nav({ tab, onNavigate, busy, flowActive }: {
   return (
     <nav className="nav">
       <div className="nav__brand">
-        <div className="nav__logo">AB</div>
-        <span className="nav__brandname">Ableton Backup</span>
+        <div className="nav__logo">LC</div>
+        <span className="nav__brandname">LazyCreatives Backups</span>
       </div>
       {ITEMS.map((it) => (
         <button key={it.id} onClick={() => onNavigate(it.id)}

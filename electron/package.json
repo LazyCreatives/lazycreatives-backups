@@ -1,7 +1,8 @@
 {
-  "name": "ableton-backup-app",
+  "name": "lazycreatives-backups",
+  "productName": "LazyCreatives Backups",
   "version": "0.1.0",
-  "description": "Ableton project backup desktop app",
+  "description": "LazyCreatives Backups — verified, deduplicated backups for Ableton & FL Studio projects",
   "main": "electron/main.js",
   "scripts": {
     "dev:vite": "vite",

@@ -47,7 +47,7 @@ export default function App() {
   const prevDone = useRef(false);
   useEffect(() => {
     if (live.backup.done && !prevDone.current && "Notification" in window && Notification.permission === "granted") {
-      new Notification("Ableton Backup", {
+      new Notification("LazyCreatives Backups", {
         body: live.backup.cancelled
           ? `Backup cancelled — ${live.backup.completed} done.`
           : `Backup finished — ${live.backup.completed} ok, ${live.backup.errors} error(s).`,
