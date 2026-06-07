@@ -41,6 +41,20 @@ export interface VerifyResult {
   relinked: { logical_path: string; source_path: string }[];
   error: string | null;
 }
+export interface SnapshotFile {
+  logical_path: string;
+  size: number;
+  inside_project: boolean;
+  relinked: boolean;
+  source_path: string;
+}
+export interface SnapshotFilesResult {
+  files: SnapshotFile[];
+  manifest_present: boolean;
+  portable?: boolean | null;
+  missing: string[];
+  total_size?: number;
+}
 export interface ProjectRow {
   project_name: string;
   snapshot_count: number;

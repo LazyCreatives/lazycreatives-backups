@@ -1,22 +1,51 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { makeApi } from "../api";
-import type { ProjectRow, Snapshot, VerifyResult } from "../types";
-import { StatusPill } from "../components/StatusPill";
+import type { ProjectRow, Snapshot, VerifyResult, SnapshotFile, SnapshotFilesResult } from "../types";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/Button";
 import { VerifiedSeal } from "../components/VerifiedSeal";
-import { fmtSize, fmtDate, shortPath, dawLabel } from "../format";
+import { fmtSize, fmtDate, shortPath, dawLabel, sourceLabel } from "../format";
 
 const api = makeApi();
+function reveal(p?: string) { if (p) (window as any).ablebackup?.revealPath?.(p); }
 
-function reveal(dir?: string) {
-  if (dir) (window as any).ablebackup?.revealPath?.(dir);
+function FileGroup({ label, icon, files, snapDir, open, toggle, showSource }: {
+  label: string; icon: string; files: SnapshotFile[]; snapDir?: string;
+  open: boolean; toggle: () => void; showSource?: boolean;
+}) {
+  if (files.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <button className="filegroup__head" onClick={toggle}>
+        <span>{open ? "▾" : "▸"} {icon} {label}</span>
+        <span className="sub mono" style={{ margin: 0 }}>{files.length}</span>
+      </button>
+      {open && files.map((f) => {
+        const name = f.logical_path.split("/").pop();
+        return (
+          <div key={f.logical_path} className="filerow" title={snapDir ? "Reveal in the backup" : undefined}
+            onClick={() => reveal(snapDir ? `${snapDir}/${f.logical_path}` : undefined)}>
+            <span className="filerow__name">{name}</span>
+            {f.relinked && <span className="pill pill--ok filerow__tag">auto-found</span>}
+            {showSource && <span className="filerow__src">← {sourceLabel(f.source_path)}</span>}
+            <span className="filerow__size mono">{fmtSize(f.size)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export function Browse() {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const [query, setQuery] = useState("");
+  const [dawFilter, setDawFilter] = useState("all");
   const [active, setActive] = useState<string | null>(null);
   const [snaps, setSnaps] = useState<Snapshot[]>([]);
+  const [selId, setSelId] = useState<number | null>(null);
+  const [files, setFiles] = useState<SnapshotFilesResult | null>(null);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [open, setOpen] = useState<Record<string, boolean>>({ project: true, gathered: true, internal: false });
   const [results, setResults] = useState<Record<number, VerifyResult>>({});
   const [verifying, setVerifying] = useState<Set<number>>(new Set());
   const [restoring, setRestoring] = useState<Set<number>>(new Set());
@@ -24,20 +53,45 @@ export function Browse() {
 
   useEffect(() => { api.projects().then(setProjects).catch(() => {}); }, []);
   useEffect(() => {
-    setSnaps([]); setResults({});
-    if (active) api.projectDetail(active).then((d) => setSnaps(d.snapshots)).catch(() => {});
+    setSnaps([]); setSelId(null); setFiles(null);
+    if (active) api.projectDetail(active).then((d) => {
+      setSnaps(d.snapshots);
+      const newest = d.snapshots[d.snapshots.length - 1];
+      if (newest) setSelId(newest.id);
+    }).catch(() => {});
   }, [active]);
+  useEffect(() => {
+    if (selId == null) { setFiles(null); return; }
+    setLoadingFiles(true);
+    api.snapshotFiles(selId).then(setFiles).catch(() => setFiles(null)).finally(() => setLoadingFiles(false));
+  }, [selId]);
+
+  const daws = useMemo(() => Array.from(new Set(projects.map((p) => p.daw).filter(Boolean))) as string[], [projects]);
+  const filtered = projects.filter((p) =>
+    (dawFilter === "all" || p.daw === dawFilter) &&
+    p.project_name.toLowerCase().includes(query.toLowerCase()));
+  const sel = snaps.find((s) => s.id === selId) || null;
+
+  const groups = useMemo(() => {
+    const fs = files?.files ?? [];
+    return {
+      project: fs.filter((f) => f.inside_project && !f.logical_path.includes("/")),
+      internal: fs.filter((f) => f.inside_project && f.logical_path.includes("/")),
+      gathered: fs.filter((f) => !f.inside_project),
+    };
+  }, [files]);
+  const locations = useMemo(
+    () => new Set(groups.gathered.map((f) => sourceLabel(f.source_path))).size, [groups]);
 
   async function verify(id: number) {
     setVerifying((s) => new Set(s).add(id));
     try {
       const r = await api.verify(id);
       setResults((m) => ({ ...m, [id]: r }));
-      setSnaps((list) => list.map((s) => s.id === id ? { ...s, verified: r.ok ? 1 : 0, status: r.ok ? s.status : "error" } : s));
+      setSnaps((list) => list.map((s) => s.id === id ? { ...s, verified: r.ok ? 1 : 0 } : s));
     } catch { /* surfaced as no result */ }
     finally { setVerifying((s) => { const n = new Set(s); n.delete(id); return n; }); }
   }
-
   async function restore(id: number) {
     const target = await (window as any).ablebackup?.pickFolder?.();
     if (!target) return;
@@ -50,8 +104,7 @@ export function Browse() {
         await new Promise((r) => setTimeout(r, 500));
         res = await api.jobStatus(job_id);
       }
-      if (res.state === "done") setRestored((m) => ({ ...m, [id]: { path: res.result?.path } }));
-      else setRestored((m) => ({ ...m, [id]: { error: res.error || "restore failed" } }));
+      setRestored((m) => ({ ...m, [id]: res.state === "done" ? { path: res.result?.path } : { error: res.error || "restore failed" } }));
     } catch (e: any) {
       setRestored((m) => ({ ...m, [id]: { error: e.message } }));
     } finally {
@@ -59,13 +112,30 @@ export function Browse() {
     }
   }
 
+  const r = selId != null ? results[selId] : undefined;
+  const rest = selId != null ? restored[selId] : undefined;
+
   return (
     <>
-      <PageHeader title="Browse backups" subtitle="Every dated snapshot, by project — reveal it, or verify it's complete." />
-      <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 18 }}>
-        <div>
-          {projects.length === 0 && <p className="sub">No backups yet.</p>}
-          {projects.map((p) => (
+      <PageHeader title="History" subtitle="Every backup — and everything we gathered and tidied inside it." />
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
+        <input className="input" placeholder="Search projects…" value={query}
+          onChange={(e) => setQuery(e.target.value)} style={{ flex: 1, maxWidth: 280 }} />
+        {daws.length > 1 && (
+          <div className="seg">
+            <button className={`seg__opt${dawFilter === "all" ? " seg__opt--on" : ""}`} onClick={() => setDawFilter("all")}>All</button>
+            {daws.map((d) => (
+              <button key={d} className={`seg__opt${dawFilter === d ? " seg__opt--on" : ""}`} onClick={() => setDawFilter(d)}>{dawLabel(d)}</button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "250px 1fr", gap: 18, alignItems: "start" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "calc(100vh - 230px)", overflow: "auto" }}>
+          {filtered.length === 0 && <p className="sub">No projects.</p>}
+          {filtered.map((p) => (
             <button key={p.project_name} onClick={() => setActive(p.project_name)} className="row"
               style={{
                 width: "100%", textAlign: "left", cursor: "pointer",
@@ -84,96 +154,90 @@ export function Browse() {
             </button>
           ))}
         </div>
+
         <div>
-          {!active && <p className="sub">Select a project to see its history.</p>}
-          {active && snaps.length === 0 && <p className="sub">No snapshots.</p>}
-          {active && [...snaps].reverse().map((s) => {
-            const r = results[s.id];
-            const busy = verifying.has(s.id);
-            const isRestoring = restoring.has(s.id);
-            const rest = restored[s.id];
-            return (
-              <div key={s.id} className="card" style={{ marginBottom: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                  <strong>{fmtDate(s.timestamp)}{s.label ? ` · ${s.label}` : ""}</strong>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    {!!s.verified && <span className="pill pill--ok">verified ✓</span>}
-                    <StatusPill status={s.status} />
-                    <Button variant="ghost" size="sm" onClick={() => verify(s.id)} disabled={busy}>
-                      {busy ? "Verifying…" : "Verify"}
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => restore(s.id)} disabled={isRestoring}>
-                      {isRestoring ? "Restoring…" : "Restore"}
-                    </Button>
-                    {s.dir && <Button variant="ghost" size="sm" onClick={() => reveal(s.dir)}>Reveal</Button>}
-                  </div>
-                </div>
-                <div className="sub" style={{ margin: "6px 0 0" }}>
-                  {s.file_count} sample{s.file_count === 1 ? "" : "s"} · {fmtSize(s.total_size)}
-                  {s.relinked_count ? ` · ${s.relinked_count} relinked` : ""}
-                  {s.missing && s.missing.length > 0 ? ` · ${s.missing.length} missing` : ""}
-                </div>
-
-                {s.error && <div style={{ marginTop: 6, color: "var(--danger)", fontSize: 12 }}>{s.error}</div>}
-
-                {rest && (
-                  <div className="card" style={{ marginTop: 10, background: "var(--surface-2)", padding: 12, fontSize: 12.5 }}>
-                    {rest.error ? (
-                      <span style={{ color: "var(--danger)" }}>Restore failed: {rest.error}</span>
-                    ) : (
-                      <span>
-                        <span style={{ color: "var(--accent-2)", fontWeight: 600 }}>✓ Restored</span> to {shortPath(rest.path || "", 4)}
-                        {rest.path && <Button variant="ghost" size="sm" style={{ marginLeft: 10 }} onClick={() => reveal(rest.path)}>Reveal</Button>}
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {r && (
-                  <div className="card" style={{ marginTop: 10, background: "var(--surface-2)", padding: 12 }}>
-                    {r.error ? (
-                      <div style={{ color: "var(--warn)", fontSize: 12.5 }}>{r.error}</div>
-                    ) : (
-                      <>
-                        {r.ok ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                            <VerifiedSeal size={46} />
-                            <div>
-                              <div style={{ color: "var(--accent-2)", fontWeight: 700, fontSize: 14 }}>Verified</div>
-                              <div className="sub" style={{ fontSize: 12, margin: 0 }}>{r.present}/{r.checked} files present, contents match</div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{ color: "var(--danger)", fontWeight: 600, fontSize: 13 }}>⚠ Problems found</div>
-                        )}
-                        {r.missing_files.length > 0 && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 4 }}>Missing in backup: {r.missing_files.length}</div>}
-                        {r.bad_files.length > 0 && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 4 }}>Corrupted/changed: {r.bad_files.length}</div>}
-                        <div className="sub" style={{ fontSize: 12, marginTop: 6 }}>
-                          Opens standalone elsewhere: {r.portable_ok === null ? "—" : r.portable_ok ? "yes" : `no (${r.portable_missing.length} external sample(s) not embedded)`}
-                        </div>
-                        {r.relinked.length > 0 && (
-                          <div style={{ marginTop: 8 }}>
-                            <div className="sub" style={{ fontSize: 12, marginBottom: 4 }}>Auto-found from your library ({r.relinked.length}) — verify these are right:</div>
-                            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, color: "var(--text-dim)" }}>
-                              {r.relinked.slice(0, 12).map((x) => (
-                                <li key={x.logical_path}><span style={{ color: "var(--accent-2)" }}>{x.logical_path}</span> ← {shortPath(x.source_path, 3)}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {s.missing && s.missing.length > 0 && (
-                  <ul style={{ color: "var(--warn)", margin: "8px 0 0", paddingLeft: 18, fontSize: 12 }}>
-                    {s.missing.map((m) => <li key={m}>{m}</li>)}
-                  </ul>
-                )}
+          {!active && <div className="empty"><div className="empty__icon">🗂️</div>Pick a project to explore its backups.</div>}
+          {active && (
+            <>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                {[...snaps].reverse().map((s) => (
+                  <button key={s.id} onClick={() => setSelId(s.id)}
+                    className={`snapchip${selId === s.id ? " snapchip--on" : ""}`}>
+                    {fmtDate(s.timestamp)}{s.verified ? " ✓" : ""}
+                  </button>
+                ))}
               </div>
-            );
-          })}
+
+              {sel && (
+                <div className="card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={{ fontSize: 15 }}>{fmtDate(sel.timestamp)}{sel.label ? ` · ${sel.label}` : ""}</strong>
+                      <div className="sub" style={{ margin: "5px 0 0", fontSize: 12.5 }}>
+                        {sel.file_count} file{sel.file_count === 1 ? "" : "s"} · {fmtSize(sel.total_size)}
+                        {groups.gathered.length > 0 && (
+                          <> · <span style={{ color: "var(--accent)" }}>{groups.gathered.length} gathered from {locations} location{locations === 1 ? "" : "s"}</span></>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 7, alignItems: "center", flexShrink: 0 }}>
+                      {!!sel.verified && <span className="pill pill--ok">verified ✓</span>}
+                      {files?.portable && <span className="pill">portable</span>}
+                      <Button size="sm" variant="ghost" onClick={() => verify(sel.id)} disabled={verifying.has(sel.id)}>{verifying.has(sel.id) ? "Verifying…" : "Verify"}</Button>
+                      <Button size="sm" variant="ghost" onClick={() => restore(sel.id)} disabled={restoring.has(sel.id)}>{restoring.has(sel.id) ? "Restoring…" : "Restore"}</Button>
+                      {sel.dir && <Button size="sm" variant="ghost" onClick={() => reveal(sel.dir)}>Reveal</Button>}
+                    </div>
+                  </div>
+
+                  {rest && (
+                    <div className="card" style={{ marginBottom: 12, background: "var(--surface-2)", padding: 11, fontSize: 12.5 }}>
+                      {rest.error ? <span style={{ color: "var(--danger)" }}>Restore failed: {rest.error}</span>
+                        : <span><span style={{ color: "var(--accent-2)", fontWeight: 600 }}>✓ Restored</span> to {shortPath(rest.path || "", 4)}
+                          {rest.path && <Button variant="ghost" size="sm" style={{ marginLeft: 10 }} onClick={() => reveal(rest.path)}>Reveal</Button>}</span>}
+                    </div>
+                  )}
+                  {r && !r.error && (
+                    <div className="card" style={{ marginBottom: 12, background: "var(--surface-2)", padding: 11, display: "flex", alignItems: "center", gap: 12 }}>
+                      {r.ok ? <VerifiedSeal size={40} /> : <span style={{ fontSize: 22 }}>⚠</span>}
+                      <div style={{ fontSize: 12.5 }}>
+                        <div style={{ color: r.ok ? "var(--accent-2)" : "var(--danger)", fontWeight: 700 }}>
+                          {r.ok ? "Verified" : "Problems found"}
+                        </div>
+                        <div className="sub" style={{ margin: 0 }}>
+                          {r.present}/{r.checked} files present, contents match
+                          {r.bad_files.length > 0 ? ` · ${r.bad_files.length} corrupted` : ""}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {loadingFiles && <p className="sub">Reading the backup…</p>}
+                  {!loadingFiles && files && !files.manifest_present && (
+                    <p className="sub">File details weren't recorded for this older backup — use Reveal to open it in Finder.</p>
+                  )}
+                  {!loadingFiles && files?.manifest_present && (
+                    <div className="filebrowser">
+                      <FileGroup label="Project" icon="🎛️" files={groups.project} snapDir={sel.dir}
+                        open={open.project} toggle={() => setOpen((g) => ({ ...g, project: !g.project }))} />
+                      <FileGroup label="Gathered samples" icon="📥" files={groups.gathered} snapDir={sel.dir} showSource
+                        open={open.gathered} toggle={() => setOpen((g) => ({ ...g, gathered: !g.gathered }))} />
+                      <FileGroup label="In-project samples" icon="📁" files={groups.internal} snapDir={sel.dir}
+                        open={open.internal} toggle={() => setOpen((g) => ({ ...g, internal: !g.internal }))} />
+                    </div>
+                  )}
+
+                  {sel.missing && sel.missing.length > 0 && (
+                    <div style={{ marginTop: 10 }}>
+                      <div className="sub" style={{ color: "var(--warn)", fontSize: 12, marginBottom: 4 }}>⚠ {sel.missing.length} sample(s) couldn't be found at backup time:</div>
+                      <ul style={{ color: "var(--warn)", margin: 0, paddingLeft: 18, fontSize: 12 }}>
+                        {sel.missing.slice(0, 20).map((m) => <li key={m}>{m}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </>

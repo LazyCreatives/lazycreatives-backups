@@ -1,5 +1,6 @@
 """FastAPI application factory for the backup sidecar."""
 import asyncio
+import json
 import threading
 import uuid
 from contextlib import asynccontextmanager
@@ -205,6 +206,27 @@ def create_app(token: str, db_path: Path) -> FastAPI:
                     if dest else ""
                 )
         return {"project_name": name, "snapshots": snaps}
+
+    @app.get("/api/snapshot/{snapshot_id}/files", dependencies=[Depends(require_token)])
+    def snapshot_files(snapshot_id: int):
+        snap = app.state.catalog.get_snapshot(snapshot_id)
+        if snap is None:
+            raise HTTPException(status_code=404, detail="unknown snapshot")
+        d = snap.get("dir")
+        mf = Path(d) / "manifest.json" if d else None
+        if not mf or not mf.is_file():
+            return {"files": [], "manifest_present": False, "missing": snap.get("missing", [])}
+        try:
+            m = json.loads(mf.read_text())
+        except (OSError, ValueError):
+            return {"files": [], "manifest_present": False, "missing": []}
+        return {
+            "files": m.get("files", []),
+            "manifest_present": True,
+            "portable": m.get("portable"),
+            "missing": m.get("missing", []),
+            "total_size": m.get("total_size"),
+        }
 
     @app.post("/api/restore", dependencies=[Depends(require_token)])
     async def restore(req: RestoreRequest):

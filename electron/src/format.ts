@@ -60,6 +60,23 @@ export function fmtInterval(min: number): string {
   return `every ${min} min`;
 }
 
+// A recognisable label for where a scattered sample came from (its source path),
+// e.g. /Users/me/Splice/.../kick.wav -> "Splice". Falls back to the parent folder.
+export function sourceLabel(path: string): string {
+  if (!path) return "—";
+  const markers = ["Splice", "User Library", "Downloads", "Desktop", "Documents", "Music", "Samples", "Packs"];
+  for (const m of markers) {
+    if (path.includes("/" + m + "/") || path.endsWith("/" + m)) return m;
+  }
+  const parts = path.split(/[/\\]/).filter(Boolean);
+  return parts.length >= 2 ? parts[parts.length - 2] : (parts[0] || "—");
+}
+
+// The folder containing a file path.
+export function folderOf(path: string): string {
+  return path.replace(/[/\\][^/\\]*$/, "");
+}
+
 // Show a long absolute path compactly: keep the last `keep` segments.
 export function shortPath(p: string, keep = 2): string {
   const parts = p.split(/[/\\]/).filter(Boolean);
