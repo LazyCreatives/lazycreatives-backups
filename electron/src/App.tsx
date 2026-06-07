@@ -78,6 +78,7 @@ export default function App() {
         onNavigate={(t) => { setTab(t); setFlow(null); }} />
       <div className="main">
         <div className="content">
+          <div key={flow ?? tab} className="view-enter">
           {flow ? (
             <BackupFlow
               step={flow}
@@ -104,6 +105,7 @@ export default function App() {
           ) : (
             <Sources />
           )}
+          </div>
         </div>
       </div>
     </div>
