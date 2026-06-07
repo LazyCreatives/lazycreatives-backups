@@ -22,7 +22,7 @@ from ablebackup.verifier import verify_snapshot
 def create_app(token: str, db_path: Path) -> FastAPI:
     catalog = Catalog(Path(db_path))
     hub = ProgressHub()
-    scheduler = BackupScheduler(catalog)
+    scheduler = BackupScheduler(catalog, hub)  # scheduled runs stream to the UI
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -147,7 +147,11 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         cfg = app.state.catalog.get_setting("config") or {}
         data = build_overview(app.state.catalog, cfg.get("dest", ""))
         interval = cfg.get("interval_minutes", 0) or 0
-        data["schedule"] = {"enabled": interval > 0, "interval_minutes": interval}
+        data["schedule"] = {
+            "enabled": interval > 0,
+            "interval_minutes": interval,
+            "next_run": app.state.scheduler.next_run(),
+        }
         return data
 
     @app.get("/api/history", dependencies=[Depends(require_token)])

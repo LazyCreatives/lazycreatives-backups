@@ -4,7 +4,7 @@ import type { Overview } from "../types";
 import type { BackupProgress } from "../useProgress";
 import { Button } from "../components/Button";
 import { PageHeader } from "../components/PageHeader";
-import { fmtSize, fmtDate, fmtInterval, shortPath } from "../format";
+import { fmtSize, fmtDate, fmtInterval, fmtClock, shortPath } from "../format";
 
 const api = makeApi();
 
@@ -102,7 +102,10 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress }: 
           <span style={{ color: ov.nas.reachable ? "var(--accent-2)" : "var(--danger)" }}>●</span>{" "}
           {ov.nas.reachable ? "NAS connected" : "NAS offline"}{ov.nas.path ? ` · ${shortPath(ov.nas.path)}` : ""}
         </span>
-        <span>Schedule: {fmtInterval(ov.schedule.interval_minutes)}</span>
+        <span>
+          Auto-backup: {fmtInterval(ov.schedule.interval_minutes)}
+          {ov.schedule.enabled && ov.schedule.next_run ? ` · next ${fmtClock(ov.schedule.next_run)}` : ""}
+        </span>
       </div>
     </>
   );
