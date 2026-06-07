@@ -6,6 +6,7 @@ import { Sources } from "./screens/Sources";
 import { BackupFlow } from "./screens/BackupFlow";
 import { Browse } from "./screens/Browse";
 import { BrandMark } from "./components/BrandMark";
+import { FirstBackupModal } from "./components/FirstBackupModal";
 import { makeApi } from "./api";
 import { useLiveProgress } from "./useProgress";
 import type { Config, ProjectSummary } from "./types";
@@ -33,6 +34,7 @@ export default function App() {
   const [scanProjects, setScanProjects] = useState<ProjectSummary[] | null>(null);
   const [pending, setPending] = useState<PendingBackup | null>(null);
   const [activeJob, setActiveJob] = useState<string | null>(null);
+  const [showFirstBackup, setShowFirstBackup] = useState(false);
   const live = useLiveProgress();
 
   useEffect(() => { api.getSettings().then(setCfg).catch(() => setCfg("error")); }, []);
@@ -53,6 +55,12 @@ export default function App() {
           ? `Backup cancelled — ${live.backup.completed} done.`
           : `Backup finished — ${live.backup.completed} ok, ${live.backup.errors} error(s).`,
       });
+    }
+    // One-time onboarding: explain the payoff after the very first successful backup.
+    if (live.backup.done && !prevDone.current && !live.backup.cancelled
+        && live.backup.completed > 0 && !localStorage.getItem("lc_onboarded")) {
+      localStorage.setItem("lc_onboarded", "1");
+      setShowFirstBackup(true);
     }
     prevDone.current = live.backup.done;
   }, [live.backup.done, live.backup.completed, live.backup.errors, live.backup.cancelled]);
@@ -133,6 +141,13 @@ export default function App() {
           </div>
         </div>
       </div>
+      {showFirstBackup && (
+        <FirstBackupModal
+          completed={live.backup.completed}
+          onHistory={() => { setShowFirstBackup(false); setFlow(null); setTab("history"); }}
+          onClose={() => setShowFirstBackup(false)}
+        />
+      )}
     </div>
   );
 }

@@ -298,6 +298,21 @@ select { cursor: pointer; }
   }
 }
 
+/* ---- modal (first-backup onboarding) ---- */
+.modal__scrim {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px;
+  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); animation: scrimIn .2s ease both;
+}
+.modal {
+  max-width: 460px; width: 100%; text-align: center; padding: 30px 30px 26px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center;
+  animation: modalIn .34s cubic-bezier(0.18, 1.3, 0.45, 1) both;
+}
+@keyframes scrimIn { from { opacity: 0; } }
+@keyframes modalIn { 0% { transform: translateY(14px) scale(0.96); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .modal, .modal__scrim { animation: none !important; } }
+
 /* ---- "what's this?" info tooltip ---- */
 .info {
   display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%;
