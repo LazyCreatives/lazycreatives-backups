@@ -37,7 +37,7 @@ export function reduceProgress(s: LiveProgress, ev: ProgressEvent): LiveProgress
     case "scan_progress":
       return { ...s, scan: { active: true, done: ev.done, total: ev.total, current: ev.name } };
     case "scan_done":
-      return { ...s, scan: { ...s.scan, active: false } };
+      return { ...s, scan: { active: false, done: 0, total: 0, current: null } };
     case "backup_preparing":
       return { ...s, backup: { active: true, preparing: true, total: 0, completed: 0, skipped: 0, errors: 0, current: null, done: false, log: ["Preparing… resolving projects"] } };
     case "backup_start":
