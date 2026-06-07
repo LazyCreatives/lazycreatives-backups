@@ -30,6 +30,14 @@ def test_bad_key_rejected(tmp_path):
     assert c.post("/api/entitlement/activate", json={"key": "nope"}).status_code == 400
 
 
+def test_cloud_backup_is_studio_only(tmp_path):
+    c, _ = _client(tmp_path)
+    pro = c.post("/api/entitlement/activate", json={"key": "LC-PRO-DEMO-2026"}).json()
+    assert pro["features"]["cloud_backup"] is False  # Pro = local destinations only
+    studio = c.post("/api/entitlement/activate", json={"key": "LC-STUDIO-DEMO-2026"}).json()
+    assert studio["features"]["cloud_backup"] is True  # offsite/cloud is the top tier
+
+
 def test_free_cannot_schedule_but_pro_can(tmp_path):
     c, _ = _client(tmp_path)
     free = c.put("/api/settings", json={"sources": [], "dest": "/x", "interval_minutes": 60, "libraries": []}).json()

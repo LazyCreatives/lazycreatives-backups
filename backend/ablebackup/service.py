@@ -46,6 +46,28 @@ def project_signature(scan: ProjectScan) -> str:
     return h.hexdigest()
 
 
+def mirror_snapshot(snapshot_dir: Path, base: Path, mirrors: list) -> int:
+    """Copy a freshly-written snapshot to each offsite/cloud destination as a
+    standalone copy. Best-effort: a mirror failure never fails the primary backup.
+    Returns how many mirrors received it."""
+    done = 0
+    try:
+        rel = Path(snapshot_dir).resolve().relative_to(Path(base).resolve())
+    except ValueError:
+        return 0
+    for m in mirrors:
+        target = Path(m) / rel
+        try:
+            if target.exists():
+                done += 1
+                continue
+            shutil.copytree(snapshot_dir, target)
+            done += 1
+        except OSError:
+            pass  # offsite is best-effort (drive unplugged, cloud folder busy, …)
+    return done
+
+
 def restore_snapshot(snapshot_dir, target_dir) -> str:
     """Copy a snapshot back out to target_dir as a standalone, openable project.
 
@@ -195,7 +217,8 @@ def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
                timestamp: Optional[str] = None, progress: ProgressCb = None,
                als_paths: Optional[list[str]] = None, label: Optional[str] = None,
                portable: bool = False, layout: str = "project_date",
-               find_missing: bool = False, libraries=None, should_cancel=None) -> dict:
+               find_missing: bool = False, libraries=None, should_cancel=None,
+               mirrors=None) -> dict:
     """Back up discovered projects to dest, recording history and emitting progress.
 
     When als_paths is given, only the projects whose .als matches are backed up
@@ -267,6 +290,8 @@ def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
             project_id=p.project_id, daw=p.daw_id,
         )
         ok_count += 1
+        if mirrors:  # also copy this snapshot offsite (cloud/2nd drive) — best-effort
+            mirror_snapshot(result.snapshot_dir, base, [Path(m) for m in mirrors])
         _emit(progress, {"type": "project_done", "index": i,
                          "project_name": result.project_name,
                          "file_count": result.file_count,

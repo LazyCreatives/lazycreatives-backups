@@ -1,4 +1,4 @@
-// A small "PRO" tag for gated features.
-export function ProBadge() {
-  return <span className="pro-badge">PRO</span>;
+// A small tier tag for gated features (PRO by default; STUDIO for top-tier ones).
+export function ProBadge({ label = "PRO" }: { label?: string }) {
+  return <span className="pro-badge">{label}</span>;
 }

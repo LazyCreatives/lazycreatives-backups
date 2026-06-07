@@ -141,7 +141,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         return {"projects": projects}
 
     async def _run_job(job_id, sources, dest, timestamp, als_paths, label,
-                       portable, layout, find_missing, libraries):
+                       portable, layout, find_missing, libraries, mirrors):
         hub = app.state.hub
         cat = app.state.catalog
         cancel = app.state.cancels[job_id]
@@ -152,7 +152,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         try:
             result = await asyncio.to_thread(
                 run_backup, sources, dest, cat, timestamp, progress, als_paths,
-                label, portable, layout, find_missing, libraries, cancel.is_set)
+                label, portable, layout, find_missing, libraries, cancel.is_set,
+                mirrors)
             app.state.jobs[job_id] = {"state": "done", "result": result}
             _refresh_pool_async(str(dest))  # the pool grew — recompute the cached size
         except Exception as e:  # pragma: no cover - defensive
@@ -173,6 +174,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         if als_paths is not None and not _allows("multi_daw"):
             als_paths = [a for a in als_paths if str(a).lower().endswith(".als")]
         find_missing = req.find_missing and _allows("auto_relink")
+        # offsite/cloud mirrors are a top-tier (Studio) feature
+        mirrors = saved.get("mirrors", []) if _allows("cloud_backup") else []
         # bind the loop here so the worker thread's progress publishing works even
         # when the app is driven without a lifespan (e.g. bare TestClient).
         app.state.hub.bind_loop(asyncio.get_running_loop())
@@ -182,7 +185,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         asyncio.create_task(
             _run_job(job_id, sources, Path(dest), timestamp, als_paths,
                      req.label, req.portable, req.layout, find_missing,
-                     saved.get("libraries", [])))
+                     saved.get("libraries", []), mirrors))
         return {"job_id": job_id, "state": "running"}
 
     @app.get("/api/jobs/{job_id}", dependencies=[Depends(require_token)])

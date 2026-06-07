@@ -15,6 +15,7 @@ export interface Config {
   dest: string;
   interval_minutes: number;
   libraries: string[];
+  mirrors?: string[];  // offsite/cloud destinations (Studio)
 }
 export interface Snapshot {
   id: number;
@@ -96,6 +97,7 @@ export interface Entitlement {
     multi_daw: boolean;
     auto_relink: boolean;
     deep_verify: boolean;
+    cloud_backup: boolean;
     max_destinations: number;
   };
 }

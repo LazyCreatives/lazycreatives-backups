@@ -7,6 +7,7 @@ class Config(BaseModel):
     dest: str = ""
     interval_minutes: int = 0  # 0 = scheduler disabled
     libraries: list[str] = []  # sample libraries to search for missing samples
+    mirrors: list[str] = []    # extra/offsite destinations (cloud sync folders, 2nd drive)
 
 
 class RestoreRequest(BaseModel):

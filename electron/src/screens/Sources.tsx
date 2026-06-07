@@ -28,6 +28,7 @@ export function Sources() {
   const [nextRun, setNextRun] = useState<string | null>(null);
   const { allows } = useEntitlement();
   const canSchedule = allows("scheduled");
+  const canCloud = allows("cloud_backup");
 
   function refreshNextRun() {
     api.overview().then((o) => setNextRun(o.schedule.next_run ?? null)).catch(() => {});
@@ -48,6 +49,12 @@ export function Sources() {
     const dir = await (window as any).ablebackup.pickFolder();
     if (dir) setCfg({ ...cfg, dest: dir });
   }
+  const mirrors = cfg.mirrors ?? [];
+  async function addMirror() {
+    const dir = await (window as any).ablebackup.pickFolder();
+    if (dir && dir !== cfg.dest && !mirrors.includes(dir)) setCfg({ ...cfg, mirrors: [...mirrors, dir] });
+  }
+  function removeMirror(m: string) { setCfg({ ...cfg, mirrors: mirrors.filter((x) => x !== m) }); }
   function removeSource(s: string) {
     setCfg({ ...cfg, sources: cfg.sources.filter((x) => x !== s) });
   }
@@ -114,6 +121,33 @@ export function Sources() {
           <span style={{ color: cfg.dest ? "var(--accent-2)" : "var(--text-dim)" }}>●</span>{" "}
           {cfg.dest ? "Destination set" : "Pick a mounted NAS folder, external drive, or any folder"}
         </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <h2 style={{ margin: 0, display: "flex", alignItems: "center" }}>Cloud &amp; offsite backup
+            {!canCloud && <ProBadge label="STUDIO" />}
+            <Info text="Also copy every backup to a second place — a cloud-synced folder (Dropbox, Google Drive, iCloud, OneDrive) or another drive. If your NAS dies or the studio floods, the work survives. That's the offsite '1' in 3-2-1." /></h2>
+          {canCloud && <Button variant="ghost" onClick={addMirror} disabled={!loaded}>+ Add destination</Button>}
+        </div>
+        {canCloud ? (
+          <>
+            <p className="sub" style={{ margin: "4px 0 10px", fontSize: 12.5 }}>
+              Every backup is also copied to each of these. Point one at a Dropbox / Google Drive / iCloud folder for true offsite protection — it stays your own cloud account.
+            </p>
+            {mirrors.length === 0 && <p className="sub" style={{ margin: 0 }}>No offsite destinations yet.</p>}
+            {mirrors.map((m) => (
+              <div key={m} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", gap: 12 }}>
+                <span style={{ color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>☁ {m}</span>
+                <button className="linkbtn" onClick={() => removeMirror(m)} style={{ color: "var(--danger)", flexShrink: 0 }}>remove</button>
+              </div>
+            ))}
+          </>
+        ) : (
+          <div className="locked-note" style={{ marginTop: 6 }}>
+            🔒 Mirror every backup to your cloud (Dropbox, Drive, iCloud…) or a second drive for offsite <strong style={{ color: "var(--text)" }}>3-2-1</strong> protection — a <strong style={{ color: "var(--text)" }}>Studio</strong> feature.
+          </div>
+        )}
       </div>
 
       <div className="card">

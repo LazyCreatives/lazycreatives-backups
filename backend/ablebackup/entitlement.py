@@ -14,15 +14,18 @@ FEATURES = {
         "multi_daw": False,       # FL / Reaper / DAWproject (Free = Ableton only)
         "auto_relink": False,     # auto-find missing samples in the library
         "deep_verify": False,     # full deep re-hash verify (Free = on-demand, basic)
+        "cloud_backup": False,    # offsite/cloud mirror destinations (top tier)
         "max_destinations": 1,
     },
     "pro": {
         "scheduled": True, "restore": True, "multi_daw": True,
-        "auto_relink": True, "deep_verify": True, "max_destinations": 99,
+        "auto_relink": True, "deep_verify": True, "cloud_backup": False,
+        "max_destinations": 99,   # unlimited LOCAL destinations
     },
     "studio": {
         "scheduled": True, "restore": True, "multi_daw": True,
-        "auto_relink": True, "deep_verify": True, "max_destinations": 99,
+        "auto_relink": True, "deep_verify": True, "cloud_backup": True,  # offsite/cloud
+        "max_destinations": 99,
     },
 }
 

@@ -4,6 +4,7 @@ from typing import Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from ablebackup import entitlement
 from ablebackup.catalog import Catalog
 from ablebackup.service import run_backup
 
@@ -41,6 +42,8 @@ class BackupScheduler:
         dest = config.get("dest", "")
         if not sources or not dest:
             return  # nothing configured yet
+        tier = (self._catalog.get_setting("entitlement") or {}).get("tier", "free")
+        mirrors = config.get("mirrors", []) if entitlement.allows(tier, "cloud_backup") else []
 
         def progress(ev):
             if self._hub is not None:
@@ -54,7 +57,7 @@ class BackupScheduler:
         run_backup(
             [Path(s) for s in sources], Path(dest), self._catalog,
             progress=progress, label="Auto", portable=True, find_missing=True,
-            libraries=config.get("libraries", []),
+            libraries=config.get("libraries", []), mirrors=mirrors,
         )
 
     def shutdown(self) -> None:
