@@ -46,7 +46,10 @@ ipcMain.handle("pick-folder", async () => {
 });
 
 app.whenReady().then(async () => {
-  sidecar = await startSidecar({ backendDir: backendDir(), dbPath: dbPath() });
+  // macOS/Linux usually expose `python3` (no bare `python`); Windows uses `python`.
+  const pythonCmd = process.env.ABLEBACKUP_PYTHON
+    || (process.platform === "win32" ? "python" : "python3");
+  sidecar = await startSidecar({ backendDir: backendDir(), dbPath: dbPath(), pythonCmd });
   createWindow();
   tray = createTray({
     onShow: () => { win.show(); },
