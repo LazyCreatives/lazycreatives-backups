@@ -107,7 +107,6 @@ export interface Entitlement {
     auto_relink: boolean;
     deep_verify: boolean;
     cloud_backup: boolean;
-    max_destinations: number;
   };
 }
 export interface JobStatus {

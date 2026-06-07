@@ -30,6 +30,13 @@ def test_bad_key_rejected(tmp_path):
     assert c.post("/api/entitlement/activate", json={"key": "nope"}).status_code == 400
 
 
+def test_restore_and_share_blocked_for_free(tmp_path):
+    # Both extract a full snapshot to a folder; both must be Pro-gated server-side.
+    c, _ = _client(tmp_path)
+    assert c.post("/api/restore", json={"snapshot_id": 1, "target": "/tmp"}).status_code == 402
+    assert c.post("/api/share", json={"snapshot_id": 1, "target": "/tmp"}).status_code == 402
+
+
 def test_demo_keys_fail_closed_in_production(monkeypatch):
     # No LS config and not dev -> demo keys must NOT unlock anything (no backdoor).
     monkeypatch.delenv("ABLEBACKUP_DEV", raising=False)

@@ -52,9 +52,9 @@ export function Browse() {
   const [results, setResults] = useState<Record<number, VerifyResult>>({});
   const [verifying, setVerifying] = useState<Set<number>>(new Set());
   const [restoring, setRestoring] = useState<Set<number>>(new Set());
-  const [restored, setRestored] = useState<Record<number, { path?: string; error?: string }>>({});
+  const [restored, setRestored] = useState<Record<number, { path?: string; error?: string; note?: string }>>({});
   const [sharing, setSharing] = useState<Set<number>>(new Set());
-  const [shared, setShared] = useState<Record<number, { path?: string; error?: string }>>({});
+  const [shared, setShared] = useState<Record<number, { path?: string; error?: string; note?: string }>>({});
 
   useEffect(() => { api.projects().then(setProjects).catch(() => {}); }, []);
   useEffect(() => {
@@ -115,11 +115,14 @@ export function Browse() {
     try {
       const { job_id } = await api.restore(id, target);
       let res = await api.jobStatus(job_id);
-      for (let i = 0; i < 1200 && res.state === "running"; i++) {
+      for (let i = 0; i < 2400 && res.state === "running"; i++) {
         await new Promise((r) => setTimeout(r, 500));
         res = await api.jobStatus(job_id);
       }
-      setRestored((m) => ({ ...m, [id]: res.state === "done" ? { path: res.result?.path } : { error: res.error || "restore failed" } }));
+      setRestored((m) => ({ ...m, [id]:
+        res.state === "done" ? { path: res.result?.path }
+        : res.state === "error" ? { error: res.error || "restore failed" }
+        : { note: "Still copying in the background — check the destination folder shortly." } }));
     } catch (e: any) {
       setRestored((m) => ({ ...m, [id]: { error: e.message } }));
     } finally {
@@ -135,11 +138,14 @@ export function Browse() {
     try {
       const { job_id } = await api.share(id, target);
       let res = await api.jobStatus(job_id);
-      for (let i = 0; i < 1200 && res.state === "running"; i++) {
+      for (let i = 0; i < 2400 && res.state === "running"; i++) {
         await new Promise((r) => setTimeout(r, 500));
         res = await api.jobStatus(job_id);
       }
-      setShared((m) => ({ ...m, [id]: res.state === "done" ? { path: res.result?.path } : { error: res.error || "couldn't create the zip" } }));
+      setShared((m) => ({ ...m, [id]:
+        res.state === "done" ? { path: res.result?.path }
+        : res.state === "error" ? { error: res.error || "couldn't create the zip" }
+        : { note: "Still zipping in the background — check the folder shortly." } }));
     } catch (e: any) {
       setShared((m) => ({ ...m, [id]: { error: e.message } }));
     } finally {
@@ -235,6 +241,7 @@ export function Browse() {
                   {rest && (
                     <div className="card" style={{ marginBottom: 12, background: "var(--surface-2)", padding: 11, fontSize: 12.5 }}>
                       {rest.error ? <span style={{ color: "var(--danger)" }}>Restore failed: {rest.error}</span>
+                        : rest.note ? <span style={{ color: "var(--text-dim)" }}>{rest.note}</span>
                         : <span><span style={{ color: "var(--accent-2)", fontWeight: 600 }}>✓ Restored</span> to {shortPath(rest.path || "", 4)}
                           {rest.path && <Button variant="ghost" size="sm" style={{ marginLeft: 10 }} onClick={() => reveal(rest.path)}>Reveal</Button>}</span>}
                     </div>
@@ -242,6 +249,7 @@ export function Browse() {
                   {shr && (
                     <div className="card" style={{ marginBottom: 12, background: "var(--surface-2)", padding: 11, fontSize: 12.5 }}>
                       {shr.error ? <span style={{ color: "var(--danger)" }}>Share failed: {shr.error}</span>
+                        : shr.note ? <span style={{ color: "var(--text-dim)" }}>{shr.note}</span>
                         : <span><span style={{ color: "var(--accent-2)", fontWeight: 600 }}>✓ Zipped</span> to {shortPath(shr.path || "", 4)} — ready to send.
                           {shr.path && <Button variant="ghost" size="sm" style={{ marginLeft: 10 }} onClick={() => reveal(shr.path)}>Reveal</Button>}</span>}
                     </div>

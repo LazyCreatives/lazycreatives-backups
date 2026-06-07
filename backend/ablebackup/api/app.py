@@ -1,6 +1,7 @@
 """FastAPI application factory for the backup sidecar."""
 import asyncio
 import json
+import os
 import threading
 import uuid
 from contextlib import asynccontextmanager
@@ -81,6 +82,14 @@ def create_app(token: str, db_path: Path) -> FastAPI:
 
     def _allows(feature: str) -> bool:
         return entitlement.allows(_tier(), feature)
+
+    def _validate_target(target: str) -> str:
+        """Reject a restore/share target that isn't an existing writable folder, so
+        a malformed/non-UI request can't scatter files into arbitrary locations."""
+        t = (target or "").strip()
+        if not t or not os.path.isabs(t) or not os.path.isdir(t) or not os.access(t, os.W_OK):
+            raise HTTPException(status_code=400, detail="Choose an existing, writable folder.")
+        return t
 
     @app.get("/api/rclone", dependencies=[Depends(require_token)])
     def rclone_info():
@@ -310,36 +319,42 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         snap_dir = snap.get("dir")
         if not snap_dir:
             raise HTTPException(status_code=400, detail="snapshot has no recorded folder")
+        target = _validate_target(req.target)
         job_id = uuid.uuid4().hex
         app.state.jobs[job_id] = {"state": "running"}
 
         async def _run_restore():
             try:
-                path = await asyncio.to_thread(restore_snapshot, snap_dir, req.target)
+                path = await asyncio.to_thread(restore_snapshot, snap_dir, target)
                 app.state.jobs[job_id] = {"state": "done", "result": {"path": path}}
-            except Exception as e:
-                app.state.jobs[job_id] = {"state": "error", "error": str(e)}
+            except Exception:
+                app.state.jobs[job_id] = {"state": "error", "error": "restore failed"}
 
         asyncio.create_task(_run_restore())
         return {"job_id": job_id, "state": "running"}
 
     @app.post("/api/share", dependencies=[Depends(require_token)])
     async def share(req: RestoreRequest):
+        # Share extracts a full snapshot to a folder — same capability as restore,
+        # so it's gated the same way.
+        if not _allows("restore"):
+            raise HTTPException(status_code=402, detail="Sharing a backup is a Pro feature.")
         snap = app.state.catalog.get_snapshot(req.snapshot_id)
         if snap is None:
             raise HTTPException(status_code=404, detail="unknown snapshot")
         snap_dir = snap.get("dir")
         if not snap_dir:
             raise HTTPException(status_code=400, detail="snapshot has no recorded folder")
+        target = _validate_target(req.target)
         job_id = uuid.uuid4().hex
         app.state.jobs[job_id] = {"state": "running"}
 
         async def _run_share():
             try:
-                path = await asyncio.to_thread(share_snapshot, snap_dir, req.target)
+                path = await asyncio.to_thread(share_snapshot, snap_dir, target)
                 app.state.jobs[job_id] = {"state": "done", "result": {"path": path}}
-            except Exception as e:
-                app.state.jobs[job_id] = {"state": "error", "error": str(e)}
+            except Exception:
+                app.state.jobs[job_id] = {"state": "error", "error": "could not create the zip"}
 
         asyncio.create_task(_run_share())
         return {"job_id": job_id, "state": "running"}
@@ -353,7 +368,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         snap_dir = snap.get("dir")
         if not snap_dir:
             raise HTTPException(status_code=400, detail="snapshot has no recorded folder")
-        result = verify_snapshot(snap_dir, deep=True)
+        # Deep (byte re-hash) verify is a Pro feature; Free gets the basic check.
+        result = verify_snapshot(snap_dir, deep=_allows("deep_verify"))
         new_status = "error" if not result["ok"] else None
         cat.set_verified(snapshot_id, 1 if result["ok"] else 0,
                          default_timestamp(), status=new_status)
