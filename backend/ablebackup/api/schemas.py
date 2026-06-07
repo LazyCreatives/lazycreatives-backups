@@ -9,6 +9,11 @@ class Config(BaseModel):
     libraries: list[str] = []  # sample libraries to search for missing samples
 
 
+class RestoreRequest(BaseModel):
+    snapshot_id: int
+    target: str  # folder to restore the project into
+
+
 class ScanRequest(BaseModel):
     sources: list[str] | None = None  # falls back to saved config when omitted
     find_missing: bool = False        # relink missing samples from libraries

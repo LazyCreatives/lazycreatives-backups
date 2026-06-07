@@ -49,6 +49,9 @@ export function makeApi() {
       return req("GET", `/api/projects/${encodeURIComponent(name)}`);
     },
     async verify(id: number): Promise<VerifyResult> { return req("GET", `/api/verify/${id}`); },
+    async restore(snapshotId: number, target: string): Promise<{ job_id: string }> {
+      return req("POST", "/api/restore", { snapshot_id: snapshotId, target });
+    },
   };
 }
 export type Api = ReturnType<typeof makeApi>;

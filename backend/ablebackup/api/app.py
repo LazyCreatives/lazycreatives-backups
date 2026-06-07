@@ -10,10 +10,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
-from ablebackup.api.schemas import BackupRequest, Config, ScanRequest
+from ablebackup.api.schemas import BackupRequest, Config, RestoreRequest, ScanRequest
 from ablebackup.catalog import Catalog
 from ablebackup.scheduler import BackupScheduler
-from ablebackup.service import build_overview, default_timestamp, run_backup, scan_summary
+from ablebackup.service import (
+    build_overview, default_timestamp, restore_snapshot, run_backup, scan_summary,
+)
 from ablebackup.verifier import verify_snapshot
 
 
@@ -172,6 +174,27 @@ def create_app(token: str, db_path: Path) -> FastAPI:
                     if dest else ""
                 )
         return {"project_name": name, "snapshots": snaps}
+
+    @app.post("/api/restore", dependencies=[Depends(require_token)])
+    async def restore(req: RestoreRequest):
+        snap = app.state.catalog.get_snapshot(req.snapshot_id)
+        if snap is None:
+            raise HTTPException(status_code=404, detail="unknown snapshot")
+        snap_dir = snap.get("dir")
+        if not snap_dir:
+            raise HTTPException(status_code=400, detail="snapshot has no recorded folder")
+        job_id = uuid.uuid4().hex
+        app.state.jobs[job_id] = {"state": "running"}
+
+        async def _run_restore():
+            try:
+                path = await asyncio.to_thread(restore_snapshot, snap_dir, req.target)
+                app.state.jobs[job_id] = {"state": "done", "result": {"path": path}}
+            except Exception as e:
+                app.state.jobs[job_id] = {"state": "error", "error": str(e)}
+
+        asyncio.create_task(_run_restore())
+        return {"job_id": job_id, "state": "running"}
 
     @app.get("/api/verify/{snapshot_id}", dependencies=[Depends(require_token)])
     def verify(snapshot_id: int):

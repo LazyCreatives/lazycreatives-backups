@@ -18,6 +18,8 @@ export function Browse() {
   const [snaps, setSnaps] = useState<Snapshot[]>([]);
   const [results, setResults] = useState<Record<number, VerifyResult>>({});
   const [verifying, setVerifying] = useState<Set<number>>(new Set());
+  const [restoring, setRestoring] = useState<Set<number>>(new Set());
+  const [restored, setRestored] = useState<Record<number, { path?: string; error?: string }>>({});
 
   useEffect(() => { api.projects().then(setProjects).catch(() => {}); }, []);
   useEffect(() => {
@@ -33,6 +35,27 @@ export function Browse() {
       setSnaps((list) => list.map((s) => s.id === id ? { ...s, verified: r.ok ? 1 : 0, status: r.ok ? s.status : "error" } : s));
     } catch { /* surfaced as no result */ }
     finally { setVerifying((s) => { const n = new Set(s); n.delete(id); return n; }); }
+  }
+
+  async function restore(id: number) {
+    const target = await (window as any).ablebackup?.pickFolder?.();
+    if (!target) return;
+    setRestoring((s) => new Set(s).add(id));
+    setRestored((m) => { const n = { ...m }; delete n[id]; return n; });
+    try {
+      const { job_id } = await api.restore(id, target);
+      let res = await api.jobStatus(job_id);
+      for (let i = 0; i < 1200 && res.state === "running"; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        res = await api.jobStatus(job_id);
+      }
+      if (res.state === "done") setRestored((m) => ({ ...m, [id]: { path: res.result?.path } }));
+      else setRestored((m) => ({ ...m, [id]: { error: res.error || "restore failed" } }));
+    } catch (e: any) {
+      setRestored((m) => ({ ...m, [id]: { error: e.message } }));
+    } finally {
+      setRestoring((s) => { const n = new Set(s); n.delete(id); return n; });
+    }
   }
 
   return (
@@ -66,6 +89,8 @@ export function Browse() {
           {active && [...snaps].reverse().map((s) => {
             const r = results[s.id];
             const busy = verifying.has(s.id);
+            const isRestoring = restoring.has(s.id);
+            const rest = restored[s.id];
             return (
               <div key={s.id} className="card" style={{ marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
@@ -75,6 +100,9 @@ export function Browse() {
                     <StatusPill status={s.status} />
                     <Button variant="ghost" size="sm" onClick={() => verify(s.id)} disabled={busy}>
                       {busy ? "Verifying…" : "Verify"}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => restore(s.id)} disabled={isRestoring}>
+                      {isRestoring ? "Restoring…" : "Restore"}
                     </Button>
                     {s.dir && <Button variant="ghost" size="sm" onClick={() => reveal(s.dir)}>Reveal</Button>}
                   </div>
@@ -86,6 +114,19 @@ export function Browse() {
                 </div>
 
                 {s.error && <div style={{ marginTop: 6, color: "var(--danger)", fontSize: 12 }}>{s.error}</div>}
+
+                {rest && (
+                  <div className="card" style={{ marginTop: 10, background: "var(--surface-2)", padding: 12, fontSize: 12.5 }}>
+                    {rest.error ? (
+                      <span style={{ color: "var(--danger)" }}>Restore failed: {rest.error}</span>
+                    ) : (
+                      <span>
+                        <span style={{ color: "var(--accent-2)", fontWeight: 600 }}>✓ Restored</span> to {shortPath(rest.path || "", 4)}
+                        {rest.path && <Button variant="ghost" size="sm" style={{ marginLeft: 10 }} onClick={() => reveal(rest.path)}>Reveal</Button>}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {r && (
                   <div className="card" style={{ marginTop: 10, background: "var(--surface-2)", padding: 12 }}>

@@ -45,6 +45,36 @@ def project_signature(scan: ProjectScan) -> str:
     return h.hexdigest()
 
 
+def restore_snapshot(snapshot_dir, target_dir) -> str:
+    """Copy a snapshot back out to target_dir as a standalone, openable project.
+
+    Hardlinks into the pool become real byte copies, and our internal files
+    (manifest.json, .abid) are left out, so the restored folder is a clean project.
+    """
+    import json
+
+    src = Path(snapshot_dir)
+    if not src.is_dir():
+        raise FileNotFoundError(f"snapshot folder not found: {src}")
+    manifest = {}
+    mf = src / "manifest.json"
+    if mf.is_file():
+        try:
+            manifest = json.loads(mf.read_text())
+        except (OSError, ValueError):
+            pass
+    name = manifest.get("project_name") or src.name
+    ts = manifest.get("timestamp") or ""
+    folder_name = f"{name} ({ts})" if ts else name
+    dst = Path(target_dir) / folder_name
+    n = 1
+    while dst.exists():
+        dst = Path(target_dir) / f"{folder_name} ({n})"
+        n += 1
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns("manifest.json", ".abid"))
+    return str(dst)
+
+
 def _pool_size(dest_root: Path) -> int:
     """Actual bytes on disk in the dedup pool (the unique-file set)."""
     pool = dest_root / "_pool"

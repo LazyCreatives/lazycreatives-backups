@@ -73,7 +73,7 @@ export interface Overview {
 }
 export interface JobStatus {
   state: "running" | "done" | "error";
-  result?: { timestamp: string; ok_count: number; error_count: number };
+  result?: { timestamp?: string; ok_count?: number; error_count?: number; path?: string };
   error?: string;
 }
 export type ProgressEvent =
