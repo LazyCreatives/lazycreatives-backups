@@ -9,13 +9,35 @@
     "dev:electron": "wait-on tcp:5173 && cross-env ABLEBACKUP_DEV=1 electron .",
     "start": "concurrently -k -n VITE,ELECTRON -c blue,green \"npm:dev:vite\" \"npm:dev:electron\"",
     "build": "vite build",
+    "build:py": "cd ../backend && .venv/bin/pyinstaller sidecar.spec --noconfirm --distpath dist",
+    "dist": "npm run build && npm run build:py && electron-builder",
     "test": "vitest run"
+  },
+  "build": {
+    "appId": "com.lazycreatives.backups",
+    "productName": "LazyCreatives Backups",
+    "directories": { "output": "release", "buildResources": "build" },
+    "files": ["dist/**/*", "electron/**/*", "package.json"],
+    "extraResources": [
+      { "from": "../backend/dist/ablebackup-sidecar", "to": "sidecar" }
+    ],
+    "mac": {
+      "category": "public.app-category.music",
+      "target": ["dmg"],
+      "icon": "build/icon.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "dmg": { "title": "LazyCreatives Backups" },
+    "win": { "target": ["nsis"], "icon": "build/icon.png" },
+    "nsis": { "oneClick": false, "perMachine": false }
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
     "concurrently": "^9.0.1",
     "cross-env": "^7.0.3",
     "electron": "^31.3.1",
+    "electron-builder": "^24.13.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "typescript": "^5.5.4",

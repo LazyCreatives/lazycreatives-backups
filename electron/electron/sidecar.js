@@ -51,7 +51,7 @@ function killGroup(proc, signal) {
   }
 }
 
-async function startSidecar({ backendDir, dbPath, pythonCmd = "python", parentPid = process.pid }) {
+async function startSidecar({ backendDir, dbPath, pythonCmd = "python", command, args, parentPid = process.pid }) {
   const token = crypto.randomBytes(24).toString("hex");
   const port = await freePort();
   const env = {
@@ -63,7 +63,10 @@ async function startSidecar({ backendDir, dbPath, pythonCmd = "python", parentPi
     // (e.g. an Electron crash), so it can never become an orphan.
     ABLEBACKUP_PARENT_PID: String(parentPid),
   };
-  const proc = spawn(pythonCmd, ["-m", "ablebackup.server"], {
+  // Dev: `python -m ablebackup.server`. Packaged: the PyInstaller binary (command).
+  const cmd = command || pythonCmd;
+  const cmdArgs = args || ["-m", "ablebackup.server"];
+  const proc = spawn(cmd, cmdArgs, {
     cwd: backendDir,
     env,
     stdio: ["ignore", "pipe", "pipe"],

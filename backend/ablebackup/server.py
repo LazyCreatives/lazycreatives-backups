@@ -81,4 +81,8 @@ def main() -> None:  # pragma: no cover - exercised manually / by Electron
 
 
 if __name__ == "__main__":  # pragma: no cover
+    # Required for the ProcessPoolExecutor (parallel scan) to work inside a
+    # PyInstaller-frozen binary; harmless when run normally.
+    import multiprocessing
+    multiprocessing.freeze_support()
     main()

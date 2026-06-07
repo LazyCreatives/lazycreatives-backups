@@ -70,10 +70,19 @@ ipcMain.handle("open-external", (_e, url) => {
 });
 
 app.whenReady().then(async () => {
-  // macOS/Linux usually expose `python3` (no bare `python`); Windows uses `python`.
-  const pythonCmd = process.env.ABLEBACKUP_PYTHON
-    || (process.platform === "win32" ? "python" : "python3");
-  sidecar = await startSidecar({ backendDir: backendDir(), dbPath: dbPath(), pythonCmd });
+  let sidecarOpts;
+  if (app.isPackaged) {
+    // Packaged: run the bundled PyInstaller sidecar binary (no system Python needed).
+    const exe = process.platform === "win32" ? "ablebackup-sidecar.exe" : "ablebackup-sidecar";
+    const bin = path.join(process.resourcesPath, "sidecar", exe);
+    sidecarOpts = { backendDir: path.dirname(bin), dbPath: dbPath(), command: bin, args: [] };
+  } else {
+    // Dev: macOS/Linux usually expose `python3` (no bare `python`); Windows uses `python`.
+    const pythonCmd = process.env.ABLEBACKUP_PYTHON
+      || (process.platform === "win32" ? "python" : "python3");
+    sidecarOpts = { backendDir: backendDir(), dbPath: dbPath(), pythonCmd };
+  }
+  sidecar = await startSidecar(sidecarOpts);
   createWindow();
   tray = createTray({
     onShow: () => { win.show(); },
