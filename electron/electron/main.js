@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const path = require("path");
 const { startSidecar, stopSidecar, killGroup } = require("./sidecar");
 const { createTray } = require("./tray");
@@ -37,6 +37,16 @@ function createWindow() {
   if (isDev) win.loadURL("http://localhost:5173");
   else win.loadFile(path.join(__dirname, "..", "dist", "index.html"));
 
+  // Forward renderer console + crashes to stdout so they land in the run log
+  // (renderer errors are otherwise only visible in the in-window devtools).
+  const LEVELS = ["log", "info", "warn", "error"];
+  win.webContents.on("console-message", (_e, level, message) => {
+    console.log(`[renderer:${LEVELS[level] || level}] ${message}`);
+  });
+  win.webContents.on("render-process-gone", (_e, details) => {
+    console.error("[renderer GONE]", JSON.stringify(details));
+  });
+
   win.on("close", (e) => {
     if (!isQuitting) { e.preventDefault(); win.hide(); }
   });
@@ -45,6 +55,10 @@ function createWindow() {
 ipcMain.handle("pick-folder", async () => {
   const r = await dialog.showOpenDialog(win, { properties: ["openDirectory"] });
   return r.canceled ? null : r.filePaths[0];
+});
+
+ipcMain.handle("reveal-path", (_e, target) => {
+  if (target) shell.showItemInFolder(target);
 });
 
 app.whenReady().then(async () => {

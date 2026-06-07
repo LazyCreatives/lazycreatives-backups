@@ -2,8 +2,16 @@ import { useEffect, useState } from "react";
 import { makeApi } from "../api";
 import type { Config } from "../types";
 import { Button } from "../components/Button";
+import { PageHeader } from "../components/PageHeader";
 
 const api = makeApi();
+
+const PRESETS = [
+  { label: "Off", min: 0 },
+  { label: "Every hour", min: 60 },
+  { label: "Every 6 hours", min: 360 },
+  { label: "Once a day", min: 1440 },
+];
 
 export function Sources() {
   const [cfg, setCfg] = useState<Config>({ sources: [], dest: "", interval_minutes: 0 });
@@ -27,46 +35,56 @@ export function Sources() {
     setCfg(next); setSaved(true); setTimeout(() => setSaved(false), 1500);
   }
 
+  const presetMatch = PRESETS.some((p) => p.min === cfg.interval_minutes);
+
   return (
     <>
-      <h1>Sources & NAS</h1>
-      <p className="sub">Where to look for projects, and where to store backups.</p>
+      <PageHeader
+        title="Sources & NAS"
+        subtitle="Where to look for projects, and where to store backups."
+        actions={<Button onClick={save}>{saved ? "Saved ✓" : "Save settings"}</Button>}
+      />
 
-      <div className="card" style={{ marginBottom: 18 }}>
+      <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-          <strong>Source folders</strong>
+          <h2 style={{ margin: 0 }}>Source folders</h2>
           <Button variant="ghost" onClick={addSource}>+ Add folder</Button>
         </div>
-        {cfg.sources.length === 0 && <p className="sub">No folders yet.</p>}
+        {cfg.sources.length === 0 && <p className="sub" style={{ margin: 0 }}>No folders yet.</p>}
         {cfg.sources.map((s) => (
-          <div key={s} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
-            <span style={{ color: "var(--text-dim)" }}>{s}</span>
-            <button onClick={() => removeSource(s)} style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer" }}>remove</button>
+          <div key={s} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", gap: 12 }}>
+            <span style={{ color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s}</span>
+            <button className="linkbtn" onClick={() => removeSource(s)} style={{ color: "var(--danger)", flexShrink: 0 }}>remove</button>
           </div>
         ))}
       </div>
 
-      <div className="card" style={{ marginBottom: 18 }}>
-        <strong>NAS destination</strong>
-        <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 12 }}>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h2>NAS destination</h2>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           <input readOnly value={cfg.dest} placeholder="No destination set"
             style={{ flex: 1, background: "var(--bg-elev-2)", border: "1px solid var(--border)", color: "var(--text)", padding: "10px 12px", borderRadius: 8 }} />
           <Button variant="ghost" onClick={pickDest}>Choose…</Button>
         </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 18 }}>
-        <strong>Automatic backup</strong>
-        <div style={{ marginTop: 12 }}>
-          <label className="sub">Every&nbsp;</label>
-          <input type="number" min={0} value={cfg.interval_minutes}
-            onChange={(e) => setCfg({ ...cfg, interval_minutes: Number(e.target.value) })}
-            style={{ width: 80, background: "var(--bg-elev-2)", border: "1px solid var(--border)", color: "var(--text)", padding: "8px", borderRadius: 8 }} />
-          <span className="sub">&nbsp;minutes (0 = off, app must be running)</span>
+        <div className="sub" style={{ margin: "8px 0 0", fontSize: 12 }}>
+          <span style={{ color: cfg.dest ? "var(--accent-2)" : "var(--text-dim)" }}>●</span>{" "}
+          {cfg.dest ? "Destination set" : "Pick a mounted NAS folder (or any drive)"}
         </div>
       </div>
 
-      <Button onClick={save}>{saved ? "Saved ✓" : "Save settings"}</Button>
+      <div className="card">
+        <h2>Automatic backup</h2>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <select
+            value={presetMatch ? cfg.interval_minutes : -1}
+            onChange={(e) => setCfg({ ...cfg, interval_minutes: Number(e.target.value) })}
+          >
+            {PRESETS.map((p) => <option key={p.min} value={p.min}>{p.label}</option>)}
+            {!presetMatch && <option value={-1}>Custom ({cfg.interval_minutes} min)</option>}
+          </select>
+          <span className="sub" style={{ margin: 0, fontSize: 12 }}>Runs while the app is open (tray counts).</span>
+        </div>
+      </div>
     </>
   );
 }

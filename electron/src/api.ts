@@ -29,7 +29,10 @@ export function makeApi() {
     async scan(sources?: string[]): Promise<ProjectSummary[]> {
       return (await req("POST", "/api/scan", { sources })).projects;
     },
-    async startBackup(opts: { sources?: string[]; dest?: string; timestamp?: string }): Promise<{ job_id: string }> {
+    async startBackup(opts: {
+      sources?: string[]; dest?: string; timestamp?: string; als_paths?: string[];
+      label?: string; portable?: boolean; layout?: "project_date" | "date_project";
+    }): Promise<{ job_id: string }> {
       return req("POST", "/api/backup", opts);
     },
     async jobStatus(id: string): Promise<JobStatus> { return req("GET", `/api/jobs/${id}`); },

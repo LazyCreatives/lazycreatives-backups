@@ -21,6 +21,8 @@ export interface Snapshot {
   status: string;
   error: string | null;
   missing?: string[];
+  dir?: string;
+  label?: string | null;
 }
 export interface ProjectRow {
   project_name: string;
@@ -57,8 +59,20 @@ export interface JobStatus {
   error?: string;
 }
 export type ProgressEvent =
+  | { type: "scan_start"; total: number }
+  | { type: "scan_progress"; done: number; total: number; name: string }
+  | { type: "scan_done"; count: number }
+  | { type: "backup_preparing" }
   | { type: "backup_start"; project_count: number; timestamp: string }
   | { type: "project_start"; index: number; project_name: string; total: number }
   | { type: "project_done"; index: number; project_name: string; file_count: number; missing_count: number }
+  | { type: "project_skipped"; index: number; project_name: string }
   | { type: "project_error"; index: number; project_name: string; error: string }
-  | { type: "backup_done"; ok_count: number; error_count: number };
+  | { type: "backup_done"; ok_count: number; error_count: number; skipped_count: number };
+
+export interface BackupOptions {
+  als_paths?: string[];
+  label?: string;
+  portable?: boolean;
+  layout?: "project_date" | "date_project";
+}
