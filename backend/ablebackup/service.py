@@ -8,6 +8,7 @@ from typing import Callable, Optional
 
 from ablebackup.backup_engine import backup_project
 from ablebackup.catalog import Catalog
+from ablebackup.hashing import hash_file
 from ablebackup.locator import default_libraries, make_locator
 from ablebackup.models import ProjectScan
 from ablebackup.scanner import scan_one, scan_projects
@@ -28,10 +29,14 @@ def default_timestamp() -> str:
 
 
 def project_signature(scan: ProjectScan) -> str:
-    """A content fingerprint of a project: its .als plus every present sample's
-    size + mtime. Unchanged project => same signature => no new snapshot."""
+    """A content fingerprint of a project. Ableton rewrites the .als on every save,
+    so we hash its actual content (robust to a same-size/same-second edit) plus each
+    present sample's size + mtime. Unchanged => same signature => no new snapshot."""
     h = hashlib.sha1()
-    h.update(f"{scan.size}:{int(scan.mtime)}".encode())
+    try:
+        h.update(hash_file(scan.als_path).encode())
+    except OSError:
+        h.update(f"{scan.size}:{int(scan.mtime)}".encode())  # fall back if unreadable
     for path, size, mtime in sorted(
         (str(r.resolved_path), r.size, int(r.mtime)) for r in scan.refs if r.exists
     ):
