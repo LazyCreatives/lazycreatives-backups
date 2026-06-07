@@ -76,9 +76,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         return {"status": "ok"}
 
     def _tier() -> str:
-        ent = app.state.catalog.get_setting("entitlement") or {}
-        tier = ent.get("tier", "free")
-        return tier if tier in entitlement.VALID_TIERS else "free"
+        # verify_stored rejects a hand-edited/forged entitlement row -> 'free'.
+        return entitlement.verify_stored(app.state.catalog.get_setting("entitlement") or {})
 
     def _allows(feature: str) -> bool:
         return entitlement.allows(_tier(), feature)
@@ -97,8 +96,10 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         res = entitlement.activate(req.key)
         if res is None or res.get("tier") is None:
             raise HTTPException(status_code=400, detail="That licence key wasn't recognised.")
+        key, iid = req.key.strip(), res.get("instance_id")
         app.state.catalog.set_setting("entitlement", {
-            "tier": res["tier"], "key": req.key.strip(), "instance_id": res.get("instance_id"),
+            "tier": res["tier"], "key": key, "instance_id": iid,
+            "sig": entitlement.sign_tier(res["tier"], key, iid),
         })
         return {"tier": res["tier"], "features": entitlement.features_for(res["tier"])}
 

@@ -30,6 +30,25 @@ def test_bad_key_rejected(tmp_path):
     assert c.post("/api/entitlement/activate", json={"key": "nope"}).status_code == 400
 
 
+def test_demo_keys_fail_closed_in_production(monkeypatch):
+    # No LS config and not dev -> demo keys must NOT unlock anything (no backdoor).
+    monkeypatch.delenv("ABLEBACKUP_DEV", raising=False)
+    monkeypatch.delenv("LS_PRO_VARIANT", raising=False)
+    monkeypatch.delenv("LS_STUDIO_VARIANT", raising=False)
+    from ablebackup import entitlement
+    assert entitlement.activate("LC-PRO-DEMO-2026") is None
+    assert entitlement.activate("LC-STUDIO-DEMO-2026") is None
+
+
+def test_forged_entitlement_row_is_rejected():
+    from ablebackup import entitlement
+    assert entitlement.verify_stored({"tier": "studio"}) == "free"           # unsigned
+    assert entitlement.verify_stored({"tier": "pro", "sig": "bad"}) == "free"  # bad sig
+    good = {"tier": "pro", "key": "K", "instance_id": "i",
+            "sig": entitlement.sign_tier("pro", "K", "i")}
+    assert entitlement.verify_stored(good) == "pro"                           # valid sig honoured
+
+
 def test_cloud_backup_is_studio_only(tmp_path):
     c, _ = _client(tmp_path)
     pro = c.post("/api/entitlement/activate", json={"key": "LC-PRO-DEMO-2026"}).json()

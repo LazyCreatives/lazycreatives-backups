@@ -2,10 +2,17 @@
 
 The whole app reads features from here. License activation uses Lemon Squeezy's
 License API when configured (env: LS_PRO_VARIANT / LS_STUDIO_VARIANT, the variant
-ids of your Pro/Studio products), and falls back to built-in test keys otherwise
-so the app is fully usable before the store is live. Per the plan: one online
-check at activation, then cache locally and run offline.
+ids of your Pro/Studio products). Per the plan: one online check at activation,
+then cache locally and run offline.
+
+Security (fixes audit findings):
+- Built-in demo keys ONLY work when ABLEBACKUP_DEV is set (dev/CI). A packaged
+  build sets neither LS_* nor ABLEBACKUP_DEV, so activation *fails closed* (stays
+  Free) — no free-Pro backdoor ships.
+- The stored tier is HMAC-signed (sign_tier) and verified on read (verify_stored)
+  so hand-editing the local SQLite to grant a paid tier is rejected.
 """
+import hmac
 import json as _json
 import os
 import urllib.parse
@@ -36,13 +43,40 @@ FEATURES = {
 
 VALID_TIERS = tuple(FEATURES)
 
-# Built-in test keys — used until Lemon Squeezy variant ids are configured.
+# Demo keys for development/CI only — honoured ONLY when ABLEBACKUP_DEV is set, so
+# they cannot unlock a paid tier in a shipped build.
 _TEST_KEYS = {
     "LC-PRO-DEMO-2026": "pro",
     "LC-STUDIO-DEMO-2026": "studio",
 }
 
 _LS_BASE = "https://api.lemonsqueezy.com/v1/licenses"
+
+# Build-embedded secret for signing the locally-cached entitlement. Not a true
+# server secret (it ships in the binary), but it raises tampering well past a
+# trivial `sqlite3 UPDATE` — consistent with the plan's "friction-light, not Fort
+# Knox" stance. Override per build with ABLEBACKUP_ENT_SECRET if desired.
+_ENT_SECRET = os.environ.get("ABLEBACKUP_ENT_SECRET", "ROTATED-SECRET-REDACTED").encode()
+
+
+def _dev_keys_enabled() -> bool:
+    return bool(os.environ.get("ABLEBACKUP_DEV"))
+
+
+def sign_tier(tier: str, key, instance_id) -> str:
+    """HMAC over the entitlement so a hand-edited DB row is rejected on read."""
+    msg = f"{tier}|{key or ''}|{instance_id or ''}".encode()
+    return hmac.new(_ENT_SECRET, msg, "sha256").hexdigest()
+
+
+def verify_stored(stored: dict) -> str:
+    """The verified tier from a stored entitlement, or 'free' if missing/forged."""
+    tier = (stored or {}).get("tier", "free")
+    if tier == "free" or tier not in VALID_TIERS:
+        return "free"
+    expected = sign_tier(tier, stored.get("key"), stored.get("instance_id"))
+    sig = stored.get("sig") or ""
+    return tier if hmac.compare_digest(sig, expected) else "free"
 
 
 def features_for(tier: str) -> dict:
@@ -82,7 +116,8 @@ def _ls_request(path: str, payload: dict) -> dict | None:
 def activate(key: str) -> dict | None:
     """Validate + activate a license key. Returns {"tier", "instance_id"} or None.
 
-    Uses Lemon Squeezy's /activate when configured; otherwise the test keys.
+    Lemon Squeezy when configured; otherwise the demo keys but ONLY in dev. A
+    shipped build with neither configured fails closed (returns None -> Free).
     """
     key = (key or "").strip()
     if not key:
@@ -95,8 +130,10 @@ def activate(key: str) -> dict | None:
         if tier is None:
             return None  # a valid key, but for a product we don't map to a tier
         return {"tier": tier, "instance_id": (body.get("instance") or {}).get("id")}
-    tier = _TEST_KEYS.get(key.upper())
-    return {"tier": tier, "instance_id": None} if tier else None
+    if _dev_keys_enabled():
+        tier = _TEST_KEYS.get(key.upper())
+        return {"tier": tier, "instance_id": None} if tier else None
+    return None  # fail closed: not configured + not dev -> no activation
 
 
 def deactivate(key: str, instance_id) -> None:
