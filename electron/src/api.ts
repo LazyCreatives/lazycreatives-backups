@@ -1,4 +1,4 @@
-import type { Config, Entitlement, JobStatus, Overview, ProjectRow, ProjectSummary, Snapshot, SnapshotFilesResult, VerifyResult } from "./types";
+import type { Config, Entitlement, JobStatus, Overview, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, VerifyResult } from "./types";
 
 function base() {
   const port = (window as any).ablebackup?.port ?? "8753";
@@ -54,6 +54,12 @@ export function makeApi() {
     },
     async snapshotFiles(id: number): Promise<SnapshotFilesResult> {
       return req("GET", `/api/snapshot/${id}/files`);
+    },
+    async snapshotDiff(id: number): Promise<SnapshotDiff> {
+      return req("GET", `/api/snapshot/${id}/diff`);
+    },
+    async share(snapshotId: number, target: string): Promise<{ job_id: string }> {
+      return req("POST", "/api/share", { snapshot_id: snapshotId, target });
     },
     async rclone(): Promise<{ available: boolean; remotes: string[] }> { return req("GET", "/api/rclone"); },
     async entitlement(): Promise<Entitlement> { return req("GET", "/api/entitlement"); },

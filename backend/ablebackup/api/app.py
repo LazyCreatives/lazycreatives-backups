@@ -18,6 +18,7 @@ from ablebackup.scheduler import BackupScheduler
 from ablebackup.service import (
     build_overview, default_timestamp, pool_cache_age, rclone_available,
     rclone_remotes, refresh_pool_cache, restore_snapshot, run_backup, scan_summary,
+    share_snapshot, snapshot_diff,
 )
 from ablebackup.verifier import verify_snapshot
 
@@ -278,6 +279,22 @@ def create_app(token: str, db_path: Path) -> FastAPI:
             "total_size": m.get("total_size"),
         }
 
+    @app.get("/api/snapshot/{snapshot_id}/diff", dependencies=[Depends(require_token)])
+    def snapshot_changes(snapshot_id: int):
+        cat = app.state.catalog
+        snap = cat.get_snapshot(snapshot_id)
+        if snap is None:
+            raise HTTPException(status_code=404, detail="unknown snapshot")
+        prev = None  # the most recent earlier snapshot of the same project with a folder
+        for r in cat.snapshots_for(snap["project_name"]):
+            if r.get("dir") and r["timestamp"] < snap["timestamp"]:
+                if prev is None or r["timestamp"] > prev["timestamp"]:
+                    prev = r
+        diff = snapshot_diff(snap.get("dir"), prev["dir"] if prev else None)
+        diff["prev_timestamp"] = prev["timestamp"] if prev else None
+        diff["is_first"] = prev is None
+        return diff
+
     @app.post("/api/restore", dependencies=[Depends(require_token)])
     async def restore(req: RestoreRequest):
         if not _allows("restore"):
@@ -299,6 +316,27 @@ def create_app(token: str, db_path: Path) -> FastAPI:
                 app.state.jobs[job_id] = {"state": "error", "error": str(e)}
 
         asyncio.create_task(_run_restore())
+        return {"job_id": job_id, "state": "running"}
+
+    @app.post("/api/share", dependencies=[Depends(require_token)])
+    async def share(req: RestoreRequest):
+        snap = app.state.catalog.get_snapshot(req.snapshot_id)
+        if snap is None:
+            raise HTTPException(status_code=404, detail="unknown snapshot")
+        snap_dir = snap.get("dir")
+        if not snap_dir:
+            raise HTTPException(status_code=400, detail="snapshot has no recorded folder")
+        job_id = uuid.uuid4().hex
+        app.state.jobs[job_id] = {"state": "running"}
+
+        async def _run_share():
+            try:
+                path = await asyncio.to_thread(share_snapshot, snap_dir, req.target)
+                app.state.jobs[job_id] = {"state": "done", "result": {"path": path}}
+            except Exception as e:
+                app.state.jobs[job_id] = {"state": "error", "error": str(e)}
+
+        asyncio.create_task(_run_share())
         return {"job_id": job_id, "state": "running"}
 
     @app.get("/api/verify/{snapshot_id}", dependencies=[Depends(require_token)])

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { makeApi } from "../api";
-import type { ProjectRow, Snapshot, VerifyResult, SnapshotFile, SnapshotFilesResult } from "../types";
+import type { ProjectRow, Snapshot, VerifyResult, SnapshotFile, SnapshotFilesResult, SnapshotDiff } from "../types";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/Button";
 import { VerifiedSeal } from "../components/VerifiedSeal";
@@ -46,11 +46,15 @@ export function Browse() {
   const [selId, setSelId] = useState<number | null>(null);
   const [files, setFiles] = useState<SnapshotFilesResult | null>(null);
   const [loadingFiles, setLoadingFiles] = useState(false);
+  const [diff, setDiff] = useState<SnapshotDiff | null>(null);
+  const [showDiff, setShowDiff] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({ project: true, gathered: true, internal: false });
   const [results, setResults] = useState<Record<number, VerifyResult>>({});
   const [verifying, setVerifying] = useState<Set<number>>(new Set());
   const [restoring, setRestoring] = useState<Set<number>>(new Set());
   const [restored, setRestored] = useState<Record<number, { path?: string; error?: string }>>({});
+  const [sharing, setSharing] = useState<Set<number>>(new Set());
+  const [shared, setShared] = useState<Record<number, { path?: string; error?: string }>>({});
 
   useEffect(() => { api.projects().then(setProjects).catch(() => {}); }, []);
   useEffect(() => {
@@ -62,9 +66,10 @@ export function Browse() {
     }).catch(() => {});
   }, [active]);
   useEffect(() => {
-    if (selId == null) { setFiles(null); return; }
-    setLoadingFiles(true);
+    if (selId == null) { setFiles(null); setDiff(null); return; }
+    setLoadingFiles(true); setShowDiff(false);
     api.snapshotFiles(selId).then(setFiles).catch(() => setFiles(null)).finally(() => setLoadingFiles(false));
+    api.snapshotDiff(selId).then(setDiff).catch(() => setDiff(null));
   }, [selId]);
 
   const daws = useMemo(() => Array.from(new Set(projects.map((p) => p.daw).filter(Boolean))) as string[], [projects]);
@@ -122,8 +127,29 @@ export function Browse() {
     }
   }
 
+  async function share(id: number) {
+    const target = await (window as any).ablebackup?.pickFolder?.();
+    if (!target) return;
+    setSharing((s) => new Set(s).add(id));
+    setShared((m) => { const n = { ...m }; delete n[id]; return n; });
+    try {
+      const { job_id } = await api.share(id, target);
+      let res = await api.jobStatus(job_id);
+      for (let i = 0; i < 1200 && res.state === "running"; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        res = await api.jobStatus(job_id);
+      }
+      setShared((m) => ({ ...m, [id]: res.state === "done" ? { path: res.result?.path } : { error: res.error || "couldn't create the zip" } }));
+    } catch (e: any) {
+      setShared((m) => ({ ...m, [id]: { error: e.message } }));
+    } finally {
+      setSharing((s) => { const n = new Set(s); n.delete(id); return n; });
+    }
+  }
+
   const r = selId != null ? results[selId] : undefined;
   const rest = selId != null ? restored[selId] : undefined;
+  const shr = selId != null ? shared[selId] : undefined;
 
   return (
     <>
@@ -201,6 +227,7 @@ export function Browse() {
                       {files?.portable && <span className="pill">portable</span>}
                       <Button size="sm" variant="ghost" onClick={() => verify(sel.id)} disabled={verifying.has(sel.id)}>{verifying.has(sel.id) ? "Verifying…" : "Verify"}</Button>
                       <Button size="sm" variant="ghost" onClick={() => restore(sel.id)} disabled={restoring.has(sel.id)}>{restoring.has(sel.id) ? "Restoring…" : "Restore"}</Button>
+                      <Button size="sm" variant="ghost" onClick={() => share(sel.id)} disabled={sharing.has(sel.id)}>{sharing.has(sel.id) ? "Zipping…" : "Share"}</Button>
                       {sel.dir && <Button size="sm" variant="ghost" onClick={() => reveal(sel.dir)}>Reveal</Button>}
                     </div>
                   </div>
@@ -210,6 +237,13 @@ export function Browse() {
                       {rest.error ? <span style={{ color: "var(--danger)" }}>Restore failed: {rest.error}</span>
                         : <span><span style={{ color: "var(--accent-2)", fontWeight: 600 }}>✓ Restored</span> to {shortPath(rest.path || "", 4)}
                           {rest.path && <Button variant="ghost" size="sm" style={{ marginLeft: 10 }} onClick={() => reveal(rest.path)}>Reveal</Button>}</span>}
+                    </div>
+                  )}
+                  {shr && (
+                    <div className="card" style={{ marginBottom: 12, background: "var(--surface-2)", padding: 11, fontSize: 12.5 }}>
+                      {shr.error ? <span style={{ color: "var(--danger)" }}>Share failed: {shr.error}</span>
+                        : <span><span style={{ color: "var(--accent-2)", fontWeight: 600 }}>✓ Zipped</span> to {shortPath(shr.path || "", 4)} — ready to send.
+                          {shr.path && <Button variant="ghost" size="sm" style={{ marginLeft: 10 }} onClick={() => reveal(shr.path)}>Reveal</Button>}</span>}
                     </div>
                   )}
                   {r && !r.error && (
@@ -224,6 +258,38 @@ export function Browse() {
                           {r.bad_files.length > 0 ? ` · ${r.bad_files.length} corrupted` : ""}
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {diff && diff.available && (
+                    <div className="card" style={{ marginBottom: 12, background: "var(--surface-2)", padding: 12 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: diff.is_first ? 0 : 7 }}>
+                        {diff.is_first ? "First backup of this project" : `Changes since ${fmtDate(diff.prev_timestamp || "")}`}
+                      </div>
+                      {!diff.is_first && (
+                        diff.added.length + diff.changed.length + diff.removed.length === 0 ? (
+                          <div className="sub" style={{ margin: 0, fontSize: 12 }}>Identical to the previous backup — nothing changed.</div>
+                        ) : (
+                          <>
+                            <div style={{ display: "flex", gap: 16, fontSize: 12.5, flexWrap: "wrap" }}>
+                              <span style={{ color: "var(--accent-2)" }}>＋ {diff.added.length} added</span>
+                              <span style={{ color: "var(--warn)" }}>✎ {diff.changed.length} changed</span>
+                              <span style={{ color: "var(--danger)" }}>－ {diff.removed.length} removed</span>
+                              <span className="sub" style={{ margin: 0 }}>{diff.unchanged} unchanged</span>
+                            </div>
+                            <button className="linkbtn" style={{ marginTop: 8, fontSize: 12 }} onClick={() => setShowDiff((s) => !s)}>
+                              {showDiff ? "hide" : "show"} which files
+                            </button>
+                            {showDiff && (
+                              <ul style={{ margin: "7px 0 0", paddingLeft: 16, fontSize: 11.5, color: "var(--text-dim)", lineHeight: 1.7 }}>
+                                {diff.added.map((p) => <li key={"a" + p}><span style={{ color: "var(--accent-2)" }}>＋</span> {p.split("/").pop()}</li>)}
+                                {diff.changed.map((p) => <li key={"c" + p}><span style={{ color: "var(--warn)" }}>✎</span> {p.split("/").pop()}</li>)}
+                                {diff.removed.map((p) => <li key={"r" + p}><span style={{ color: "var(--danger)" }}>－</span> {p.split("/").pop()}</li>)}
+                              </ul>
+                            )}
+                          </>
+                        )
+                      )}
                     </div>
                   )}
 

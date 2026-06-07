@@ -1,5 +1,6 @@
 """Orchestration layer: reusable scan/backup over the engine, with progress events."""
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -108,6 +109,32 @@ def mirror_snapshot(snapshot_dir: Path, base: Path, mirrors: list) -> int:
     return done
 
 
+def _manifest_files(snapshot_dir) -> dict | None:
+    """logical_path -> file entry for a snapshot's manifest, or None if unreadable."""
+    if not snapshot_dir:
+        return None
+    mf = Path(snapshot_dir) / "manifest.json"
+    if not mf.is_file():
+        return None
+    try:
+        return {f["logical_path"]: f for f in json.loads(mf.read_text()).get("files", [])}
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def snapshot_diff(new_dir, old_dir) -> dict:
+    """What changed between two snapshots, by comparing per-file content digests."""
+    new = _manifest_files(new_dir)
+    if new is None:
+        return {"available": False, "added": [], "removed": [], "changed": [], "unchanged": 0}
+    old = _manifest_files(old_dir) or {}
+    added = sorted(p for p in new if p not in old)
+    removed = sorted(p for p in old if p not in new)
+    changed = sorted(p for p in new if p in old and new[p].get("digest") != old[p].get("digest"))
+    unchanged = sum(1 for p in new if p in old and new[p].get("digest") == old[p].get("digest"))
+    return {"available": True, "added": added, "removed": removed, "changed": changed, "unchanged": unchanged}
+
+
 def restore_snapshot(snapshot_dir, target_dir) -> str:
     """Copy a snapshot back out to target_dir as a standalone, openable project.
 
@@ -136,6 +163,40 @@ def restore_snapshot(snapshot_dir, target_dir) -> str:
         n += 1
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns("manifest.json", ".abid"))
     return str(dst)
+
+
+def share_snapshot(snapshot_dir, target_dir) -> str:
+    """Zip a snapshot into a single sendable file. A portable snapshot zips into a
+    complete, self-contained project a collaborator can open straight away."""
+    import zipfile
+
+    src = Path(snapshot_dir)
+    if not src.is_dir():
+        raise FileNotFoundError(f"snapshot folder not found: {src}")
+    manifest = _manifest_meta(src)
+    name = manifest.get("project_name") or src.name
+    ts = manifest.get("timestamp") or ""
+    base = f"{name} ({ts})" if ts else name
+    zip_path = Path(target_dir) / f"{base}.zip"
+    n = 1
+    while zip_path.exists():
+        zip_path = Path(target_dir) / f"{base} ({n}).zip"
+        n += 1
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in src.rglob("*"):
+            if f.is_file() and f.name not in ("manifest.json", ".abid"):
+                z.write(f, str(Path(base) / f.relative_to(src)))
+    return str(zip_path)
+
+
+def _manifest_meta(src: Path) -> dict:
+    mf = src / "manifest.json"
+    if mf.is_file():
+        try:
+            return json.loads(mf.read_text())
+        except (OSError, ValueError):
+            pass
+    return {}
 
 
 def _pool_size(dest_root: Path) -> int:

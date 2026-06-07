@@ -57,6 +57,15 @@ export interface SnapshotFilesResult {
   missing: string[];
   total_size?: number;
 }
+export interface SnapshotDiff {
+  available: boolean;
+  added: string[];
+  removed: string[];
+  changed: string[];
+  unchanged: number;
+  prev_timestamp: string | null;
+  is_first: boolean;
+}
 export interface ProjectRow {
   project_name: string;
   snapshot_count: number;
