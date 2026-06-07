@@ -39,4 +39,5 @@ def test_mirror_failure_does_not_break_primary(tmp_path):
     bad = tmp_path / "bad"
     bad.write_text("not a folder")
     res = run_backup([proj], dest, cat, timestamp="t", mirrors=[str(bad / "sub")])
-    assert res["ok_count"] == 1  # primary backup still succeeded
+    assert res["ok_count"] == 1       # primary backup still succeeded
+    assert res["mirror_failed"] >= 1  # but the failed mirror is REPORTED, not swallowed

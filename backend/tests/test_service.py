@@ -41,7 +41,8 @@ def test_run_backup_records_and_emits_progress(tmp_path):
     types = [e["type"] for e in events]
     assert "project_start" in types
     assert "project_done" in types
-    assert events[-1] == {"type": "backup_done", "ok_count": 1, "error_count": 0, "skipped_count": 0, "cancelled": False}
+    assert events[-1] == {"type": "backup_done", "ok_count": 1, "error_count": 0,
+                          "skipped_count": 0, "mirror_failed": 0, "cancelled": False}
     cat.close()
 
 
@@ -116,6 +117,20 @@ def test_run_backup_skips_unchanged_partial_project(tmp_path):
     third = run_backup([tmp_path], dest, cat, timestamp="t3", als_paths=als)
     assert third["ok_count"] == 1
     assert len(cat.snapshots_for("Song")) == 2
+    cat.close()
+
+
+def test_portable_change_is_not_skipped(tmp_path):
+    # Backing up unchanged content but switching to portable must NOT be skipped —
+    # the user asked for a portable snapshot and must get one.
+    _build_project(tmp_path)
+    dest = tmp_path / "NAS"
+    cat = Catalog(tmp_path / "c.db")
+    als = [str(tmp_path / "Song Project" / "Song.als")]
+
+    run_backup([tmp_path], dest, cat, timestamp="t1", als_paths=als, portable=False)
+    again = run_backup([tmp_path], dest, cat, timestamp="t2", als_paths=als, portable=True)
+    assert again["ok_count"] == 1 and again["skipped_count"] == 0
     cat.close()
 
 

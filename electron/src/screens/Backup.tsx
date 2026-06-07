@@ -75,6 +75,11 @@ export function Backup({ progress: p, jobId }: { progress: BackupProgress; jobId
                   {p.skipped > 0 ? ` · ${p.skipped} unchanged` : ""}
                   {p.errors > 0 ? ` · ${p.errors} error(s)` : ""}
                 </div>
+                {p.mirrorFailed > 0 && (
+                  <div style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--warn)" }}>
+                    ⚠ Offsite/cloud mirror failed for {p.mirrorFailed} copy — primary backup is safe; check that destination.
+                  </div>
+                )}
               </div>
             </div>
           )}

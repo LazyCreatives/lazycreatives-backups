@@ -34,11 +34,15 @@ def default_timestamp() -> str:
     return datetime.now().strftime("%Y-%m-%d_%H%M")
 
 
-def project_signature(scan: ProjectScan) -> str:
+def project_signature(scan: ProjectScan, portable: bool = False, layout: str = "project_date") -> str:
     """A content fingerprint of a project. Ableton rewrites the .als on every save,
     so we hash its actual content (robust to a same-size/same-second edit) plus each
-    present sample's size + mtime. Unchanged => same signature => no new snapshot."""
+    present sample's size + mtime. The run's portable/layout choice is folded in so
+    that asking for a portable backup of an otherwise-unchanged project is NOT
+    skipped (it would leave the user without the portable snapshot they asked for).
+    Unchanged content + same options => same signature => no new snapshot."""
     h = hashlib.sha1()
+    h.update(f"opts:{int(portable)}:{layout}|".encode())
     try:
         h.update(hash_file(scan.als_path).encode())
     except OSError:
@@ -82,32 +86,33 @@ def _rclone_copy(src: Path, remote_dest: str) -> bool:
         return False
 
 
-def mirror_snapshot(snapshot_dir: Path, base: Path, mirrors: list) -> int:
+def mirror_snapshot(snapshot_dir: Path, base: Path, mirrors: list) -> tuple[int, int]:
     """Copy a freshly-written snapshot to each offsite/cloud destination as a
     standalone copy. A mirror may be a local/sync folder OR an rclone remote
-    (s3:, b2:, gdrive:, …). Best-effort: a mirror failure never fails the primary
-    backup. Returns how many mirrors received it."""
-    done = 0
+    (s3:, b2:, gdrive:, …). A mirror failure never fails the primary backup, but it
+    is COUNTED and reported (not silently swallowed) so the UI can warn the user
+    their offsite copy didn't land. Returns (ok, failed)."""
+    ok = failed = 0
     try:
         rel = Path(snapshot_dir).resolve().relative_to(Path(base).resolve())
     except ValueError:
-        return 0
+        return 0, len(mirrors)
     for m in mirrors:
         try:
             if _is_rclone_remote(m):
                 remote = m[len("rclone:"):] if m.startswith("rclone:") else m
                 if _rclone_copy(snapshot_dir, f"{remote.rstrip('/')}/{rel.as_posix()}"):
-                    done += 1
+                    ok += 1
+                else:
+                    failed += 1
             else:
                 target = Path(m) / rel
-                if target.exists():
-                    done += 1
-                else:
+                if not target.exists():
                     shutil.copytree(snapshot_dir, target)
-                    done += 1
+                ok += 1
         except OSError:
-            pass  # offsite is best-effort (drive unplugged, cloud folder busy, …)
-    return done
+            failed += 1  # drive unplugged, cloud folder busy, permission, …
+    return ok, failed
 
 
 def _manifest_files(snapshot_dir) -> dict | None:
@@ -369,6 +374,8 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
     ok_count = 0
     error_count = 0
     skipped_count = 0
+    mirror_ok = 0
+    mirror_failed = 0
     cancelled = False
     _emit(progress, {"type": "backup_start", "project_count": len(projects),
                      "timestamp": timestamp})
@@ -378,7 +385,7 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
             break
         _emit(progress, {"type": "project_start", "index": i,
                          "project_name": p.name, "total": len(projects)})
-        signature = project_signature(p)
+        signature = project_signature(p, portable, layout)
         if last_sigs.get(p.project_id) == signature:
             # Identical to the last successful backup — don't make a redundant snapshot.
             skipped_count += 1
@@ -418,15 +425,18 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
             project_id=p.project_id, daw=p.daw_id,
         )
         ok_count += 1
-        if mirrors:  # also copy this snapshot offsite (cloud/2nd drive) — best-effort
-            mirror_snapshot(result.snapshot_dir, base, [str(m) for m in mirrors])
+        if mirrors:  # also copy this snapshot offsite (cloud/2nd drive)
+            mok, mfail = mirror_snapshot(result.snapshot_dir, base, [str(m) for m in mirrors])
+            mirror_ok += mok
+            mirror_failed += mfail
         _emit(progress, {"type": "project_done", "index": i,
                          "project_name": result.project_name,
                          "file_count": result.file_count,
                          "missing_count": len(result.missing)})
     _emit(progress, {"type": "backup_done", "skipped_count": skipped_count,
                      "ok_count": ok_count, "error_count": error_count,
-                     "cancelled": cancelled})
+                     "mirror_failed": mirror_failed, "cancelled": cancelled})
     return {"timestamp": timestamp, "ok_count": ok_count,
             "error_count": error_count, "skipped_count": skipped_count,
+            "mirror_ok": mirror_ok, "mirror_failed": mirror_failed,
             "cancelled": cancelled}

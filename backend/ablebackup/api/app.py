@@ -286,8 +286,12 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         snap = cat.get_snapshot(snapshot_id)
         if snap is None:
             raise HTTPException(status_code=404, detail="unknown snapshot")
-        prev = None  # the most recent earlier snapshot of the same project with a folder
+        prev = None  # the most recent earlier snapshot of the SAME project with a folder
+        pid = snap.get("project_id")
         for r in cat.snapshots_for(snap["project_name"]):
+            # don't diff against a different project that merely shares a name
+            if pid and r.get("project_id") and r.get("project_id") != pid:
+                continue
             if r.get("dir") and r["timestamp"] < snap["timestamp"]:
                 if prev is None or r["timestamp"] > prev["timestamp"]:
                     prev = r
