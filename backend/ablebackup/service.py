@@ -1,4 +1,6 @@
 """Orchestration layer: reusable scan/backup over the engine, with progress events."""
+import os
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
@@ -12,6 +14,67 @@ ProgressCb = Optional[Callable[[dict], None]]
 
 def default_timestamp() -> str:
     return datetime.now().strftime("%Y-%m-%d_%H%M")
+
+
+def _pool_size(dest_root: Path) -> int:
+    """Actual bytes on disk in the dedup pool (the unique-file set)."""
+    pool = dest_root / "_pool"
+    total = 0
+    if pool.exists():
+        for dirpath, _dirs, files in os.walk(pool):
+            for fn in files:
+                try:
+                    total += (Path(dirpath) / fn).stat().st_size
+                except OSError:
+                    pass
+    return total
+
+
+def build_overview(catalog: Catalog, dest: str) -> dict:
+    """A health snapshot for the dashboard: totals, dedup savings, NAS status, attention."""
+    totals = catalog.snapshot_totals()
+    latest = catalog.latest_per_project()
+
+    attention = [
+        {
+            "project_name": s["project_name"],
+            "kind": "error" if s["status"] == "error" else "missing",
+            "reason": (s["error"] or "last backup errored") if s["status"] == "error"
+            else f"{s['missing_count']} sample(s) missing",
+        }
+        for s in latest
+        if s["status"] == "error" or s["missing_count"] > 0
+    ]
+
+    last = latest[0] if latest else None
+
+    nas = {"reachable": False, "path": "", "free_bytes": 0, "total_bytes": 0}
+    actual_size = 0
+    if dest:
+        dest_root = Path(dest) / "AbletonBackups"
+        nas["path"] = str(dest_root)
+        if Path(dest).is_dir():
+            nas["reachable"] = True
+            try:
+                usage = shutil.disk_usage(dest)
+                nas["free_bytes"] = usage.free
+                nas["total_bytes"] = usage.total
+            except OSError:
+                pass
+            actual_size = _pool_size(dest_root)
+
+    logical_size = totals["logical_size"]
+    return {
+        "projects_protected": totals["projects_protected"],
+        "snapshot_count": totals["snapshot_count"],
+        "logical_size": logical_size,
+        "actual_size": actual_size,
+        "saved_bytes": max(0, logical_size - actual_size),
+        "last_run": last["timestamp"] if last else None,
+        "last_run_ok": bool(last) and last["status"] == "ok",
+        "attention": attention,
+        "nas": nas,
+    }
 
 
 def scan_summary(sources: list[Path]) -> list[dict]:

@@ -1,4 +1,4 @@
-import type { Config, JobStatus, ProjectRow, ProjectSummary, Snapshot } from "./types";
+import type { Config, JobStatus, Overview, ProjectRow, ProjectSummary, Snapshot } from "./types";
 
 function base() {
   const port = (window as any).ablebackup?.port ?? "8753";
@@ -33,6 +33,7 @@ export function makeApi() {
       return req("POST", "/api/backup", opts);
     },
     async jobStatus(id: string): Promise<JobStatus> { return req("GET", `/api/jobs/${id}`); },
+    async overview(): Promise<Overview> { return req("GET", "/api/overview"); },
     async history(limit = 50): Promise<Snapshot[]> {
       return (await req("GET", `/api/history?limit=${limit}`)).snapshots;
     },

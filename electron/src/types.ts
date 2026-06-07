@@ -28,6 +28,29 @@ export interface ProjectRow {
   last_timestamp: string;
   total_size: number;
 }
+export interface AttentionItem {
+  project_name: string;
+  kind: "error" | "missing";
+  reason: string;
+}
+export interface NasStatus {
+  reachable: boolean;
+  path: string;
+  free_bytes: number;
+  total_bytes: number;
+}
+export interface Overview {
+  projects_protected: number;
+  snapshot_count: number;
+  logical_size: number;
+  actual_size: number;
+  saved_bytes: number;
+  last_run: string | null;
+  last_run_ok: boolean;
+  attention: AttentionItem[];
+  nas: NasStatus;
+  schedule: { enabled: boolean; interval_minutes: number };
+}
 export interface JobStatus {
   state: "running" | "done" | "error";
   result?: { timestamp: string; ok_count: number; error_count: number };

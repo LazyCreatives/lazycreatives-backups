@@ -18,7 +18,7 @@ export default function App() {
     <div className="app">
       <Nav screen={screen} onNavigate={setScreen} />
       <div className="main">
-        {screen === "dashboard" && <Dashboard />}
+        {screen === "dashboard" && <Dashboard onNavigate={setScreen} />}
         {screen === "sources" && <Sources />}
         {screen === "scan" && (
           <Scan

@@ -2,14 +2,9 @@ import { useState } from "react";
 import { makeApi } from "../api";
 import type { ProjectSummary } from "../types";
 import { Button } from "../components/Button";
+import { fmtSize } from "../format";
 
 const api = makeApi();
-function fmtSize(n: number) {
-  if (n > 1e9) return (n / 1e9).toFixed(2) + " GB";
-  if (n > 1e6) return (n / 1e6).toFixed(1) + " MB";
-  if (n > 1e3) return (n / 1e3).toFixed(0) + " KB";
-  return n + " B";
-}
 
 export function Scan({ projects, onProjects, onBackupStarted }: {
   projects: ProjectSummary[] | null;

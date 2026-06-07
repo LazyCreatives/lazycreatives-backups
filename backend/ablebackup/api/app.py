@@ -12,7 +12,7 @@ from ablebackup.api.progress import ProgressHub
 from ablebackup.api.schemas import BackupRequest, Config, ScanRequest
 from ablebackup.catalog import Catalog
 from ablebackup.scheduler import BackupScheduler
-from ablebackup.service import default_timestamp, run_backup, scan_summary
+from ablebackup.service import build_overview, default_timestamp, run_backup, scan_summary
 
 
 def create_app(token: str, db_path: Path) -> FastAPI:
@@ -108,6 +108,14 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         if job is None:
             raise HTTPException(status_code=404, detail="unknown job")
         return job
+
+    @app.get("/api/overview", dependencies=[Depends(require_token)])
+    def overview():
+        cfg = app.state.catalog.get_setting("config") or {}
+        data = build_overview(app.state.catalog, cfg.get("dest", ""))
+        interval = cfg.get("interval_minutes", 0) or 0
+        data["schedule"] = {"enabled": interval > 0, "interval_minutes": interval}
+        return data
 
     @app.get("/api/history", dependencies=[Depends(require_token)])
     def history(limit: int = 50):

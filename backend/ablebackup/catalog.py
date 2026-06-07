@@ -106,6 +106,35 @@ class Catalog:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def snapshot_totals(self) -> dict:
+        """Aggregate counts/sizes across all snapshots, for the dashboard."""
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT COUNT(*) AS snapshot_count, "
+                "COUNT(DISTINCT project_name) AS projects_protected, "
+                "COALESCE(SUM(total_size), 0) AS logical_size "
+                "FROM snapshots"
+            ).fetchone()
+        return dict(row)
+
+    def latest_per_project(self) -> list[dict]:
+        """The most recent snapshot of each project, with its missing-ref count.
+
+        Used for both 'last run' and the dashboard's 'needs attention' list.
+        """
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT s.id, s.project_name, s.timestamp, s.status, s.error, "
+                "(SELECT COUNT(*) FROM missing_refs m WHERE m.snapshot_id = s.id) "
+                "  AS missing_count "
+                "FROM snapshots s "
+                "JOIN (SELECT project_name, MAX(id) AS max_id "
+                "      FROM snapshots GROUP BY project_name) latest "
+                "  ON s.id = latest.max_id "
+                "ORDER BY s.timestamp DESC, s.id DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def close(self):
         with self._lock:
             self.conn.close()
