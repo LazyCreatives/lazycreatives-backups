@@ -2,9 +2,11 @@
 import json
 import os
 import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from ablebackup.daws.registry import adapter_for_id
 from ablebackup.hashing import hash_file
 from ablebackup.models import ProjectScan
 
@@ -44,7 +46,8 @@ def _logical_path(scan: ProjectScan, ref) -> str:
     if ref.inside_project:
         rel = ref.resolved_path.resolve().relative_to(scan.project_dir.resolve())
         return rel.as_posix()
-    return f"_External/{ref.name}"
+    # External -> _External/<basename>; the portable .als rewrite points here too.
+    return f"_External/{ref.resolved_path.name}"
 
 
 def _place(pool: Path, src: Path, dest_file: Path, use_hardlinks: bool, digest: str) -> int:
@@ -109,9 +112,26 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
             "source_path": source, "inside_project": inside, "relinked": relinked,
         })
 
-    # The project file itself (.als, .flp, …).
-    proj_digest = hash_file(scan.project_path)
-    sz = _place(pool, scan.project_path, temp_dir / scan.project_path.name, use_hardlinks, proj_digest)
+    # The project file itself (.als, .flp, …). In portable mode, the adapter can
+    # rewrite it so external samples resolve from inside the snapshot.
+    proj_src = scan.project_path
+    tmp_proj = None
+    if portable:
+        adapter = adapter_for_id(scan.daw_id)
+        rewrite = getattr(adapter, "rewrite_portable", None) if adapter else None
+        if rewrite:
+            try:
+                data = rewrite(scan.project_path)
+            except Exception:
+                data = None
+            if data is not None:
+                fd, name = tempfile.mkstemp(suffix=scan.project_path.suffix)
+                os.write(fd, data); os.close(fd)
+                proj_src = tmp_proj = Path(name)
+    proj_digest = hash_file(proj_src)
+    sz = _place(pool, proj_src, temp_dir / scan.project_path.name, use_hardlinks, proj_digest)
+    if tmp_proj is not None:
+        tmp_proj.unlink(missing_ok=True)
     total_size += sz
     placed[scan.project_path.name] = proj_digest
     record(scan.project_path.name, proj_digest, sz, str(scan.project_path), True, False)

@@ -70,7 +70,10 @@ def verify_snapshot(snapshot_dir, deep: bool = True) -> dict:
     if adapter is not None and proj is not None:
         try:
             refs = resolve_refs(adapter.parse_project(proj), snapshot_dir)
-            unresolved = [r.expected_path or r.name for r in refs if not r.exists]
+            # Portable means every sample resolves from INSIDE the snapshot — not via
+            # an absolute path that merely happens to exist on this machine.
+            unresolved = [r.expected_path or r.name
+                          for r in refs if not (r.exists and r.inside_project)]
             result["portable_ok"] = len(unresolved) == 0
             result["portable_missing"] = unresolved
         except Exception:
