@@ -178,10 +178,12 @@ def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
             _emit(progress, {"type": "project_error", "index": i,
                              "project_name": p.name, "error": str(e)})
             continue
+        # A snapshot that's missing samples is NOT a clean success — say so.
+        status = "partial" if result.missing else "ok"
         catalog.record_snapshot(
             project_name=result.project_name, timestamp=result.timestamp,
             total_size=result.total_size, file_count=result.file_count,
-            status="ok", missing=result.missing, label=label,
+            status=status, missing=result.missing, label=label,
             dir=str(result.snapshot_dir), signature=signature,
         )
         ok_count += 1

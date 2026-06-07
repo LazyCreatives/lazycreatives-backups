@@ -9,6 +9,7 @@ class FileRef:
     name: str
     absolute_path: Optional[str] = None     # from <Path Value=.../>
     relative_path: Optional[str] = None     # POSIX-style, from <RelativePath .../>
+    size: int = 0                           # from <OriginalFileSize/>, 0 if unknown
 
 
 @dataclass

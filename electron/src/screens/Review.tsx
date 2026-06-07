@@ -15,7 +15,9 @@ export function Review({ pending, onStarted, onCancel }: {
 }) {
   const [cfg, setCfg] = useState<Config | null>(null);
   const [label, setLabel] = useState("");
-  const [portable, setPortable] = useState(true);
+  // "Portable" (rewrite the .als so it opens on any machine) is not implemented yet,
+  // so we don't claim it. Every backup still collects all referenced samples.
+  const portable = false;
   const [layout, setLayout] = useState<"project_date" | "date_project">("project_date");
   const [err, setErr] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -70,15 +72,11 @@ export function Review({ pending, onStarted, onCancel }: {
       </div>
 
       <div className="card" style={{ marginBottom: 14 }}>
-        <h2>Portability</h2>
-        <div className="seg" role="group">
-          <button className={`seg__opt${portable ? " seg__opt--on" : ""}`} onClick={() => setPortable(true)}>Portable</button>
-          <button className={`seg__opt${!portable ? " seg__opt--on" : ""}`} onClick={() => setPortable(false)}>Archive</button>
-        </div>
-        <p className="sub" style={{ margin: "10px 0 0", fontSize: 12.5 }}>
-          {portable
-            ? "Collects external samples (Splice, etc.) into the backup so nothing's left behind."
-            : "Copies what's referenced as-is; external samples stay where they are."}
+        <h2>What's included</h2>
+        <p className="sub" style={{ margin: 0, fontSize: 12.5 }}>
+          The project and <strong>all referenced samples</strong> (including external
+          ones like Splice) are copied into the backup. Making a backup open on another
+          machine without your sample library — “portable” — is coming next.
         </p>
       </div>
 

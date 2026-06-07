@@ -23,6 +23,52 @@ def _is_inside(path: Path, project_dir: Path) -> bool:
         return False
 
 
+def _safe_size(p: Path) -> int:
+    try:
+        return p.stat().st_size
+    except OSError:
+        return -1
+
+
+def _path_tail_score(ref_path: str, cand: Path) -> int:
+    """How many trailing path segments the candidate shares with the reference."""
+    a = ref_path.replace("\\", "/").lower().split("/")
+    b = str(cand).replace("\\", "/").lower().split("/")
+    n = 0
+    while n < len(a) and n < len(b) and a[-1 - n] == b[-1 - n]:
+        n += 1
+    return n
+
+
+def _match_located(ref: FileRef, locate: Locator) -> Optional[Path]:
+    """Pick a library file that genuinely matches the referenced sample.
+
+    A basename alone is not enough — many different samples share a name. We
+    require the size Ableton recorded (OriginalFileSize) to match, then break ties
+    by path overlap. If the correctly-sized file isn't present, we relink NOTHING
+    rather than silently back up a different same-named sample.
+    """
+    if locate is None:
+        return None
+    ref_path = ref.relative_path or ref.absolute_path or ref.name or ""
+    name = Path(ref_path).name
+    if not name:
+        return None
+    cands = [c for c in locate(name) if c.is_file()]
+    if not cands:
+        return None
+    if ref.size:
+        cands = [c for c in cands if _safe_size(c) == ref.size]
+        if not cands:
+            return None  # the file with the recorded size isn't here — don't guess
+    cands.sort(key=lambda c: _path_tail_score(ref_path, c), reverse=True)
+    best = cands[0]
+    # Accept only when we verified by size, or matched a strong path tail (dir + name).
+    if ref.size or _path_tail_score(ref_path, best) >= 2:
+        return best
+    return None
+
+
 def resolve_refs(refs: list[FileRef], project_dir: Path,
                  locate: Locator = None) -> list[ResolvedRef]:
     resolved: list[ResolvedRef] = []
@@ -41,10 +87,10 @@ def resolve_refs(refs: list[FileRef], project_dir: Path,
                 break
         if chosen is None and locate is not None:
             # Not where the project points — try to find it in the user's libraries
-            # (Splice, etc.) by filename, so a moved/relinked sample isn't "missing".
-            name = ref.relative_path or ref.absolute_path or ref.name or ""
-            found = locate(name)
-            if found is not None and found.is_file():
+            # (Splice, etc.), but only accept a file that actually matches (size +
+            # path), never a same-named guess. See _match_located.
+            found = _match_located(ref, locate)
+            if found is not None:
                 chosen = found
                 relinked = True
         if chosen is not None:
