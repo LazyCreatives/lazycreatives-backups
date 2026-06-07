@@ -10,6 +10,7 @@ class DawAdapter(Protocol):
     daw_id: str                      # 'ableton' | 'flstudio' — stored in catalog + manifest
     display_name: str                # 'Ableton Live'
     extensions: tuple[str, ...]      # ('.als',) — drives discovery AND parse dispatch
+    backup_root: str                 # per-DAW destination subfolder ('AbletonBackups')
 
     def discover_projects(self, roots: list[Path]) -> Iterable[Path]: ...
     def parse_project(self, project_path: Path) -> list[FileRef]: ...

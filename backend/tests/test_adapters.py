@@ -11,5 +11,12 @@ def test_registry_routes_als_to_ableton():
 
 
 def test_registry_returns_none_for_unknown_extension():
-    assert adapter_for_path(Path("/music/song.flp")) is None  # not registered yet
+    assert adapter_for_path(Path("/music/song.logicx")) is None  # not supported
     assert adapter_for_id("nope") is None
+
+
+def test_flstudio_registered():
+    assert ".flp" in all_extensions()
+    a = adapter_for_path(Path("/music/beat.flp"))
+    assert a is not None and a.daw_id == "flstudio"
+    assert adapter_for_id("flstudio").backup_root == "FLStudioBackups"

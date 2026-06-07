@@ -8,6 +8,7 @@ from typing import Callable, Optional
 
 from ablebackup.backup_engine import backup_project
 from ablebackup.catalog import Catalog
+from ablebackup.daws.registry import DAW_REGISTRY, adapter_for_id
 from ablebackup.hashing import hash_file
 from ablebackup.locator import default_libraries, make_locator
 from ablebackup.models import ProjectScan
@@ -79,8 +80,7 @@ def build_overview(catalog: Catalog, dest: str) -> dict:
     nas = {"reachable": False, "path": "", "free_bytes": 0, "total_bytes": 0}
     actual_size = 0
     if dest:
-        dest_root = Path(dest) / "AbletonBackups"
-        nas["path"] = str(dest_root)
+        nas["path"] = str(dest)
         if Path(dest).is_dir():
             nas["reachable"] = True
             try:
@@ -89,7 +89,8 @@ def build_overview(catalog: Catalog, dest: str) -> dict:
                 nas["total_bytes"] = usage.total
             except OSError:
                 pass
-            actual_size = _pool_size(dest_root)
+            # Sum the dedup pool across every DAW's backup root (per-DAW separation).
+            actual_size = sum(_pool_size(Path(dest) / a.backup_root) for a in DAW_REGISTRY)
 
     logical_size = totals["logical_size"]
     return {
@@ -147,7 +148,7 @@ def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
     (the user's include/exclude selection); otherwise every discovered project.
     label/portable/layout are the user's per-run choices from the review step.
     """
-    dest_root = Path(dest) / "AbletonBackups"
+    base = Path(dest)
     timestamp = timestamp or default_timestamp()
     # Tell the UI we've started straight away — resolving projects can take a moment,
     # and a silent gap looks like nothing is happening.
@@ -178,6 +179,9 @@ def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
             skipped_count += 1
             _emit(progress, {"type": "project_skipped", "index": i, "project_name": p.name})
             continue
+        # Per-DAW destination root, so FL and Ableton backups stay separate.
+        adapter = adapter_for_id(p.daw_id)
+        dest_root = base / (adapter.backup_root if adapter else "AbletonBackups")
         try:
             result = backup_project(p, dest_root, timestamp, portable=portable, layout=layout)
         except Exception as e:  # isolate one project's failure from the rest

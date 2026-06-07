@@ -58,7 +58,7 @@ export function Setup({ onDone }: { onDone: (c: Config) => void }) {
         {step === 1 && (
           <div className="wizard__body">
             <h1>Where are your projects?</h1>
-            <p className="sub">Add the folders that contain your Ableton (.als) projects.</p>
+            <p className="sub">Add the folders that contain your Ableton (.als) and FL Studio (.flp) projects.</p>
             <Button variant="ghost" onClick={addSource}>+ Add a folder</Button>
             <div style={{ marginTop: 12 }}>
               {sources.length === 0 && <p className="sub" style={{ margin: 0 }}>No folders yet.</p>}
