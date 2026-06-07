@@ -56,21 +56,38 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     app.state.jobs = {}
     app.state.cancels = {}  # job_id -> threading.Event, to cancel a running backup
     app.state.pool_refreshing = False  # guard so only one pool-size walk runs at a time
-    app.state.pool_task = None          # keep a ref so the task isn't GC'd mid-run
+    app.state.pool_tasks = set()        # strong refs so tasks aren't GC'd mid-run
+
+    _JOBS_CAP = 200
+
+    def _new_job(job_id: str) -> None:
+        """Register a running job, evicting the oldest finished entries so the jobs
+        dict can't grow without bound over a long-lived (tray) session."""
+        jobs = app.state.jobs
+        for jid in list(jobs):
+            if len(jobs) < _JOBS_CAP:
+                break
+            if jobs[jid].get("state") in ("done", "error"):
+                del jobs[jid]
+        jobs[job_id] = {"state": "running"}
 
     def _refresh_pool_async(dest: str):
         """Recompute the cached pool size off the event loop, without overlapping."""
+        # Set the guard SYNCHRONOUSLY (before the await turn) so two near-simultaneous
+        # callers can't both pass the check and launch duplicate NAS walks.
         if not dest or app.state.pool_refreshing:
             return
+        app.state.pool_refreshing = True
 
         async def _run():
-            app.state.pool_refreshing = True
             try:
                 await asyncio.to_thread(refresh_pool_cache, app.state.catalog, dest)
             finally:
                 app.state.pool_refreshing = False
 
-        app.state.pool_task = asyncio.create_task(_run())
+        t = asyncio.create_task(_run())
+        app.state.pool_tasks.add(t)
+        t.add_done_callback(app.state.pool_tasks.discard)
 
     @app.get("/health")
     def health():
@@ -199,7 +216,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         # when the app is driven without a lifespan (e.g. bare TestClient).
         app.state.hub.bind_loop(asyncio.get_running_loop())
         job_id = uuid.uuid4().hex
-        app.state.jobs[job_id] = {"state": "running"}
+        _new_job(job_id)
         app.state.cancels[job_id] = threading.Event()
         asyncio.create_task(
             _run_job(job_id, sources, Path(dest), timestamp, als_paths,
@@ -220,6 +237,10 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         if ev is None:
             raise HTTPException(status_code=404, detail="job not running")
         ev.set()  # checked between projects in run_backup
+        # reflect 'cancelling' in status until _run_job writes the terminal result
+        job = app.state.jobs.get(job_id)
+        if job and job.get("state") == "running":
+            app.state.jobs[job_id] = {"state": "cancelling"}
         return {"cancelling": True}
 
     @app.get("/api/overview", dependencies=[Depends(require_token)])
@@ -321,7 +342,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
             raise HTTPException(status_code=400, detail="snapshot has no recorded folder")
         target = _validate_target(req.target)
         job_id = uuid.uuid4().hex
-        app.state.jobs[job_id] = {"state": "running"}
+        _new_job(job_id)
 
         async def _run_restore():
             try:
@@ -347,7 +368,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
             raise HTTPException(status_code=400, detail="snapshot has no recorded folder")
         target = _validate_target(req.target)
         job_id = uuid.uuid4().hex
-        app.state.jobs[job_id] = {"state": "running"}
+        _new_job(job_id)
 
         async def _run_share():
             try:
