@@ -92,7 +92,7 @@ export function Backup({ progress: p, jobId }: { progress: BackupProgress; jobId
           <div className="card" style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5, lineHeight: 1.7, maxHeight: 360, overflow: "auto" }}>
             {p.log.length === 0
               ? <span className="sub">Waiting for the first project…</span>
-              : p.log.map((line, i) => <div key={i}>{line}</div>)}
+              : p.log.map((line, i) => <div key={i} className="logline">{line}</div>)}
           </div>
         </>
       )}
