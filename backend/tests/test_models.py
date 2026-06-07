@@ -11,12 +11,13 @@ def test_fileref_defaults():
 
 def test_projectscan_missing_and_total_size(tmp_path):
     proj = ProjectScan(
-        als_path=tmp_path / "song.als",
+        project_path=tmp_path / "song.als",
         name="song",
         project_dir=tmp_path,
         mtime=1.0,
         size=100,
     )
+    assert proj.als_path == proj.project_path  # back-compat alias
     present = ResolvedRef(name="a.wav", resolved_path=tmp_path / "a.wav",
                           exists=True, inside_project=True, size=50)
     absent = ResolvedRef(name="b.wav", resolved_path=None,

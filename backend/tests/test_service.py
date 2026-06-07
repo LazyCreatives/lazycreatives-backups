@@ -35,7 +35,9 @@ def test_run_backup_records_and_emits_progress(tmp_path):
     assert summary["ok_count"] == 1
     assert summary["error_count"] == 0
     assert (dest / "AbletonBackups" / "projects" / "Song" / "2026-06-06_1430" / "Song.als").exists()
-    assert cat.snapshots_for("Song")[0]["file_count"] == 2
+    row = cat.snapshots_for("Song")[0]
+    assert row["file_count"] == 2
+    assert row["daw"] == "ableton"  # DAW recorded per snapshot
     types = [e["type"] for e in events]
     assert "project_start" in types
     assert "project_done" in types

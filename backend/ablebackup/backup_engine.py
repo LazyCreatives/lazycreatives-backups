@@ -109,12 +109,12 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
             "source_path": source, "inside_project": inside, "relinked": relinked,
         })
 
-    # The .als itself.
-    als_digest = hash_file(scan.als_path)
-    sz = _place(pool, scan.als_path, temp_dir / scan.als_path.name, use_hardlinks, als_digest)
+    # The project file itself (.als, .flp, …).
+    proj_digest = hash_file(scan.project_path)
+    sz = _place(pool, scan.project_path, temp_dir / scan.project_path.name, use_hardlinks, proj_digest)
     total_size += sz
-    placed[scan.als_path.name] = als_digest
-    record(scan.als_path.name, als_digest, sz, str(scan.als_path), True, False)
+    placed[scan.project_path.name] = proj_digest
+    record(scan.project_path.name, proj_digest, sz, str(scan.project_path), True, False)
 
     # Each resolved reference.
     for ref in scan.refs:
@@ -138,7 +138,9 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
     file_count = len(files)
     relinked_count = sum(1 for f in files if f["relinked"])
     manifest = {
+        "manifest_version": 1,
         "project_name": scan.name,
+        "daw": scan.daw_id,
         "timestamp": timestamp,
         "file_count": file_count,
         "total_size": total_size,

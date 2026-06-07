@@ -27,14 +27,20 @@ class ResolvedRef:
 
 @dataclass
 class ProjectScan:
-    """A discovered Ableton project and its resolved dependencies."""
-    als_path: Path
+    """A discovered DAW project and its resolved dependencies."""
+    project_path: Path                # the project file (.als, .flp, …)
     name: str
     project_dir: Path
     mtime: float
     size: int
-    project_id: str = ""  # stable identity from the .als path; distinguishes same-named projects
+    daw_id: str = "ableton"           # which DAW adapter owns this project
+    project_id: str = ""              # stable identity; distinguishes same-named projects
     refs: list[ResolvedRef] = field(default_factory=list)
+
+    @property
+    def als_path(self) -> Path:
+        """Deprecated alias for project_path (kept during the multi-DAW migration)."""
+        return self.project_path
 
     @property
     def missing(self) -> list[ResolvedRef]:

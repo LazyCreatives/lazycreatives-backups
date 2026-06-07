@@ -1,5 +1,6 @@
 export interface ProjectSummary {
   name: string;
+  daw: string;
   project_dir: string;
   als_path: string;
   present_count: number;
@@ -27,6 +28,7 @@ export interface Snapshot {
   label?: string | null;
   verified?: number;
   relinked_count?: number;
+  daw?: string;
 }
 export interface VerifyResult {
   ok: boolean;

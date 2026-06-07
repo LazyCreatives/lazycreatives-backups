@@ -119,8 +119,9 @@ def scan_summary(sources: list[Path], progress: ProgressCb = None,
     for p in scan_projects([Path(s) for s in sources], progress=progress, locate=locate):
         out.append({
             "name": p.name,
+            "daw": p.daw_id,
             "project_dir": str(p.project_dir),
-            "als_path": str(p.als_path),
+            "als_path": str(p.project_path),
             "present_count": sum(1 for r in p.refs if r.exists),
             "relinked_count": sum(1 for r in p.refs if r.exists and r.relinked),
             "missing_count": len(p.missing),
@@ -183,7 +184,7 @@ def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
             catalog.record_snapshot(
                 project_name=p.name, timestamp=timestamp, total_size=0,
                 file_count=0, status="error", missing=[], error=str(e), label=label,
-                project_id=p.project_id,
+                project_id=p.project_id, daw=p.daw_id,
             )
             error_count += 1
             _emit(progress, {"type": "project_error", "index": i,
@@ -205,7 +206,7 @@ def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
             dir=str(result.snapshot_dir), signature=signature,
             relinked_count=result.relinked_count,
             verified=1 if v["ok"] else 0, verified_at=timestamp,
-            project_id=p.project_id,
+            project_id=p.project_id, daw=p.daw_id,
         )
         ok_count += 1
         _emit(progress, {"type": "project_done", "index": i,

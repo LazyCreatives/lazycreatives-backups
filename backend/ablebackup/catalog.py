@@ -44,7 +44,7 @@ class Catalog:
         cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(snapshots)")}
         new = {"label": "TEXT", "dir": "TEXT", "signature": "TEXT",
                "relinked_count": "INTEGER", "verified": "INTEGER", "verified_at": "TEXT",
-               "project_id": "TEXT"}
+               "project_id": "TEXT", "daw": "TEXT"}
         for col, typ in new.items():
             if col not in cols:
                 self.conn.execute(f"ALTER TABLE snapshots ADD COLUMN {col} {typ}")
@@ -52,15 +52,16 @@ class Catalog:
     def record_snapshot(self, project_name, timestamp, total_size,
                         file_count, status, missing, error=None,
                         label=None, dir="", signature="", relinked_count=0,
-                        verified=0, verified_at=None, project_id=None) -> int:
+                        verified=0, verified_at=None, project_id=None,
+                        daw="ableton") -> int:
         with self._lock:
             cur = self.conn.execute(
                 "INSERT INTO snapshots "
                 "(project_name, timestamp, total_size, file_count, status, error, "
-                " label, dir, signature, relinked_count, verified, verified_at, project_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " label, dir, signature, relinked_count, verified, verified_at, project_id, daw) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (project_name, timestamp, total_size, file_count, status, error,
-                 label, dir, signature, relinked_count, verified, verified_at, project_id),
+                 label, dir, signature, relinked_count, verified, verified_at, project_id, daw),
             )
             sid = cur.lastrowid
             self.conn.executemany(

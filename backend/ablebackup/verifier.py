@@ -3,7 +3,7 @@ actually contains every file — and, when asked, that the bytes still match."""
 import json
 from pathlib import Path
 
-from ablebackup.als_parser import parse_als
+from ablebackup.daws.registry import adapter_for_id
 from ablebackup.hashing import hash_file
 from ablebackup.resolver import resolve_refs
 
@@ -58,11 +58,18 @@ def verify_snapshot(snapshot_dir, deep: bool = True) -> dict:
                 "logical_path": f["logical_path"], "source_path": f.get("source_path", ""),
             })
 
-    # Portability: would this .als open elsewhere using only the snapshot's files?
-    als = next(iter(sorted(snapshot_dir.glob("*.als"))), None)
-    if als is not None:
+    # Portability: would this project open elsewhere using only the snapshot's files?
+    # Re-parse via the adapter that wrote it (Ableton/.als, FL/.flp, …).
+    adapter = adapter_for_id(manifest.get("daw", "ableton"))
+    proj = None
+    if adapter is not None:
+        for ext in adapter.extensions:
+            proj = next(iter(sorted(snapshot_dir.glob(f"*{ext}"))), None)
+            if proj is not None:
+                break
+    if adapter is not None and proj is not None:
         try:
-            refs = resolve_refs(parse_als(als), snapshot_dir)
+            refs = resolve_refs(adapter.parse_project(proj), snapshot_dir)
             unresolved = [r.expected_path or r.name for r in refs if not r.exists]
             result["portable_ok"] = len(unresolved) == 0
             result["portable_missing"] = unresolved
