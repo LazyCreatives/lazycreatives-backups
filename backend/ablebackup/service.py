@@ -8,10 +8,18 @@ from typing import Callable, Optional
 
 from ablebackup.backup_engine import backup_project
 from ablebackup.catalog import Catalog
+from ablebackup.locator import default_libraries, make_locator
 from ablebackup.models import ProjectScan
 from ablebackup.scanner import scan_one, scan_projects
 
 ProgressCb = Optional[Callable[[dict], None]]
+
+
+def _build_locator(sources, libraries):
+    """A name->path locator over the user's libraries (default: Splice) + sources."""
+    roots = [Path(lib) for lib in (libraries or [])] or default_libraries()
+    roots += [Path(s) for s in sources]
+    return make_locator(roots)
 
 
 def default_timestamp() -> str:
@@ -91,19 +99,24 @@ def build_overview(catalog: Catalog, dest: str) -> dict:
     }
 
 
-def scan_summary(sources: list[Path], progress: ProgressCb = None) -> list[dict]:
+def scan_summary(sources: list[Path], progress: ProgressCb = None,
+                 find_missing: bool = False, libraries=None) -> list[dict]:
     """Scan sources and return JSON-serializable project summaries.
 
     When progress is given, emits scan_start/scan_progress/scan_done events so the
-    UI can show live scan progress instead of an indefinite spinner.
+    UI can show live scan progress instead of an indefinite spinner. When
+    find_missing is set, samples missing from their referenced path are searched
+    for (by filename) in the user's libraries + sources and relinked when found.
     """
+    locate = _build_locator(sources, libraries) if find_missing else None
     out = []
-    for p in scan_projects([Path(s) for s in sources], progress=progress):
+    for p in scan_projects([Path(s) for s in sources], progress=progress, locate=locate):
         out.append({
             "name": p.name,
             "project_dir": str(p.project_dir),
             "als_path": str(p.als_path),
             "present_count": sum(1 for r in p.refs if r.exists),
+            "relinked_count": sum(1 for r in p.refs if r.exists and r.relinked),
             "missing_count": len(p.missing),
             "missing": [r.expected_path or r.name for r in p.missing],
             "total_size": p.total_size,
@@ -119,7 +132,8 @@ def _emit(progress: ProgressCb, event: dict) -> None:
 def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
                timestamp: Optional[str] = None, progress: ProgressCb = None,
                als_paths: Optional[list[str]] = None, label: Optional[str] = None,
-               portable: bool = False, layout: str = "project_date") -> dict:
+               portable: bool = False, layout: str = "project_date",
+               find_missing: bool = False, libraries=None) -> dict:
     """Back up discovered projects to dest, recording history and emitting progress.
 
     When als_paths is given, only the projects whose .als matches are backed up
@@ -131,11 +145,12 @@ def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
     # Tell the UI we've started straight away — resolving projects can take a moment,
     # and a silent gap looks like nothing is happening.
     _emit(progress, {"type": "backup_preparing"})
+    locate = _build_locator(sources, libraries) if find_missing else None
     if als_paths is not None:
         # Scan only the chosen projects (fast) rather than re-walking every source.
-        projects = [scan_one(Path(a)) for a in als_paths if Path(a).exists()]
+        projects = [scan_one(Path(a), locate=locate) for a in als_paths if Path(a).exists()]
     else:
-        projects = scan_projects([Path(s) for s in sources])
+        projects = scan_projects([Path(s) for s in sources], locate=locate)
 
     last_sigs = catalog.latest_signatures()
     ok_count = 0

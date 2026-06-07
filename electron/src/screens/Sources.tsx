@@ -14,7 +14,7 @@ const PRESETS = [
 ];
 
 export function Sources() {
-  const [cfg, setCfg] = useState<Config>({ sources: [], dest: "", interval_minutes: 0 });
+  const [cfg, setCfg] = useState<Config>({ sources: [], dest: "", interval_minutes: 0, libraries: [] });
   const [saved, setSaved] = useState(false);
 
   useEffect(() => { api.getSettings().then(setCfg).catch(() => {}); }, []);

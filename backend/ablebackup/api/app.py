@@ -70,6 +70,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     @app.post("/api/scan", dependencies=[Depends(require_token)])
     def scan(req: ScanRequest):
         sources = _resolve_sources(req.sources)
+        cfg = app.state.catalog.get_setting("config") or {}
         hub = app.state.hub
 
         def progress(ev):
@@ -78,9 +79,12 @@ def create_app(token: str, db_path: Path) -> FastAPI:
             except RuntimeError:
                 pass  # no event loop bound (e.g. bare TestClient) — skip live ticks
 
-        return {"projects": scan_summary(sources, progress=progress)}
+        return {"projects": scan_summary(
+            sources, progress=progress, find_missing=req.find_missing,
+            libraries=cfg.get("libraries", []))}
 
-    async def _run_job(job_id, sources, dest, timestamp, als_paths, label, portable, layout):
+    async def _run_job(job_id, sources, dest, timestamp, als_paths, label,
+                       portable, layout, find_missing, libraries):
         hub = app.state.hub
         cat = app.state.catalog
 
@@ -90,7 +94,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         try:
             result = await asyncio.to_thread(
                 run_backup, sources, dest, cat, timestamp, progress, als_paths,
-                label, portable, layout)
+                label, portable, layout, find_missing, libraries)
             app.state.jobs[job_id] = {"state": "done", "result": result}
         except Exception as e:  # pragma: no cover - defensive
             app.state.jobs[job_id] = {"state": "error", "error": str(e)}
@@ -110,7 +114,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         app.state.jobs[job_id] = {"state": "running"}
         asyncio.create_task(
             _run_job(job_id, sources, Path(dest), timestamp, req.als_paths,
-                     req.label, req.portable, req.layout))
+                     req.label, req.portable, req.layout, req.find_missing,
+                     saved.get("libraries", [])))
         return {"job_id": job_id, "state": "running"}
 
     @app.get("/api/jobs/{job_id}", dependencies=[Depends(require_token)])

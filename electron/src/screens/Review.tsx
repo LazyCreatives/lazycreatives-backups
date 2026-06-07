@@ -41,6 +41,7 @@ export function Review({ pending, onStarted, onCancel }: {
         als_paths: pending!.als_paths,
         label: label.trim() || undefined,
         portable, layout,
+        find_missing: pending!.findMissing,
       });
       onStarted();
     } catch (e: any) { setErr(e.message); setStarting(false); }
@@ -99,6 +100,12 @@ export function Review({ pending, onStarted, onCancel }: {
         <input type="text" className="input" value={label} onChange={(e) => setLabel(e.target.value)}
           placeholder="e.g. pre-mixdown" style={{ width: "100%" }} />
       </div>
+
+      {pending.findMissing && (
+        <p className="sub" style={{ fontSize: 12.5, margin: "0 0 14px" }}>
+          ↻ Missing samples will be searched for in your library and included.
+        </p>
+      )}
 
       {err && <div className="card" style={{ borderColor: "var(--danger)", color: "var(--danger)", marginBottom: 14 }}>{err}</div>}
 

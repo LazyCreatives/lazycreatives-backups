@@ -18,6 +18,7 @@ export function Scan({ projects, onProjects, scan, onReview }: {
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [findMissing, setFindMissing] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -27,7 +28,7 @@ export function Scan({ projects, onProjects, scan, onReview }: {
 
   async function runScan() {
     setBusy(true); setErr(null);
-    try { onProjects(await api.scan()); }
+    try { onProjects(await api.scan(undefined, findMissing)); }
     catch (e: any) { setErr(e.message); }
     finally { setBusy(false); }
   }
@@ -38,8 +39,10 @@ export function Scan({ projects, onProjects, scan, onReview }: {
       als_paths: chosen.map((p) => p.als_path),
       count: chosen.length,
       size: chosen.reduce((a, p) => a + p.total_size, 0),
+      findMissing,
     });
   }
+  const relinkedTotal = projects ? projects.reduce((a, p) => a + (p.relinked_count || 0), 0) : 0;
 
   function toggle(als: string) {
     setSelected((s) => { const n = new Set(s); n.has(als) ? n.delete(als) : n.add(als); return n; });
@@ -78,6 +81,12 @@ export function Scan({ projects, onProjects, scan, onReview }: {
 
       {err && <div className="card" style={{ borderColor: "var(--danger)", color: "var(--danger)", marginBottom: 16 }}>{err}</div>}
 
+      <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 2px 14px", color: "var(--text-dim)", fontSize: 13, cursor: "pointer" }}>
+        <input type="checkbox" checked={findMissing} onChange={(e) => setFindMissing(e.target.checked)} />
+        Find missing samples in my Splice library
+        {relinkedTotal > 0 && <span style={{ color: "var(--accent-2)" }}>· {relinkedTotal} relinked</span>}
+      </label>
+
       {scanning && (
         <div className="card" style={{ marginBottom: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 9 }}>
@@ -115,6 +124,11 @@ export function Scan({ projects, onProjects, scan, onReview }: {
                 </span>
               </div>
               <div className="sub" style={{ margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.project_dir}</div>
+              {p.relinked_count > 0 && (
+                <div style={{ marginTop: 5, color: "var(--accent-2)", fontSize: 12 }}>
+                  ✓ {p.relinked_count} relinked from library
+                </div>
+              )}
               {p.missing_count > 0 && (
                 <div style={{ marginTop: 6 }}>
                   <button className="linkbtn badge-warn" onClick={() => toggleExpand(p.als_path)}>

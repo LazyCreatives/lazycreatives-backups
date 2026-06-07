@@ -15,6 +15,7 @@ export interface PendingBackup {
   als_paths: string[];
   count: number;
   size: number;
+  findMissing: boolean;
 }
 
 export default function App() {

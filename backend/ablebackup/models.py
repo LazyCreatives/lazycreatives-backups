@@ -20,6 +20,7 @@ class ResolvedRef:
     inside_project: bool
     size: int = 0
     mtime: float = 0.0
+    relinked: bool = False                 # found in a library, not at its referenced path
     expected_path: Optional[str] = None   # relative path we looked for, when missing
 
 

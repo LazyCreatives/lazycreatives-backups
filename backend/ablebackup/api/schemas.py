@@ -6,10 +6,12 @@ class Config(BaseModel):
     sources: list[str] = []
     dest: str = ""
     interval_minutes: int = 0  # 0 = scheduler disabled
+    libraries: list[str] = []  # sample libraries to search for missing samples
 
 
 class ScanRequest(BaseModel):
     sources: list[str] | None = None  # falls back to saved config when omitted
+    find_missing: bool = False        # relink missing samples from libraries
 
 
 class BackupRequest(BaseModel):
@@ -20,3 +22,4 @@ class BackupRequest(BaseModel):
     label: str | None = None            # optional name saved with the snapshot
     portable: bool = False              # collect + rewrite so it opens anywhere
     layout: str = "project_date"        # on-disk organization: project_date | date_project
+    find_missing: bool = False          # relink missing samples from libraries

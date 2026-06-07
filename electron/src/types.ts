@@ -3,6 +3,7 @@ export interface ProjectSummary {
   project_dir: string;
   als_path: string;
   present_count: number;
+  relinked_count: number;
   missing_count: number;
   missing: string[];
   total_size: number;
@@ -11,6 +12,7 @@ export interface Config {
   sources: string[];
   dest: string;
   interval_minutes: number;
+  libraries: string[];
 }
 export interface Snapshot {
   id: number;

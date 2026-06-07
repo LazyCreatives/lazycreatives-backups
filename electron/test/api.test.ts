@@ -17,7 +17,7 @@ describe("api client", () => {
     const [url, opts] = fetchMock.mock.calls[0];
     expect(url).toBe("http://127.0.0.1:9000/api/scan");
     expect(opts.headers["X-Auth-Token"]).toBe("T");
-    expect(JSON.parse(opts.body)).toEqual({ sources: ["C:/Music"] });
+    expect(JSON.parse(opts.body)).toEqual({ sources: ["C:/Music"], find_missing: false });
   });
 
   it("throws on non-ok responses", async () => {

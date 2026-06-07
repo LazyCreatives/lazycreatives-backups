@@ -62,6 +62,27 @@ def test_dedupes_repeated_sample_refs(tmp_path):
     assert resolved[0].size == 4
 
 
+def test_relinks_missing_ref_via_locator(tmp_path):
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    # The project points at a sample that no longer exists there...
+    refs = [FileRef(name="kick.wav", absolute_path="/old/place/kick.wav")]
+    # ...but a copy lives in the user's library.
+    lib = tmp_path / "Splice"
+    lib.mkdir()
+    (lib / "kick.wav").write_bytes(b"kickkick")
+    from ablebackup.locator import make_locator
+    locate = make_locator([lib])
+
+    # without a locator -> missing
+    assert resolve_refs(refs, project_dir=proj)[0].exists is False
+    # with a locator -> found and relinked
+    r = resolve_refs(refs, project_dir=proj, locate=locate)[0]
+    assert r.exists is True
+    assert r.relinked is True
+    assert r.resolved_path == lib / "kick.wav"
+
+
 def test_dedupes_repeated_missing_refs(tmp_path):
     proj = tmp_path / "proj"
     proj.mkdir()

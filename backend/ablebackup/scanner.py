@@ -24,11 +24,11 @@ def find_als(roots: list[Path]) -> list[Path]:
     return out
 
 
-def scan_one(als_path: Path) -> ProjectScan:
+def scan_one(als_path: Path, locate=None) -> ProjectScan:
     """Parse + resolve a single project (the expensive part of a scan)."""
     project_dir = als_path.parent
     stat = als_path.stat()
-    refs = resolve_refs(parse_als(als_path), project_dir)
+    refs = resolve_refs(parse_als(als_path), project_dir, locate=locate)
     return ProjectScan(
         als_path=als_path,
         name=als_path.stem,
@@ -39,7 +39,8 @@ def scan_one(als_path: Path) -> ProjectScan:
     )
 
 
-def scan_projects(roots: list[Path], progress: ProgressCb = None) -> list[ProjectScan]:
+def scan_projects(roots: list[Path], progress: ProgressCb = None,
+                  locate=None) -> list[ProjectScan]:
     """Discover and resolve every project under the roots.
 
     Counting the .als up front lets us emit a real progress bar (scan_start/total,
@@ -53,7 +54,7 @@ def scan_projects(roots: list[Path], progress: ProgressCb = None) -> list[Projec
     for i, als_path in enumerate(als_files):
         name = als_path.stem
         try:
-            scan = scan_one(als_path)
+            scan = scan_one(als_path, locate=locate)
             projects.append(scan)
             name = scan.name
         except (OSError, EOFError, ParseError):

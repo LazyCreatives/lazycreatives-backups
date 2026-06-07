@@ -26,12 +26,13 @@ export function makeApi() {
   return {
     async getSettings(): Promise<Config> { return req("GET", "/api/settings"); },
     async saveSettings(c: Config): Promise<Config> { return req("PUT", "/api/settings", c); },
-    async scan(sources?: string[]): Promise<ProjectSummary[]> {
-      return (await req("POST", "/api/scan", { sources })).projects;
+    async scan(sources?: string[], findMissing = false): Promise<ProjectSummary[]> {
+      return (await req("POST", "/api/scan", { sources, find_missing: findMissing })).projects;
     },
     async startBackup(opts: {
       sources?: string[]; dest?: string; timestamp?: string; als_paths?: string[];
       label?: string; portable?: boolean; layout?: "project_date" | "date_project";
+      find_missing?: boolean;
     }): Promise<{ job_id: string }> {
       return req("POST", "/api/backup", opts);
     },
