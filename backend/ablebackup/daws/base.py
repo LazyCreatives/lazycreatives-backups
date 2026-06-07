@@ -5,6 +5,11 @@ from typing import Iterable, Protocol
 
 from ablebackup.models import FileRef
 
+# Every DAW's destination subfolder — scanners skip these so a scan of the dest
+# (or a source that overlaps it) never descends into prior backups.
+BACKUP_ROOTS = {"AbletonBackups", "FLStudioBackups", "ReaperBackups"}
+COMMON_SKIP = {"Backup", "Backups"} | BACKUP_ROOTS
+
 
 class DawAdapter(Protocol):
     daw_id: str                      # 'ableton' | 'flstudio' — stored in catalog + manifest

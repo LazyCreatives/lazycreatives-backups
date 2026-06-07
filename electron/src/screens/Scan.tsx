@@ -6,7 +6,7 @@ import type { PendingBackup } from "../App";
 import { Button } from "../components/Button";
 import { PageHeader } from "../components/PageHeader";
 import { ProgressBar } from "../components/ProgressBar";
-import { fmtSize } from "../format";
+import { fmtSize, dawLabel } from "../format";
 
 const api = makeApi();
 
@@ -132,7 +132,7 @@ export function Scan({ projects, onProjects, scan, onReview }: {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span className="daw-badge">{p.daw === "flstudio" ? "FL" : "Live"}</span>{p.name}
+                  <span className="daw-badge">{dawLabel(p.daw)}</span>{p.name}
                 </strong>
                 <span className="sub mono" style={{ margin: 0, whiteSpace: "nowrap" }}>
                   {p.present_count} sample{p.present_count === 1 ? "" : "s"} · {fmtSize(p.total_size)}

@@ -140,7 +140,8 @@ class Catalog:
                 "SELECT project_name, "
                 "COUNT(*) AS snapshot_count, "
                 "MAX(timestamp) AS last_timestamp, "
-                "SUM(total_size) AS total_size "
+                "SUM(total_size) AS total_size, "
+                "MAX(daw) AS daw "
                 "FROM snapshots GROUP BY project_name ORDER BY project_name"
             ).fetchall()
         return [dict(r) for r in rows]

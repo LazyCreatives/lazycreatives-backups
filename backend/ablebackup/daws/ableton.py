@@ -2,11 +2,11 @@
 from pathlib import Path
 
 from ablebackup.als_parser import parse_als
-from ablebackup.daws.base import walk_for_extensions
+from ablebackup.daws.base import COMMON_SKIP, walk_for_extensions
 from ablebackup.locator import default_libraries as _splice_libraries
 from ablebackup.models import FileRef
 
-SKIP_DIRS = {"Backup", "Backups", "AbletonBackups", "FLStudioBackups"}
+SKIP_DIRS = COMMON_SKIP
 
 
 class AbletonAdapter:

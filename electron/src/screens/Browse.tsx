@@ -4,7 +4,7 @@ import type { ProjectRow, Snapshot, VerifyResult } from "../types";
 import { StatusPill } from "../components/StatusPill";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/Button";
-import { fmtSize, fmtDate, shortPath } from "../format";
+import { fmtSize, fmtDate, shortPath, dawLabel } from "../format";
 
 const api = makeApi();
 
@@ -49,7 +49,10 @@ export function Browse() {
                 borderColor: active === p.project_name ? "var(--accent)" : "var(--border)",
               }}>
               <div style={{ minWidth: 0 }}>
-                <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.project_name}</strong>
+                <strong style={{ display: "flex", alignItems: "center", gap: 7, overflow: "hidden" }}>
+                  <span className="daw-badge">{dawLabel(p.daw)}</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.project_name}</span>
+                </strong>
                 <span className="sub" style={{ margin: 0 }}>
                   {p.snapshot_count} snapshot{p.snapshot_count === 1 ? "" : "s"} · {fmtSize(p.total_size)}
                 </span>

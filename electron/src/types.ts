@@ -46,6 +46,7 @@ export interface ProjectRow {
   snapshot_count: number;
   last_timestamp: string;
   total_size: number;
+  daw?: string;
 }
 export interface AttentionItem {
   project_name: string;

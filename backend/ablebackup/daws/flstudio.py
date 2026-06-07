@@ -6,11 +6,11 @@ skipped by the scanner rather than crashing the whole scan.
 """
 from pathlib import Path
 
-from ablebackup.daws.base import walk_for_extensions
+from ablebackup.daws.base import COMMON_SKIP, walk_for_extensions
 from ablebackup.daws.flp import read_sample_paths
 from ablebackup.models import FileRef
 
-SKIP_DIRS = {"Backup", "Backups", "AbletonBackups", "FLStudioBackups"}
+SKIP_DIRS = COMMON_SKIP
 
 
 class FlStudioAdapter:

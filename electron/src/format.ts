@@ -39,6 +39,12 @@ export function fmtDate(ts: string | null | undefined): string {
   return `${dt.toLocaleDateString([], opts)}, ${time}`;
 }
 
+export function dawLabel(daw?: string): string {
+  return daw === "flstudio" ? "FL"
+    : daw === "reaper" ? "RPR"
+    : daw === "ableton" ? "Live" : "DAW";
+}
+
 export function fmtInterval(min: number): string {
   if (!min || min <= 0) return "off";
   if (min % 1440 === 0) { const d = min / 1440; return `every ${d} day${d > 1 ? "s" : ""}`; }
