@@ -4,6 +4,7 @@ import type { ProjectRow, Snapshot, VerifyResult } from "../types";
 import { StatusPill } from "../components/StatusPill";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/Button";
+import { VerifiedSeal } from "../components/VerifiedSeal";
 import { fmtSize, fmtDate, shortPath, dawLabel } from "../format";
 
 const api = makeApi();
@@ -134,9 +135,17 @@ export function Browse() {
                       <div style={{ color: "var(--warn)", fontSize: 12.5 }}>{r.error}</div>
                     ) : (
                       <>
-                        <div style={{ color: r.ok ? "var(--accent-2)" : "var(--danger)", fontWeight: 600, fontSize: 13 }}>
-                          {r.ok ? `✓ Verified — ${r.present}/${r.checked} files present, contents match` : `⚠ Problems found`}
-                        </div>
+                        {r.ok ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <VerifiedSeal size={46} />
+                            <div>
+                              <div style={{ color: "var(--accent-2)", fontWeight: 700, fontSize: 14 }}>Verified</div>
+                              <div className="sub" style={{ fontSize: 12, margin: 0 }}>{r.present}/{r.checked} files present, contents match</div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ color: "var(--danger)", fontWeight: 600, fontSize: 13 }}>⚠ Problems found</div>
+                        )}
                         {r.missing_files.length > 0 && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 4 }}>Missing in backup: {r.missing_files.length}</div>}
                         {r.bad_files.length > 0 && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 4 }}>Corrupted/changed: {r.bad_files.length}</div>}
                         <div className="sub" style={{ fontSize: 12, marginTop: 6 }}>

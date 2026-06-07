@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { makeApi } from "../api";
 import type { ProjectSummary } from "../types";
 import type { ScanProgress } from "../useProgress";
@@ -102,8 +103,9 @@ export function Scan({ projects, onProjects, scan, onReview }: {
 
       {scanning && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 9 }}>
-            <span>Scanning projects…</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
+            <span className="sonar"><span /><span /><span className="sonar__dot" /></span>
+            <span style={{ flex: 1 }}>Scanning projects…</span>
             <span className="sub mono" style={{ margin: 0 }}>
               {scan.total ? `${scan.done} / ${scan.total}` : "starting…"}
             </span>
@@ -123,11 +125,12 @@ export function Scan({ projects, onProjects, scan, onReview }: {
         </label>
       )}
 
-      {projects && projects.map((p) => {
+      {projects && projects.map((p, i) => {
         const isSel = selected.has(p.als_path);
         const isOpen = expanded.has(p.als_path);
         return (
-          <div key={p.als_path} className="row" style={{ alignItems: "flex-start", opacity: isSel ? 1 : 0.5 }}>
+          <div key={p.als_path} className="row scanrow--enter"
+            style={{ "--i": Math.min(i, 18), alignItems: "flex-start", opacity: isSel ? 1 : 0.5 } as CSSProperties}>
             <input type="checkbox" checked={isSel} onChange={() => toggle(p.als_path)} style={{ marginTop: 3 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>

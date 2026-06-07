@@ -147,6 +147,82 @@ select { cursor: pointer; }
 .empty { text-align: center; color: var(--text-dim); padding: 48px 20px; }
 .empty__icon { font-size: 30px; opacity: 0.5; margin-bottom: 8px; }
 
+/* =====================================================================
+   Animations (bold & playful, pure CSS). Respect reduced-motion.
+   ===================================================================== */
+
+/* --- Verified seal: badge stamps in, rays burst, check draws --- */
+.seal { position: relative; width: 64px; height: 64px; display: grid; place-items: center; }
+.seal__badge {
+  width: 56px; height: 56px;
+  animation: sealStamp 0.55s cubic-bezier(0.16, 1.4, 0.4, 1) both;
+  filter: drop-shadow(0 0 0 rgba(70, 214, 160, 0));
+}
+.seal--ok .seal__badge { animation-name: sealStamp, sealGlow; animation-duration: 0.55s, 1.1s; }
+.seal__disc { fill: var(--ok-soft); stroke: var(--accent-2); stroke-width: 2.5; }
+.seal__check {
+  fill: none; stroke: var(--accent-2); stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 40; stroke-dashoffset: 40;
+  animation: sealDraw 0.4s 0.32s cubic-bezier(0.5, 0, 0.2, 1) forwards;
+}
+.seal__ray {
+  position: absolute; inset: 0; margin: auto; width: 64px; height: 64px; border-radius: 50%;
+  border: 2px solid var(--accent-2); opacity: 0;
+  animation: sealBurst 0.7s 0.18s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.seal__ray:nth-child(2) { animation-delay: 0.30s; border-color: var(--accent); }
+@keyframes sealStamp {
+  0% { transform: scale(0) rotate(-22deg); opacity: 0; }
+  60% { transform: scale(1.18) rotate(4deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+@keyframes sealDraw { to { stroke-dashoffset: 0; } }
+@keyframes sealBurst {
+  0% { transform: scale(0.5); opacity: 0.75; }
+  100% { transform: scale(2.1); opacity: 0; }
+}
+@keyframes sealGlow {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(70, 214, 160, 0)); }
+  45% { filter: drop-shadow(0 0 14px rgba(70, 214, 160, 0.7)); }
+}
+
+/* --- dashboard tiles pop in, staggered by --i --- */
+.tile--enter { animation: tilePop 0.5s cubic-bezier(0.18, 1.35, 0.45, 1) both; animation-delay: calc(var(--i, 0) * 70ms); }
+@keyframes tilePop {
+  0% { transform: translateY(16px) scale(0.94); opacity: 0; }
+  65% { transform: translateY(-3px) scale(1.02); }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* --- scan: sonar sweep while working + rows pop in as found --- */
+.sonar { position: relative; width: 18px; height: 18px; flex-shrink: 0; }
+.sonar span {
+  position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--accent);
+  animation: sonarPing 1.4s cubic-bezier(0.2, 0.6, 0.3, 1) infinite; opacity: 0;
+}
+.sonar span:nth-child(2) { animation-delay: 0.7s; }
+.sonar__dot { position: absolute; inset: 6px; border-radius: 50%; background: var(--accent); }
+@keyframes sonarPing { 0% { transform: scale(0.5); opacity: 0.7; } 100% { transform: scale(2.6); opacity: 0; } }
+.scanrow--enter { animation: scanPop 0.4s cubic-bezier(0.18, 1.3, 0.5, 1) both; animation-delay: calc(var(--i, 0) * 28ms); }
+@keyframes scanPop {
+  0% { transform: translateX(-10px) scale(0.99); opacity: 0; }
+  100% { transform: translateX(0) scale(1); opacity: 1; }
+}
+
+/* --- shimmer for not-yet-computed values --- */
+.shimmer {
+  background: linear-gradient(100deg, var(--text-faint) 30%, var(--text-dim) 50%, var(--text-faint) 70%);
+  background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: shimmer 1.3s linear infinite;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .seal__badge, .seal__check, .seal__ray, .tile--enter, .scanrow--enter, .sonar span, .shimmer {
+    animation: none !important; opacity: 1 !important; stroke-dashoffset: 0 !important; transform: none !important;
+  }
+}
+
 /* ---- first-run splash / wizard ---- */
 .splash {
   height: 100%; display: grid; place-items: center; padding: 24px;

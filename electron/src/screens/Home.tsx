@@ -4,13 +4,17 @@ import type { Overview } from "../types";
 import type { BackupProgress } from "../useProgress";
 import { Button } from "../components/Button";
 import { PageHeader } from "../components/PageHeader";
+import { CountUp } from "../components/CountUp";
 import { fmtSize, fmtDate, fmtInterval, fmtClock, shortPath } from "../format";
+import type { ReactNode, CSSProperties } from "react";
 
 const api = makeApi();
 
-function Tile({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: string }) {
+function Tile({ label, value, hint, tone, index = 0 }: {
+  label: string; value: ReactNode; hint?: string; tone?: string; index?: number;
+}) {
   return (
-    <div className="tile">
+    <div className="tile tile--enter" style={{ "--i": index } as CSSProperties}>
       <div className="tile__label">{label}</div>
       <div className="tile__value" style={{ color: tone }}>{value}</div>
       {hint && <div className="tile__hint">{hint}</div>}
@@ -82,10 +86,17 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress }: 
       ) : (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 18 }}>
-            <Tile label="Protected" value={`${ov.projects_protected} projects`} hint={`${ov.snapshot_count} snapshots`} />
-            <Tile label="On NAS" value={ov.pool_known ? fmtSize(ov.actual_size) : "calculating…"} hint={ov.nas.reachable ? `${fmtSize(ov.nas.free_bytes)} free` : "NAS offline"} />
-            <Tile label="Saved by dedup" value={ov.pool_known ? fmtSize(ov.saved_bytes) : "…"} hint={ov.pool_known && savedPct > 0 ? `${savedPct}% smaller` : "—"} tone="var(--accent-2)" />
-            <Tile label="Last backup" value={fmtDate(ov.last_run)} hint={ov.last_run_ok ? "✓ all ok" : "⚠ check results"} tone={ov.last_run_ok ? undefined : "var(--warn)"} />
+            <Tile index={0} label="Protected"
+              value={<CountUp value={ov.projects_protected} format={(n) => `${Math.round(n)} projects`} />}
+              hint={`${ov.snapshot_count} snapshots`} />
+            <Tile index={1} label="On NAS"
+              value={ov.pool_known ? <CountUp value={ov.actual_size} format={fmtSize} /> : <span className="shimmer">calculating…</span>}
+              hint={ov.nas.reachable ? `${fmtSize(ov.nas.free_bytes)} free` : "NAS offline"} />
+            <Tile index={2} label="Saved by dedup"
+              value={ov.pool_known ? <CountUp value={ov.saved_bytes} format={fmtSize} /> : <span className="shimmer">…</span>}
+              hint={ov.pool_known && savedPct > 0 ? `${savedPct}% smaller` : "—"} tone="var(--accent-2)" />
+            <Tile index={3} label="Last backup" value={fmtDate(ov.last_run)}
+              hint={ov.last_run_ok ? "✓ all ok" : "⚠ check results"} tone={ov.last_run_ok ? undefined : "var(--warn)"} />
           </div>
 
           <div className="card" style={{ marginBottom: 18, borderColor: ov.attention.length ? "var(--warn)" : "var(--border)" }}>
