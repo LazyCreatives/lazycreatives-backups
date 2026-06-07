@@ -3,6 +3,8 @@ import type { BackupProgress } from "../useProgress";
 import { ProgressBar } from "../components/ProgressBar";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/Button";
+import { VerifiedSeal } from "../components/VerifiedSeal";
+import { CountUp } from "../components/CountUp";
 import { makeApi } from "../api";
 import type { Snapshot } from "../types";
 import { fmtDate } from "../format";
@@ -63,6 +65,19 @@ export function Backup({ progress: p, jobId }: { progress: BackupProgress; jobId
         </div>
       ) : (
         <>
+          {p.done && !p.cancelled && (
+            <div className="card celebrate" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 16 }}>
+              <VerifiedSeal size={54} />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16, color: "var(--accent-2)" }}>Backed up &amp; verified</div>
+                <div className="sub" style={{ margin: "4px 0 0" }}>
+                  <CountUp value={p.completed} format={(n) => `${Math.round(n)}`} /> project{p.completed === 1 ? "" : "s"} protected
+                  {p.skipped > 0 ? ` · ${p.skipped} unchanged` : ""}
+                  {p.errors > 0 ? ` · ${p.errors} error(s)` : ""}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="card" style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 9 }}>
               <span className="mono">{p.preparing ? "Preparing…" : `${doneCount} / ${p.total}`}</span>

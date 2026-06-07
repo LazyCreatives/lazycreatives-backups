@@ -27,7 +27,9 @@ export function Nav({ tab, onNavigate, busy, flowActive }: {
   return (
     <nav className="nav">
       <div className="nav__brand">
-        <div className="nav__logo">LC</div>
+        <div className="nav__logo" title="LazyCreatives Backups">
+          <span className={`eq${busy ? " eq--on" : ""}`} aria-hidden><i /><i /><i /><i /></span>
+        </div>
         <span className="nav__brandname">LazyCreatives Backups</span>
       </div>
       {ITEMS.map((it) => (
