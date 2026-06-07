@@ -3,6 +3,7 @@ import { makeApi } from "../api";
 import type { Overview } from "../types";
 import type { Screen } from "../App";
 import { Button } from "../components/Button";
+import { PageHeader } from "../components/PageHeader";
 import { fmtSize, fmtDate, fmtInterval, shortPath } from "../format";
 
 const api = makeApi();
@@ -11,10 +12,10 @@ function Tile({ label, value, hint, tone }: {
   label: string; value: string; hint?: string; tone?: string;
 }) {
   return (
-    <div className="card" style={{ padding: 16 }}>
-      <div style={{ fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase", color: "var(--text-dim)" }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, marginTop: 6, color: tone }}>{value}</div>
-      {hint && <div className="sub" style={{ margin: "2px 0 0" }}>{hint}</div>}
+    <div className="tile">
+      <div className="tile__label">{label}</div>
+      <div className="tile__value" style={{ color: tone }}>{value}</div>
+      {hint && <div className="tile__hint">{hint}</div>}
     </div>
   );
 }
@@ -23,15 +24,14 @@ export function Dashboard({ onNavigate }: { onNavigate: (s: Screen) => void }) {
   const [ov, setOv] = useState<Overview | null>(null);
   useEffect(() => { api.overview().then(setOv).catch(() => {}); }, []);
 
-  if (!ov) return (<><h1>Dashboard</h1><p className="sub">Loading…</p></>);
+  if (!ov) return (<><PageHeader title="Dashboard" subtitle="Loading…" /></>);
 
   const savedPct = ov.logical_size > 0 ? Math.round((ov.saved_bytes / ov.logical_size) * 100) : 0;
   const empty = ov.snapshot_count === 0;
 
   return (
     <>
-      <h1>Dashboard</h1>
-      <p className="sub">Your Ableton projects, backed up.</p>
+      <PageHeader title="Dashboard" subtitle="Your Ableton projects, backed up." />
 
       {empty ? (
         <div className="card" style={{ marginBottom: 18 }}>

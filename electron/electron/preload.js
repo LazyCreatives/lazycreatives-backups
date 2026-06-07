@@ -9,4 +9,5 @@ contextBridge.exposeInMainWorld("ablebackup", {
   token: argValue("--ablebackup-token"),
   port: argValue("--ablebackup-port"),
   pickFolder: () => ipcRenderer.invoke("pick-folder"),
+  revealPath: (target) => ipcRenderer.invoke("reveal-path", target),
 });

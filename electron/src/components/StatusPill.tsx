@@ -1,10 +1,6 @@
 export function StatusPill({ status }: { status: string }) {
-  const map: Record<string, string> = { ok: "var(--accent-2)", error: "var(--danger)", running: "var(--warn)" };
-  const c = map[status] ?? "var(--text-dim)";
-  return (
-    <span style={{
-      color: c, border: `1px solid ${c}`, borderRadius: 999,
-      padding: "2px 10px", fontSize: 12, fontWeight: 600, textTransform: "capitalize",
-    }}>{status}</span>
-  );
+  const cls = status === "ok" ? "pill pill--ok"
+    : status === "error" ? "pill pill--error"
+    : status === "running" ? "pill pill--running" : "pill";
+  return <span className={cls}>{status}</span>;
 }
