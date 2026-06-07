@@ -73,11 +73,27 @@ async function startSidecar({ backendDir, dbPath, pythonCmd = "python", command,
     // Lead a new process group (POSIX) so we can signal the whole subtree on quit.
     detached: !IS_WIN,
   });
+  let stderrBuf = "";
   proc.stdout.on("data", (d) => console.log("[sidecar]", d.toString().trim()));
-  proc.stderr.on("data", (d) => console.error("[sidecar]", d.toString().trim()));
+  proc.stderr.on("data", (d) => {
+    const s = d.toString();
+    stderrBuf = (stderrBuf + s).slice(-4000); // keep the last ~4KB for diagnostics
+    console.error("[sidecar]", s.trim());
+  });
   const sidecar = { proc, token, port, stopped: false };
   proc.on("exit", () => { sidecar.stopped = true; });
-  await waitForHealth(port);
+
+  // A spawn failure (missing/quarantined binary, wrong arch, EACCES) emits an
+  // 'error' event — turn it into a rejection so the caller's try/catch can show a
+  // dialog instead of the app dying silently with no window.
+  const spawnError = new Promise((_, reject) => {
+    proc.on("error", (e) => reject(new Error(`could not start the backend: ${e.message}`)));
+  });
+  try {
+    await Promise.race([waitForHealth(port), spawnError]);
+  } catch (e) {
+    throw new Error(`${e.message}${stderrBuf ? `\n\n--- backend output ---\n${stderrBuf}` : ""}`);
+  }
   return sidecar;
 }
 

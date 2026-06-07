@@ -44,8 +44,12 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     # OPTIONS requests. Auth is via the X-Auth-Token header (not cookies), so it is
     # safe to allow all origins on this localhost-only server.
     app.add_middleware(
+        # Localhost-only service: allow just the renderer's real origins — the dev
+        # Vite server and the packaged file:// renderer (which sends Origin: null) —
+        # instead of "*", so a random web page can't probe the API. Auth is still the
+        # real boundary (every /api route requires the token).
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "null"],
         allow_methods=["*"],
         allow_headers=["*"],
     )

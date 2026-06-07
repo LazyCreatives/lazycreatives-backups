@@ -6,15 +6,20 @@
 #
 # -> backend/dist/ablebackup-sidecar/ablebackup-sidecar  (electron-builder copies
 #    this folder into the app's Resources/sidecar; main.js runs it when packaged).
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 datas, binaries, hiddenimports = [], [], []
 for pkg in ("uvicorn", "fastapi", "starlette", "apscheduler", "defusedxml",
-            "websockets", "pydantic", "ablebackup"):
+            "websockets", "pydantic"):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b
     hiddenimports += h
+
+# Bundle our own package as BYTECODE only (collect_submodules), NOT via collect_all
+# — collect_all would also ship every .py as readable source in _internal/, exposing
+# the licensing logic + keys. The bytecode goes into the PYZ; no plaintext source.
+hiddenimports += collect_submodules("ablebackup")
 
 a = Analysis(
     ["ablebackup/server.py"],

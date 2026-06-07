@@ -36,4 +36,6 @@ def test_cors_preflight_is_allowed(tmp_path):
         "Access-Control-Request-Headers": "x-auth-token",
     })
     assert r.status_code == 200
-    assert r.headers["access-control-allow-origin"] == "*"
+    # CORS is now scoped to the renderer's real origins (not "*"), so it echoes back
+    # the specific allowed origin.
+    assert r.headers["access-control-allow-origin"] == "http://localhost:5173"
