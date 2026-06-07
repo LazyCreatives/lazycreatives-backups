@@ -69,7 +69,7 @@ export interface Overview {
   last_run_ok: boolean;
   attention: AttentionItem[];
   nas: NasStatus;
-  schedule: { enabled: boolean; interval_minutes: number };
+  schedule: { enabled: boolean; interval_minutes: number; next_run?: string | null };
 }
 export interface JobStatus {
   state: "running" | "done" | "error";

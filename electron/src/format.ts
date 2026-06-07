@@ -46,6 +46,13 @@ export function dawLabel(daw?: string): string {
     : daw === "ableton" ? "Live" : "DAW";
 }
 
+export function fmtClock(iso?: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export function fmtInterval(min: number): string {
   if (!min || min <= 0) return "off";
   if (min % 1440 === 0) { const d = min / 1440; return `every ${d} day${d > 1 ? "s" : ""}`; }

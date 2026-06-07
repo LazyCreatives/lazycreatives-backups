@@ -52,4 +52,4 @@ def test_overview_nas_reachable_and_dedup(tmp_path):
     assert data["nas"]["reachable"] is True
     assert data["actual_size"] == 200
     assert data["saved_bytes"] == 800  # logical 1000 - actual 200
-    assert data["schedule"] == {"enabled": True, "interval_minutes": 60}
+    assert data["schedule"] == {"enabled": True, "interval_minutes": 60, "next_run": None}
