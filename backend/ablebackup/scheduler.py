@@ -6,7 +6,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from ablebackup import entitlement
 from ablebackup.catalog import Catalog
-from ablebackup.service import run_backup
+from ablebackup.service import backup_in_progress, run_backup
 
 _JOB_ID = "auto_backup"
 
@@ -42,7 +42,9 @@ class BackupScheduler:
         dest = config.get("dest", "")
         if not sources or not dest:
             return  # nothing configured yet
-        tier = (self._catalog.get_setting("entitlement") or {}).get("tier", "free")
+        if backup_in_progress():
+            return  # a manual/previous backup is running — skip this auto tick
+        tier = entitlement.verify_stored(self._catalog.get_setting("entitlement") or {})
         mirrors = config.get("mirrors", []) if entitlement.allows(tier, "cloud_backup") else []
 
         def progress(ev):

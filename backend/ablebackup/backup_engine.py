@@ -3,11 +3,12 @@ import json
 import os
 import shutil
 import tempfile
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
 from ablebackup.daws.registry import adapter_for_id
-from ablebackup.hashing import hash_file
+from ablebackup.hashing import hash_copy, hash_file
 from ablebackup.models import ProjectScan
 
 
@@ -55,8 +56,16 @@ def _place(pool: Path, src: Path, dest_file: Path, use_hardlinks: bool, digest: 
     pooled = pool / digest[:2] / digest
     if not pooled.exists():
         pooled.parent.mkdir(parents=True, exist_ok=True)
-        tmp = pooled.with_name(f"{pooled.name}.{os.getpid()}.tmp")
-        shutil.copy2(src, tmp)
+        # Unique temp name (pid + uuid) so two concurrent backups in the same
+        # process can't clobber each other's temp on the way to the same pooled path.
+        tmp = pooled.with_name(f"{pooled.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+        actual = hash_copy(src, tmp)  # copy + hash in one pass
+        if actual != digest:
+            # Source changed between the caller's hash and this copy — never publish
+            # a mismatched object into the content-addressed pool (it would poison
+            # every future snapshot that shares this digest).
+            os.unlink(tmp)
+            raise OSError(f"source changed during backup (digest mismatch): {src}")
         os.replace(tmp, pooled)  # atomic on same filesystem; no partial final file
     dest_file.parent.mkdir(parents=True, exist_ok=True)
     if use_hardlinks:
@@ -67,9 +76,10 @@ def _place(pool: Path, src: Path, dest_file: Path, use_hardlinks: bool, digest: 
 
 
 def _disambiguate(logical: str, digest: str) -> str:
-    """Insert a short hash before the suffix so different files don't collide."""
+    """Insert the full content digest before the suffix so two different files
+    sharing a logical path never collide (a truncated prefix could, rarely)."""
     p = Path(logical)
-    return p.with_name(f"{p.stem}.{digest[:8]}{p.suffix}").as_posix()
+    return p.with_name(f"{p.stem}.{digest}{p.suffix}").as_posix()
 
 
 def _claimed_folder(parent: Path, name: str, project_id: str) -> Path:
@@ -175,9 +185,23 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
     }
     (temp_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
+    # Commit crash-safely: never leave a window with the prior snapshot deleted but
+    # the new one not yet in place. Move the old aside, swap in the new, then delete
+    # the old; on any failure restore the old so a backup never destroys a good one.
+    aside = None
     if final_dir.exists():
-        shutil.rmtree(final_dir)
-    temp_dir.rename(final_dir)
+        aside = final_dir.with_name(f".{final_dir.name}.old")
+        if aside.exists():
+            shutil.rmtree(aside, ignore_errors=True)
+        final_dir.rename(aside)
+    try:
+        temp_dir.rename(final_dir)
+    except OSError:
+        if aside is not None:
+            aside.rename(final_dir)  # restore the previous good snapshot
+        raise
+    if aside is not None:
+        shutil.rmtree(aside, ignore_errors=True)
     # Reserve this folder for this project so a different same-named project can't reuse it.
     if scan.project_id:
         claim_dir.mkdir(parents=True, exist_ok=True)

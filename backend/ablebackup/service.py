@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -314,12 +315,38 @@ def _emit(progress: ProgressCb, event: dict) -> None:
         progress(event)
 
 
+_backup_lock = threading.Lock()
+
+
+def backup_in_progress() -> bool:
+    """True while any backup is running — lets the scheduler skip overlapping ticks."""
+    return _backup_lock.locked()
+
+
 def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
                timestamp: Optional[str] = None, progress: ProgressCb = None,
                als_paths: Optional[list[str]] = None, label: Optional[str] = None,
                portable: bool = False, layout: str = "project_date",
                find_missing: bool = False, libraries=None, should_cancel=None,
                mirrors=None) -> dict:
+    """Serialize all backups process-wide, then run one.
+
+    Only one backup may run at a time (manual or scheduled), so two runs can't race
+    on the same snapshot folder and corrupt/lose it (audit: scheduler-vs-manual
+    overlap). The actual work is in _run_backup_locked.
+    """
+    with _backup_lock:
+        return _run_backup_locked(
+            sources, dest, catalog, timestamp, progress, als_paths, label,
+            portable, layout, find_missing, libraries, should_cancel, mirrors)
+
+
+def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
+                       timestamp: Optional[str] = None, progress: ProgressCb = None,
+                       als_paths: Optional[list[str]] = None, label: Optional[str] = None,
+                       portable: bool = False, layout: str = "project_date",
+                       find_missing: bool = False, libraries=None, should_cancel=None,
+                       mirrors=None) -> dict:
     """Back up discovered projects to dest, recording history and emitting progress.
 
     When als_paths is given, only the projects whose .als matches are backed up
