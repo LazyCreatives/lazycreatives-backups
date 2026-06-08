@@ -175,6 +175,57 @@ def _forbid_external(context, base, sysid, pubid):
     raise ExternalReferenceForbidden(context, base, sysid, pubid)
 
 
+class _TempoFound(Exception):
+    """Raised to stop parsing the moment the project tempo is captured."""
+
+
+class _TempoHandler:
+    __slots__ = ("tempo", "_depth", "_in_tempo")
+
+    def __init__(self) -> None:
+        self.tempo: float | None = None
+        self._depth = 0
+        self._in_tempo = 0  # depth of the enclosing <Tempo>, or 0
+
+    def start(self, name: str, attrs: dict) -> None:
+        self._depth += 1
+        if name == "Tempo":
+            self._in_tempo = self._depth
+        elif self._in_tempo and name == "Manual" and "Value" in attrs:
+            try:
+                self.tempo = float(attrs["Value"])
+            except (TypeError, ValueError):
+                self.tempo = None
+            raise _TempoFound  # the manual tempo is all we need — stop here
+
+    def end(self, name: str) -> None:
+        if name == "Tempo" and self._in_tempo == self._depth:
+            self._in_tempo = 0
+        self._depth -= 1
+
+
+def read_tempo(als_path: Path) -> float | None:
+    """The project's BPM, read by streaming only until the <Tempo> (near the top of
+    the .als), so it's cheap. Returns None if unreadable/absent."""
+    handler = _TempoHandler()
+    parser = xml.parsers.expat.ParserCreate()
+    parser.StartElementHandler = handler.start
+    parser.EndElementHandler = handler.end
+    parser.StartDoctypeDeclHandler = _forbid_dtd
+    parser.EntityDeclHandler = _forbid_entity
+    parser.UnparsedEntityDeclHandler = _forbid_unparsed_entity
+    parser.ExternalEntityRefHandler = _forbid_external
+    try:
+        with gzip.open(als_path, "rb") as fh:
+            parser.ParseFile(fh)
+    except _TempoFound:
+        pass
+    except (OSError, xml.parsers.expat.ExpatError, DTDForbidden,
+            EntitiesForbidden, ExternalReferenceForbidden):
+        return None
+    return handler.tempo
+
+
 def parse_als(als_path: Path) -> list[FileRef]:
     """Decompress an .als and return its user media references.
 
