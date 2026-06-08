@@ -21,3 +21,10 @@ lazycreatives-pitch.mp4
 
 # internal business docs — local only, never publish (strategy + financials)
 brand/business/
+
+# internal design specs, plans + security audit — local only, never publish
+docs/superpowers/
+docs/SECURITY-AUDIT.md
+
+# per-build entitlement signing secret — generated at packaging, never commit
+backend/ablebackup/_buildsecret.py

@@ -39,6 +39,22 @@ app). For a public download you need signing + notarization (below).
 > with `ABLEBACKUP_TOKEN=x ABLEBACKUP_PORT=8770 ABLEBACKUP_DB=/tmp/t.db`, then add the
 > missing module to `hiddenimports` in `sidecar.spec`.
 
+## License-signing secret (required for release builds)
+
+The repo is public, so the in-source `_ENT_SECRET` fallback is intentionally NOT a
+secret. Before building a release, inject a private signing key so locally-cached
+entitlements aren't signed with the public default:
+
+```bash
+cd backend
+python -c "import secrets,pathlib; pathlib.Path('ablebackup/_buildsecret.py').write_text('ENT_SECRET = %r\n' % secrets.token_hex(32))"
+#  -> ablebackup/_buildsecret.py  (git-ignored; PyInstaller bundles it)
+```
+
+Or set `ABLEBACKUP_ENT_SECRET` in the build environment instead. Rotating this value
+invalidates previously-issued local entitlements — users just re-activate (the real
+gate is online activation, not this signature).
+
 ## Signing + notarization (needs the Apple Developer account — $99/yr)
 
 Once enrolled:

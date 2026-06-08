@@ -49,11 +49,32 @@ _TEST_KEYS = {
 
 _LS_BASE = "https://api.lemonsqueezy.com/v1/licenses"
 
-# Build-embedded secret for signing the locally-cached entitlement. Not a true
-# server secret (it ships in the binary), but it raises tampering well past a
-# trivial `sqlite3 UPDATE` — consistent with the plan's "friction-light, not Fort
-# Knox" stance. Override per build with ABLEBACKUP_ENT_SECRET if desired.
-_ENT_SECRET = os.environ.get("ABLEBACKUP_ENT_SECRET", "ROTATED-SECRET-REDACTED").encode()
+# Secret for signing the locally-cached entitlement. Not a true server secret (it
+# ships in the binary), but it raises tampering past a trivial `sqlite3 UPDATE` —
+# the plan's "friction-light, not Fort Knox" stance. The real paywall is online
+# activation; this only deters casual edits.
+def _entitlement_secret() -> bytes:
+    """Resolve the signing key, newest-wins:
+      1. ABLEBACKUP_ENT_SECRET env var (set at packaging / runtime), then
+      2. a build-injected module `ablebackup/_buildsecret.py` (git-ignored, written
+         per release — see docs/PACKAGING.md), then
+      3. a dev-only, intentionally-public fallback.
+    Release builds MUST provide (1) or (2): the repo is public, so the fallback is
+    not a secret. Rotating the build secret invalidates old local entitlements
+    (users simply re-activate)."""
+    env = os.environ.get("ABLEBACKUP_ENT_SECRET")
+    if env:
+        return env.encode()
+    try:
+        from ablebackup._buildsecret import ENT_SECRET  # type: ignore
+        if ENT_SECRET:
+            return ENT_SECRET.encode()
+    except Exception:
+        pass
+    return b"ablebackup-dev-insecure-do-not-ship"
+
+
+_ENT_SECRET = _entitlement_secret()
 
 
 def _dev_keys_enabled() -> bool:
