@@ -62,25 +62,233 @@ def _is_rclone_remote(dest: str) -> bool:
     return not os.path.isabs(dest) and bool(re.match(r"^[\w-]+:", dest))
 
 
+def rclone_path() -> str | None:
+    """Path to the rclone binary: an explicit override (a packaged build points
+    ABLEBACKUP_RCLONE at the bundled binary) else whatever is on PATH."""
+    return os.environ.get("ABLEBACKUP_RCLONE") or shutil.which("rclone")
+
+
 def rclone_available() -> bool:
-    return shutil.which("rclone") is not None
+    return rclone_path() is not None
 
 
 def rclone_remotes() -> list[str]:
     """Configured rclone remote names (without the trailing ':'), or [] if none."""
-    if not rclone_available():
+    rc = rclone_path()
+    if not rc:
         return []
     try:
-        out = subprocess.run(["rclone", "listremotes"], capture_output=True, text=True, timeout=10)
+        out = subprocess.run([rc, "listremotes"], capture_output=True, text=True, timeout=10)
         return [r.rstrip(":") for r in out.stdout.split() if r.strip()]
     except (OSError, subprocess.SubprocessError):
         return []
 
 
 def _rclone_copy(src: Path, remote_dest: str) -> bool:
+    rc = rclone_path()
+    if not rc:
+        return False
     try:
-        r = subprocess.run(["rclone", "copy", str(src), remote_dest, "--quiet"],
+        r = subprocess.run([rc, "copy", str(src), remote_dest, "--quiet"],
                            capture_output=True, text=True, timeout=3600)
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+# --- one-click cloud connect: drive rclone's built-in OAuth for the user ---------
+
+# Providers exposed as a one-click "Connect" button. The value is the rclone backend
+# type plus the env vars that (optionally) override the OAuth client + scope for a
+# branded production build. Add a line here to support Dropbox / OneDrive / etc.
+CLOUD_PROVIDERS: dict[str, dict] = {
+    "drive": {
+        "type": "drive",
+        "label": "Google Drive",
+        # app-created files only — sufficient for a backup tool and avoids Google's
+        # costly restricted-scope security assessment that full "drive" triggers.
+        "default_scope": "drive.file",
+        "scope_env": "ABLEBACKUP_GDRIVE_SCOPE",
+        "client_id_env": "ABLEBACKUP_GDRIVE_CLIENT_ID",
+        "client_secret_env": "ABLEBACKUP_GDRIVE_CLIENT_SECRET",
+    },
+}
+
+# rclone's loopback OAuth helper prints a URL like
+# "http://127.0.0.1:53682/auth?state=..." for the user to open; we relay it to their
+# browser and rclone captures the token when Google redirects back to that port.
+_RCLONE_AUTH_URL_RE = re.compile(r"https?://127\.0\.0\.1:\d+/auth\?\S+")
+_REMOTE_NAME_RE = re.compile(r"[^A-Za-z0-9_-]+")
+
+
+def safe_remote_name(raw: str, taken: list[str] | None = None) -> str:
+    """An rclone-legal remote name (alnum / _ / -), made unique against `taken` so a
+    second Google account doesn't silently overwrite the first remote's tokens."""
+    name = _REMOTE_NAME_RE.sub("", (raw or "").strip()) or "cloud"
+    existing = set(taken or [])
+    if name not in existing:
+        return name
+    i = 2
+    while f"{name}-{i}" in existing:
+        i += 1
+    return f"{name}-{i}"
+
+
+class CloudConnectSession:
+    """Drives one rclone OAuth 'Connect' flow on the user's behalf, in two phases:
+
+    1. `rclone authorize <type> --auth-no-open-browser` runs rclone's loopback OAuth:
+       it prints a 127.0.0.1 auth URL (we relay it to the user's browser), waits for
+       them to approve in their Google/etc. account, then prints an OAuth token.
+    2. `rclone config create <name> <type> token=<json> …` persists that token as a
+       reusable remote in rclone.conf, which backups then copy to.
+
+    The provider's scope / OAuth client are passed as rclone backend env options
+    (RCLONE_<TYPE>_SCOPE etc.) so the consent screen requests the right (minimal)
+    scope. `popen` is injectable so the state machine is unit-testable without rclone.
+    """
+
+    _TOKEN_RE = re.compile(r'\{.*"access_token".*\}')
+
+    def __init__(self, provider_key: str, name: str, *, rclone: str | None = None,
+                 popen=subprocess.Popen):
+        self.provider_key = provider_key
+        self.name = name
+        self.status = "pending"           # pending | connected | failed
+        self.auth_url: str | None = None
+        self.error: str | None = None
+        self._rclone = rclone or rclone_path()
+        self._popen = popen
+        self._proc = None
+        self._token: str | None = None
+        self._url_ready = threading.Event()
+
+    def _provider(self) -> dict:
+        return CLOUD_PROVIDERS[self.provider_key]
+
+    def _rclone_params(self) -> dict[str, str]:
+        """Backend config (scope / OAuth client) to apply during auth and persist on
+        the remote. Only what's set — defaults to the provider's minimal scope."""
+        prov = self._provider()
+        params: dict[str, str] = {}
+        scope = os.environ.get(prov.get("scope_env", "")) or prov.get("default_scope")
+        if scope and prov.get("type") == "drive":
+            params["scope"] = scope
+        cid = os.environ.get(prov.get("client_id_env", ""))
+        secret = os.environ.get(prov.get("client_secret_env", ""))
+        if cid and secret:  # branded build: our own OAuth client, not rclone's shared one
+            params["client_id"], params["client_secret"] = cid, secret
+        return params
+
+    def _env(self) -> dict:
+        """rclone reads RCLONE_<BACKEND>_<OPTION> env vars, so set our scope/client
+        there — that way the OAuth consent (authorize) requests the right scope."""
+        env = dict(os.environ)
+        backend = self._provider()["type"].upper()
+        for key, val in self._rclone_params().items():
+            env[f"RCLONE_{backend}_{key.upper()}"] = val
+        return env
+
+    def start(self) -> None:
+        if not self._rclone:
+            self._fail("The cloud engine (rclone) isn't available.")
+            return
+        if self.provider_key not in CLOUD_PROVIDERS:
+            self._fail("Unknown cloud provider.")
+            return
+        threading.Thread(target=self._run, name=f"cloud-connect-{self.name}",
+                         daemon=True).start()
+
+    def _fail(self, msg: str) -> None:
+        self.status = "failed"
+        self.error = msg
+        self._url_ready.set()
+
+    def _spawn(self, args: list[str]):
+        return self._popen(
+            args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            bufsize=1, env=self._env(),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),  # no console flash on Windows
+        )
+
+    def _run(self) -> None:
+        try:
+            token = self._authorize()
+        except OSError as e:
+            self._fail(str(e))
+            return
+        if token is None:
+            if self.status != "failed":
+                self._fail(self.error or "Sign-in didn't complete.")
+            self._url_ready.set()
+            return
+        if self._create_remote(token):
+            self.status = "connected"
+        elif self.status != "failed":
+            self._fail(self.error or "Couldn't save the cloud connection.")
+        self._url_ready.set()
+
+    def _authorize(self) -> str | None:
+        """Phase 1: run `rclone authorize`, capturing the browser auth URL then the
+        resulting OAuth token. Returns the token JSON, or None on failure."""
+        self._proc = self._spawn([self._rclone, "authorize", self._provider()["type"],
+                                  "--auth-no-open-browser"])
+        tail: list[str] = []
+        for line in self._proc.stdout:
+            tail.append(line)
+            del tail[:-60]
+            if self.auth_url is None:
+                m = _RCLONE_AUTH_URL_RE.search(line)
+                if m:
+                    self.auth_url = m.group(0)
+                    self._url_ready.set()
+            if self._token is None:
+                m = self._TOKEN_RE.search(line)
+                if m:
+                    self._token = m.group(0)
+        code = self._proc.wait()
+        self._url_ready.set()
+        if self._token is None:
+            self.error = ("".join(tail).strip()[-400:]
+                          or f"rclone authorize exited with code {code}")
+            return None
+        return self._token
+
+    def _create_remote(self, token: str) -> bool:
+        """Phase 2: persist the authorized token as a named rclone remote."""
+        args = [self._rclone, "config", "create", self.name, self._provider()["type"],
+                f"token={token}"]
+        for key, val in self._rclone_params().items():
+            args.append(f"{key}={val}")
+        proc = self._spawn(args)
+        out = proc.stdout.read() if proc.stdout else ""
+        if proc.wait() != 0:
+            self.error = (out or "").strip()[-400:] or "rclone config create failed"
+            return False
+        return True
+
+    def wait_for_url(self, timeout: float = 15.0) -> str | None:
+        self._url_ready.wait(timeout)
+        return self.auth_url
+
+    def cancel(self) -> None:
+        p = self._proc
+        if p is not None and p.poll() is None:
+            try:
+                p.terminate()
+            except OSError:
+                pass
+
+
+def cloud_disconnect(name: str) -> bool:
+    """Forget a configured rclone remote (drops the local token/config). Returns
+    whether rclone reported success."""
+    rc = rclone_path()
+    if not rc or not name:
+        return False
+    try:
+        r = subprocess.run([rc, "config", "delete", name],
+                           capture_output=True, text=True, timeout=15)
         return r.returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False

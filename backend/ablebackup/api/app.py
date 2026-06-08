@@ -13,13 +13,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from ablebackup import entitlement
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
-from ablebackup.api.schemas import ActivateRequest, BackupRequest, Config, RestoreRequest, ScanRequest
+from ablebackup.api.schemas import (
+    ActivateRequest, BackupRequest, CloudConnectRequest, CloudDisconnectRequest,
+    Config, RestoreRequest, ScanRequest,
+)
 from ablebackup.catalog import Catalog
 from ablebackup.scheduler import BackupScheduler
 from ablebackup.service import (
-    build_overview, default_timestamp, pool_cache_age, rclone_available,
-    backfill_genres, project_genres, rclone_remotes, refresh_pool_cache,
-    restore_snapshot, run_backup, scan_summary, share_snapshot, snapshot_diff,
+    CLOUD_PROVIDERS, CloudConnectSession, build_overview, cloud_disconnect,
+    default_timestamp, pool_cache_age, rclone_available, backfill_genres,
+    project_genres, rclone_remotes, refresh_pool_cache, restore_snapshot,
+    run_backup, safe_remote_name, scan_summary, share_snapshot, snapshot_diff,
 )
 from ablebackup.verifier import verify_snapshot
 
@@ -61,6 +65,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     app.state.cancels = {}  # job_id -> threading.Event, to cancel a running backup
     app.state.pool_refreshing = False  # guard so only one pool-size walk runs at a time
     app.state.pool_tasks = set()        # strong refs so tasks aren't GC'd mid-run
+    app.state.cloud_sessions = {}       # connect_id -> CloudConnectSession (OAuth in flight)
 
     _JOBS_CAP = 200
 
@@ -138,6 +143,54 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     @app.get("/api/rclone", dependencies=[Depends(require_token)])
     def rclone_info():
         return {"available": rclone_available(), "remotes": rclone_remotes()}
+
+    _CLOUD_SESSIONS_CAP = 20
+
+    @app.post("/api/cloud/connect", dependencies=[Depends(require_token)])
+    def cloud_connect(req: CloudConnectRequest):
+        """Begin a browser OAuth sign-in for a cloud provider (e.g. Google Drive).
+
+        Returns an auth URL for the renderer to open in the user's browser; the flow
+        then completes in the background and the UI polls /api/cloud/connect/{id}.
+        """
+        if not _allows("cloud_backup"):
+            raise HTTPException(status_code=403, detail="Cloud backup is a Studio feature.")
+        if req.provider not in CLOUD_PROVIDERS:
+            raise HTTPException(status_code=400, detail="Unknown cloud provider.")
+        if not rclone_available():
+            raise HTTPException(status_code=503, detail="The cloud engine (rclone) isn't installed.")
+        sessions = app.state.cloud_sessions
+        # Only one OAuth flow at a time — they share rclone's loopback port. Cancel any
+        # still-pending session, then bound the dict by evicting finished ones oldest-first.
+        for s in sessions.values():
+            if s.status == "pending":
+                s.cancel()
+        while len(sessions) >= _CLOUD_SESSIONS_CAP:
+            sessions.pop(next(iter(sessions)))
+        name = safe_remote_name(req.name or req.provider, rclone_remotes())
+        sess = CloudConnectSession(req.provider, name)
+        sess.start()
+        url = sess.wait_for_url(15)
+        if sess.status == "failed":
+            raise HTTPException(status_code=502, detail=sess.error or "Couldn't start the cloud sign-in.")
+        connect_id = uuid.uuid4().hex
+        sessions[connect_id] = sess
+        return {"connect_id": connect_id, "auth_url": url, "remote": name, "provider": req.provider}
+
+    @app.get("/api/cloud/connect/{connect_id}", dependencies=[Depends(require_token)])
+    def cloud_connect_status(connect_id: str):
+        sess = app.state.cloud_sessions.get(connect_id)
+        if not sess:
+            raise HTTPException(status_code=404, detail="Unknown cloud connection.")
+        return {"status": sess.status, "remote": sess.name,
+                "auth_url": sess.auth_url, "error": sess.error}
+
+    @app.post("/api/cloud/disconnect", dependencies=[Depends(require_token)])
+    def cloud_disconnect_endpoint(req: CloudDisconnectRequest):
+        if not rclone_available():
+            raise HTTPException(status_code=503, detail="The cloud engine (rclone) isn't installed.")
+        ok = cloud_disconnect(req.name)
+        return {"ok": ok, "remotes": rclone_remotes()}
 
     @app.get("/api/entitlement", dependencies=[Depends(require_token)])
     def get_entitlement():

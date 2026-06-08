@@ -22,6 +22,15 @@ class ActivateRequest(BaseModel):
     key: str = Field(..., max_length=200)  # license key from checkout
 
 
+class CloudConnectRequest(BaseModel):
+    provider: str = Field(..., max_length=32)        # e.g. "drive"
+    name: str | None = Field(None, max_length=64)    # rclone remote name; defaults per provider
+
+
+class CloudDisconnectRequest(BaseModel):
+    name: str = Field(..., max_length=64)            # rclone remote name to forget
+
+
 class ScanRequest(BaseModel):
     sources: list[str] | None = Field(None, max_length=_LIST)  # falls back to saved config
     find_missing: bool = False        # relink missing samples from libraries

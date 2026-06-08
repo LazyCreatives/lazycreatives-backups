@@ -62,6 +62,15 @@ export function makeApi() {
       return req("POST", "/api/share", { snapshot_id: snapshotId, target });
     },
     async rclone(): Promise<{ available: boolean; remotes: string[] }> { return req("GET", "/api/rclone"); },
+    async cloudConnect(provider: string, name?: string): Promise<{ connect_id: string; auth_url: string | null; remote: string; provider: string }> {
+      return req("POST", "/api/cloud/connect", { provider, name });
+    },
+    async cloudConnectStatus(id: string): Promise<{ status: "pending" | "connected" | "failed"; remote: string; auth_url: string | null; error: string | null }> {
+      return req("GET", `/api/cloud/connect/${id}`);
+    },
+    async cloudDisconnect(name: string): Promise<{ ok: boolean; remotes: string[] }> {
+      return req("POST", "/api/cloud/disconnect", { name });
+    },
     async entitlement(): Promise<Entitlement> { return req("GET", "/api/entitlement"); },
     async activateLicense(key: string): Promise<Entitlement> { return req("POST", "/api/entitlement/activate", { key }); },
     async deactivateLicense(): Promise<Entitlement> { return req("POST", "/api/entitlement/deactivate"); },
