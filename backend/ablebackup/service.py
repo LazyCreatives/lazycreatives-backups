@@ -112,6 +112,18 @@ CLOUD_PROVIDERS: dict[str, dict] = {
         "client_id_env": "ABLEBACKUP_GDRIVE_CLIENT_ID",
         "client_secret_env": "ABLEBACKUP_GDRIVE_CLIENT_SECRET",
     },
+    "dropbox": {
+        "type": "dropbox",
+        "label": "Dropbox",
+        "client_id_env": "ABLEBACKUP_DROPBOX_CLIENT_ID",
+        "client_secret_env": "ABLEBACKUP_DROPBOX_CLIENT_SECRET",
+    },
+    "onedrive": {
+        "type": "onedrive",
+        "label": "OneDrive",
+        "client_id_env": "ABLEBACKUP_ONEDRIVE_CLIENT_ID",
+        "client_secret_env": "ABLEBACKUP_ONEDRIVE_CLIENT_SECRET",
+    },
 }
 
 # rclone's loopback OAuth helper prints a URL like
@@ -172,7 +184,7 @@ class CloudConnectSession:
         prov = self._provider()
         params: dict[str, str] = {}
         scope = os.environ.get(prov.get("scope_env", "")) or prov.get("default_scope")
-        if scope and prov.get("type") == "drive":
+        if scope:  # only providers that declare a scope (e.g. Drive) get one
             params["scope"] = scope
         cid = os.environ.get(prov.get("client_id_env", ""))
         secret = os.environ.get(prov.get("client_secret_env", ""))
@@ -206,8 +218,9 @@ class CloudConnectSession:
 
     def _spawn(self, args: list[str]):
         return self._popen(
-            args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-            bufsize=1, env=self._env(),
+            args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,  # any unexpected prompt hits EOF and fails fast (no hang)
+            text=True, bufsize=1, env=self._env(),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),  # no console flash on Windows
         )
 

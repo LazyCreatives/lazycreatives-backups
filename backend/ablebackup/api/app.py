@@ -146,6 +146,10 @@ def create_app(token: str, db_path: Path) -> FastAPI:
 
     _CLOUD_SESSIONS_CAP = 20
 
+    @app.get("/api/cloud/providers", dependencies=[Depends(require_token)])
+    def cloud_providers():
+        return {"providers": [{"key": k, "label": v["label"]} for k, v in CLOUD_PROVIDERS.items()]}
+
     @app.post("/api/cloud/connect", dependencies=[Depends(require_token)])
     def cloud_connect(req: CloudConnectRequest):
         """Begin a browser OAuth sign-in for a cloud provider (e.g. Google Drive).

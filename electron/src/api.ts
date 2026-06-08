@@ -62,6 +62,9 @@ export function makeApi() {
       return req("POST", "/api/share", { snapshot_id: snapshotId, target });
     },
     async rclone(): Promise<{ available: boolean; remotes: string[] }> { return req("GET", "/api/rclone"); },
+    async cloudProviders(): Promise<{ key: string; label: string }[]> {
+      return (await req("GET", "/api/cloud/providers")).providers;
+    },
     async cloudConnect(provider: string, name?: string): Promise<{ connect_id: string; auth_url: string | null; remote: string; provider: string }> {
       return req("POST", "/api/cloud/connect", { provider, name });
     },

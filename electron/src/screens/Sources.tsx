@@ -27,7 +27,8 @@ export function Sources() {
   const [saved, setSaved] = useState(false);
   const [nextRun, setNextRun] = useState<string | null>(null);
   const [rclone, setRclone] = useState<{ available: boolean; remotes: string[] }>({ available: false, remotes: [] });
-  const [connecting, setConnecting] = useState(false);
+  const [providers, setProviders] = useState<{ key: string; label: string }[]>([]);
+  const [connecting, setConnecting] = useState<string | null>(null);  // provider key in progress
   const [connectMsg, setConnectMsg] = useState<string | null>(null);
   const [connectErr, setConnectErr] = useState<string | null>(null);
   const { allows } = useEntitlement();
@@ -43,7 +44,11 @@ export function Sources() {
       .then((c) => { setCfg(c); setLoaded(true); })
       .catch(() => setLoadError(true));
   }
-  useEffect(() => { load(); refreshNextRun(); api.rclone().then(setRclone).catch(() => {}); }, []);
+  useEffect(() => {
+    load(); refreshNextRun();
+    api.rclone().then(setRclone).catch(() => {});
+    api.cloudProviders().then(setProviders).catch(() => {});
+  }, []);
 
   async function addSource() {
     const dir = await (window as any).ablebackup.pickFolder();
@@ -66,43 +71,43 @@ export function Sources() {
       return ms.includes(dest) ? c : { ...c, mirrors: [...ms, dest] };
     });
   }
-  async function connectGoogleDrive() {
-    setConnectErr(null); setConnectMsg(null); setConnecting(true);
+  async function connectCloud(provider: string, label: string) {
+    setConnectErr(null); setConnectMsg(null); setConnecting(provider);
     try {
-      const r = await api.cloudConnect("drive");
+      const r = await api.cloudConnect(provider);
       if (r.auth_url) {
         (window as any).ablebackup.openExternal(r.auth_url);
-        setConnectMsg("A browser opened — sign in to Google and allow access, then come back here.");
+        setConnectMsg(`A browser opened — sign in to ${label} and allow access, then come back here.`);
       } else {
         setConnectMsg("Finishing up…");
       }
-      pollConnect(r.connect_id);
+      pollConnect(r.connect_id, label);
     } catch (e: any) {
-      setConnecting(false);
-      setConnectErr(e.message || "Couldn't start Google Drive sign-in.");
+      setConnecting(null);
+      setConnectErr(e.message || `Couldn't start ${label} sign-in.`);
     }
   }
-  function pollConnect(id: string, tries = 0) {
+  function pollConnect(id: string, label: string, tries = 0) {
     window.setTimeout(async () => {
       try {
         const s = await api.cloudConnectStatus(id);
         if (s.status === "connected") {
-          setConnecting(false);
+          setConnecting(null);
           setConnectMsg(`Connected ✓ — every backup will also copy to ${s.remote}:`);
           addRemote(s.remote);
           api.rclone().then(setRclone).catch(() => {});
         } else if (s.status === "failed") {
-          setConnecting(false);
-          setConnectErr(s.error || "Google Drive sign-in didn't complete.");
+          setConnecting(null);
+          setConnectErr(s.error || `${label} sign-in didn't complete.`);
         } else if (tries < 200) {  // ~5 min at 1.5s/poll
-          pollConnect(id, tries + 1);
+          pollConnect(id, label, tries + 1);
         } else {
-          setConnecting(false);
-          setConnectErr("Timed out waiting for Google sign-in.");
+          setConnecting(null);
+          setConnectErr(`Timed out waiting for ${label} sign-in.`);
         }
       } catch {
-        if (tries < 200) pollConnect(id, tries + 1);
-        else { setConnecting(false); setConnectErr("Lost contact while connecting."); }
+        if (tries < 200) pollConnect(id, label, tries + 1);
+        else { setConnecting(null); setConnectErr("Lost contact while connecting."); }
       }
     }, 1500);
   }
@@ -195,9 +200,14 @@ export function Sources() {
             ))}
             <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
               <div className="sub" style={{ margin: "0 0 7px", fontSize: 12 }}>Connect a cloud account — sign in once, backups copy automatically</div>
-              <Button variant="ghost" onClick={connectGoogleDrive} disabled={!rclone.available || connecting}>
-                {connecting ? "Waiting for Google sign-in…" : "Connect Google Drive"}
-              </Button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {providers.map((p) => (
+                  <Button key={p.key} variant="ghost" onClick={() => connectCloud(p.key, p.label)}
+                    disabled={!rclone.available || connecting !== null}>
+                    {connecting === p.key ? `Waiting for ${p.label} sign-in…` : `Connect ${p.label}`}
+                  </Button>
+                ))}
+              </div>
               {connectMsg && <div className="sub" style={{ color: "var(--accent-2)", marginTop: 7, fontSize: 12 }}>{connectMsg}</div>}
               {connectErr && <div className="sub" style={{ color: "var(--danger)", marginTop: 7, fontSize: 12 }}>{connectErr}</div>}
             </div>

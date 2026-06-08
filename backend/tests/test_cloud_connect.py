@@ -5,7 +5,7 @@ network, or browser.
 """
 import time
 
-from ablebackup.service import CloudConnectSession, safe_remote_name
+from ablebackup.service import CLOUD_PROVIDERS, CloudConnectSession, safe_remote_name
 
 
 class _FakeStream:
@@ -78,10 +78,20 @@ def test_connect_captures_auth_url_and_connects():
     assert sess.error is None
 
 
+def test_providers_registered():
+    assert {"drive", "dropbox", "onedrive"} <= set(CLOUD_PROVIDERS)
+
+
 def test_connect_requests_drive_file_scope():
     sess = CloudConnectSession("drive", "gdrive", rclone="rclone")
     assert sess._rclone_params() == {"scope": "drive.file"}  # minimal, review-free scope
     assert sess._env()["RCLONE_DRIVE_SCOPE"] == "drive.file"  # applied to the OAuth consent
+
+
+def test_dropbox_has_no_scope_param():
+    sess = CloudConnectSession("dropbox", "dropbox", rclone="rclone")
+    assert sess._rclone_params() == {}                     # dropbox takes no scope
+    assert "RCLONE_DROPBOX_SCOPE" not in sess._env()
 
 
 def test_connect_failure_surfaces_rclone_output():

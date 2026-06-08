@@ -29,6 +29,12 @@ class _FakeSession:
         pass
 
 
+def test_cloud_providers_lists_all(tmp_path):
+    c = _client(tmp_path)
+    keys = {p["key"] for p in c.get("/api/cloud/providers").json()["providers"]}
+    assert {"drive", "dropbox", "onedrive"} <= keys
+
+
 def test_cloud_connect_requires_studio(tmp_path):
     c = _client(tmp_path)  # default tier is free
     r = c.post("/api/cloud/connect", json={"provider": "drive"})
