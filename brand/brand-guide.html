@@ -99,6 +99,18 @@
   .pose .pn{font-weight:700;font-size:12.5px;margin-top:6px}
   .pose .pd{color:var(--muted);font-size:11px;margin-top:2px}
 
+  /* foundation */
+  .posbox{border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:14px;
+    background:linear-gradient(120deg,rgba(134,179,211,.06),transparent);padding:20px 24px;margin-bottom:18px}
+  .poslabel{color:var(--blue);font-size:11px;letter-spacing:.28em;text-transform:uppercase;font-weight:700;margin-bottom:8px}
+  .posstmt{font-size:18px;line-height:1.5;color:#e7eef5;max-width:76ch}
+  .posstmt b{color:var(--ink)}
+  .found{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .fitem{border:1px solid var(--line);border-radius:14px;background:var(--console);padding:18px}
+  .fitem h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--blue);margin-bottom:8px}
+  .fitem p{color:#d2dbe4;font-size:13.5px}
+  @media(max-width:820px){.found{grid-template-columns:repeat(2,1fr)}}
+
   /* usage */
   .use{display:grid;grid-template-columns:1fr 1fr;gap:18px}
   .use .box{border:1px solid var(--line);border-radius:16px;padding:22px 24px;background:var(--console)}
@@ -120,6 +132,35 @@
     <p>Looks lazy. Works obsessively. A chill headphone sloth on the outside; verified, deduplicated, relentlessly-checked backups underneath. Dark studio surfaces, soft <strong style="color:var(--blue)">Sloth&nbsp;Blue</strong> line art, a green “verified” state.</p>
   </header>
 
+  <h2>Foundation</h2>
+  <div class="posbox">
+    <div class="poslabel">Positioning</div>
+    <p class="posstmt">For <b>working producers</b> who can't afford to lose a session, <b>Lazy Creatives</b> makes backups that <b>prove they actually open</b> — it follows every sample and re-checks every byte, so your masters are <em>safe</em>, not just copied. You chill; it obsesses.</p>
+  </div>
+  <div class="found">
+    <div class="fitem"><h3>Purpose</h3><p>Make sure a music maker never loses a session — backups so thorough you forget they're running.</p></div>
+    <div class="fitem"><h3>Who it's for</h3><p>Working producers, spoken to as peers — pro, never corporate.</p></div>
+    <div class="fitem"><h3>Promise</h3><p>“Your sessions are safe — proven, not promised.”</p></div>
+    <div class="fitem"><h3>Personality</h3><p>Chill · meticulous · plain-spoken · by-makers-for-makers · quietly confident.</p></div>
+  </div>
+  <div class="voice" style="margin-top:18px">
+    <div class="box">
+      <h3>House-brand architecture</h3>
+      <ul>
+        <li><strong style="color:var(--ink)">Lazy Creatives</strong> is the house brand for music-maker tools.</li>
+        <li><strong style="color:var(--ink)">Backups</strong> is product #1; future tools (e.g. Stems) join the family.</li>
+        <li>One sloth, one wordmark — products add a <em>descriptor</em>, never a new logo.</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h3>Two rules that protect the brand</h3>
+      <ul>
+        <li><strong style="color:var(--ink)">Always name what it does.</strong> The name alone doesn't say “backups” — pair it: “Lazy Creatives — Backups for music projects.”</li>
+        <li><strong style="color:var(--ink)">Looks lazy, works obsessively.</strong> Voice &amp; mascot stay chill; <em>claims are always rigorous</em>. Never let a cute line weaken a reliability promise.</li>
+      </ul>
+    </div>
+  </div>
+
   <h2>Logo</h2>
   <div class="logos">
     <div class="card dark"><span class="tag">Primary · on Studio Black</span><img class="logo-lg" src="logo.png" alt="Lazy Creatives logo"></div>
@@ -131,7 +172,7 @@
       <div style="border:1px dashed var(--slate);border-radius:12px;padding:22px"><img class="logo-sm" src="logo.png" alt="clear space"></div>
     </div>
   </div>
-  <p class="note">The artist's lockup, background removed → <code>brand/logo.png</code> (transparent). It's <strong style="color:var(--ink)">dark-first</strong> — the blue line art is built to sit on Studio Black / Deep Slate. Keep clear space ≥ the sloth's head all around; never recolour or add effects. A dark/mono version for <em>light</em> backgrounds is on the commission list below.</p>
+  <p class="note">The artist's lockup, background removed → <code>brand/logo.png</code> (transparent). It's <strong style="color:var(--ink)">dark-first</strong> — the blue line art is built to sit on Studio Black / Deep Slate. Keep clear space ≥ the sloth's head all around, and the lockup ≥ 120&nbsp;px wide so the wordmark stays legible; never recolour or add effects. A dark/mono version for <em>light</em> backgrounds is on the commission list below.</p>
 
   <h2>Colour</h2>
   <div class="pal">
@@ -144,7 +185,7 @@
     <div class="sw"><div class="chip" style="background:#141A20"></div><div class="meta"><div class="nm">Console</div><div class="role">Cards &amp; panels</div><span class="hex">#141A20</span></div></div>
     <div class="sw"><div class="chip" style="background:#9DB0C0"></div><div class="meta"><div class="nm">Muted</div><div class="role">Secondary text</div><span class="hex">#9DB0C0</span></div></div>
   </div>
-  <p class="note">Two hues come straight from the logo: <strong style="color:var(--blue)">Sloth Blue #86B3D3</strong> and <strong style="color:#aebfcb">Deep Slate #3B4F5D</strong>. Gold is no longer the lead — it's <strong style="color:var(--gold)">attention/warnings</strong> only. Green stays reserved for confirmed/verified.</p>
+  <p class="note">Two hues come straight from the logo: <strong style="color:var(--blue)">Sloth Blue #86B3D3</strong> and <strong style="color:#aebfcb">Deep Slate #3B4F5D</strong>. Gold is no longer the lead — it's <strong style="color:var(--gold)">attention/warnings</strong> only. Green stays reserved for confirmed/verified. <strong style="color:var(--ink)">Contrast:</strong> Sloth&nbsp;Blue &amp; Ink read clearly on Studio&nbsp;Black; don't set Sloth-Blue <em>text</em> on Deep&nbsp;Slate (too low) — use it as a fill with near-black text instead.</p>
 
   <h2>Typography</h2>
   <div class="type">
@@ -173,6 +214,16 @@
       </ul>
     </div>
   </div>
+
+  <h2>In-product voice</h2>
+  <div class="type">
+    <div class="r"><div class="lab">Button</div><div class="d-body">Back it up · Verify · Restore</div></div>
+    <div class="r"><div class="lab">Empty state</div><div class="d-body">Nothing to back up yet — point me at your projects folder.</div></div>
+    <div class="r"><div class="lab">Success</div><div class="d-body">Backed up &amp; verified — 142 files, 0 missing. Go make something.</div></div>
+    <div class="r"><div class="lab">Error</div><div class="d-body">Couldn't reach that drive. Plug it in and I'll pick up where I left off.</div></div>
+    <div class="r"><div class="lab">Idle / scheduled</div><div class="d-body">Chilling. Next backup at 6&nbsp;pm.</div></div>
+  </div>
+  <p class="note">Chill <em>tone</em>, precise <em>facts</em> — the tension in one line. Cute is fine; vague is not. Numbers and “verified” carry the trust.</p>
 
   <h2>Assets to commission · artist brief</h2>
   <p class="brief-intro">References for the extra art we need from the same hand, in the same single-colour Sloth-Blue line style as the logo (transparent PNG + SVG, please). The framed sloth below is cropped from the existing lockup to show the character &amp; line weight to match.</p>
