@@ -3,22 +3,35 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LazyCreatives Backups — Brand Sheet</title>
+<title>Lazy Creatives — Brand Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --black:#0A0B0D; --console:#15181D; --panel:#1C1F25;
-    --gold:#F5C451; --green:#4ADE80; --red:#FF5D5D;
-    --ink:#F3F4F6; --muted:#9AA1AB; --line:rgba(255,255,255,.09);
-    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    /* Lazy Creatives — v2 (sloth / blue) */
+    --black:#0A0B0D; --console:#141A20; --panel:#1B242C; --raised:#26323D;
+    --blue:#88B2D6;        /* Sloth Blue — primary accent */
+    --blue-press:#6E9CC2;
+    --slate:#3C4E60;       /* Deep Slate — secondary surface / borders */
+    --green:#4ADE80;       /* Verified — "it opens" */
+    --gold:#F5C451;        /* Attention — demoted from primary to warning */
+    --red:#F2706E;         /* Risk / errors */
+    --ink:#EAF1F7; --muted:#9DB0C0; --line:rgba(136,178,214,.16);
+    --display:"Fredoka",system-ui,sans-serif;
+    --font:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--black);color:var(--ink);font-family:var(--font);
-    line-height:1.5;padding:64px 7vw 96px}
+  body{background:
+      radial-gradient(1100px 520px at 16% -10%,rgba(136,178,214,.08),transparent 60%),
+      var(--black);
+    color:var(--ink);font-family:var(--font);line-height:1.55;padding:64px 7vw 96px}
   .wrap{max-width:1040px;margin:0 auto}
   header{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:48px}
-  .eyebrow{color:var(--gold);font-size:13px;letter-spacing:.34em;text-transform:uppercase;font-weight:700}
-  h1{font-size:40px;font-weight:800;letter-spacing:-.02em;margin:10px 0 6px}
-  header p{color:var(--muted);font-size:17px;max-width:60ch}
+  .eyebrow{color:var(--blue);font-size:13px;letter-spacing:.34em;text-transform:uppercase;font-weight:700}
+  h1{font-family:var(--display);font-size:46px;font-weight:600;letter-spacing:-.01em;margin:12px 0 8px}
+  header p{color:var(--muted);font-size:17px;max-width:62ch}
   h2{font-size:13px;letter-spacing:.28em;text-transform:uppercase;color:var(--muted);
     font-weight:700;margin:56px 0 20px;display:flex;align-items:center;gap:14px}
   h2::after{content:"";flex:1;height:1px;background:var(--line)}
@@ -26,124 +39,175 @@
   /* logo showcases */
   .logos{display:grid;grid-template-columns:1.4fr 1fr;gap:20px}
   .card{border:1px solid var(--line);border-radius:18px;padding:34px;
-    display:flex;align-items:center;justify-content:center;min-height:150px;position:relative}
-  .card.dark{background:radial-gradient(120% 120% at 50% 0%,#16191e,#0a0b0d)}
-  .card.light{background:#F3F4F6}
+    display:flex;align-items:center;justify-content:center;min-height:160px;position:relative;gap:16px}
+  .card.dark{background:radial-gradient(120% 120% at 50% 0%,#13171c,#0a0b0d)}
+  .card.light{background:#EAF1F7}
   .card .tag{position:absolute;top:12px;left:16px;font-size:11px;letter-spacing:.18em;
     text-transform:uppercase;color:var(--muted);font-weight:700}
-  .card img{max-width:100%;height:auto}
+  .card.light .tag{color:#5b6b7a}
+
+  /* logo lockup stand-in (replace with the artist's export) */
+  .lockup{display:flex;align-items:center;gap:14px}
+  .sloth{font-size:54px;line-height:1;filter:saturate(.65) hue-rotate(170deg) brightness(1.05)}
+  .word{font-family:var(--display);font-weight:600;font-size:38px;letter-spacing:.5px;line-height:.95}
+  .word small{display:block;font-family:var(--font);font-weight:600;font-size:13px;letter-spacing:.02em;color:var(--muted);margin-top:3px}
+  .blue{color:var(--blue)} .onlight{color:var(--black)} .onlight small{color:#5b6b7a}
+  .knock{color:var(--ink)}
+  .appmark{width:104px;height:104px;border-radius:26px;display:grid;place-items:center;
+    background:linear-gradient(160deg,#10151b,#0a0b0d);border:1px solid var(--line);font-size:52px}
+  .placeholder-note{margin-top:16px;font-size:13px;color:var(--muted);
+    border:1px dashed var(--slate);border-radius:12px;padding:12px 15px}
+  .placeholder-note code{font-family:var(--mono);color:var(--blue);font-size:12.5px}
 
   /* palette */
-  .pal{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .pal{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
   .sw{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--console)}
-  .chip{height:96px}
-  .sw .meta{padding:14px 16px}
-  .sw .nm{font-weight:700;font-size:15px}
-  .sw .role{color:var(--muted);font-size:12.5px;margin:2px 0 8px}
-  .sw .hex{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;
-    color:var(--ink);background:rgba(255,255,255,.05);padding:3px 8px;border-radius:6px;display:inline-block}
+  .chip{height:88px}
+  .sw .meta{padding:13px 15px}
+  .sw .nm{font-weight:700;font-size:14.5px}
+  .sw .role{color:var(--muted);font-size:12px;margin:2px 0 8px;min-height:30px}
+  .sw .hex{font-family:var(--mono);font-size:12.5px;color:var(--ink);
+    background:rgba(136,178,214,.10);padding:3px 8px;border-radius:6px;display:inline-block}
 
   /* type */
   .type{border:1px solid var(--line);border-radius:18px;padding:30px 34px;background:var(--console)}
-  .type .row{display:flex;align-items:baseline;gap:18px;padding:14px 0;border-bottom:1px solid var(--line)}
+  .type .row{display:flex;align-items:baseline;gap:18px;padding:16px 0;border-bottom:1px solid var(--line)}
   .type .row:last-child{border-bottom:0}
-  .type .lab{width:130px;color:var(--muted);font-size:12.5px;flex:0 0 auto}
-  .d-display{font-size:34px;font-weight:800;letter-spacing:-.02em}
-  .d-h{font-size:22px;font-weight:700}
-  .d-body{font-size:16px;color:#dfe2e7}
-  .d-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;color:var(--green)}
+  .type .lab{width:150px;color:var(--muted);font-size:12.5px;flex:0 0 auto}
+  .d-display{font-family:var(--display);font-size:34px;font-weight:600;letter-spacing:-.01em}
+  .d-h{font-family:var(--display);font-size:22px;font-weight:500}
+  .d-body{font-size:16px;color:#dbe3ec}
+  .d-mono{font-family:var(--mono);font-size:14px;color:var(--green)}
+
+  /* voice */
+  .voice{display:grid;grid-template-columns:1.2fr 1fr;gap:18px}
+  .voice .box{border:1px solid var(--line);border-radius:16px;padding:22px 24px;background:var(--console)}
+  .voice h3{font-size:14px;margin-bottom:12px;color:var(--blue)}
+  .tagline{font-family:var(--display);font-size:20px;font-weight:500;color:var(--ink);margin-bottom:6px}
+  .voice ul{list-style:none;display:flex;flex-direction:column;gap:9px}
+  .voice li{font-size:14.5px;color:#d2dbe4;padding-left:18px;position:relative}
+  .voice li::before{content:"·";position:absolute;left:4px;color:var(--blue);font-weight:800}
+
+  /* mascot states */
+  .states{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+  .state{border:1px solid var(--line);border-radius:16px;background:var(--console);
+    padding:20px 12px;text-align:center}
+  .state .emo{font-size:34px}
+  .state .nm{font-weight:700;font-size:13px;margin-top:8px}
+  .state .ds{color:var(--muted);font-size:11.5px;margin-top:2px}
 
   /* usage */
   .use{display:grid;grid-template-columns:1fr 1fr;gap:18px}
   .use .box{border:1px solid var(--line);border-radius:16px;padding:22px 24px;background:var(--console)}
   .use h3{font-size:14px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
   .use ul{list-style:none;display:flex;flex-direction:column;gap:9px}
-  .use li{font-size:14.5px;color:#d7dade;padding-left:22px;position:relative}
+  .use li{font-size:14.5px;color:#d2dbe4;padding-left:22px;position:relative}
   .ok h3{color:var(--green)} .no h3{color:var(--red)}
   .ok li::before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:800}
   .no li::before{content:"✕";position:absolute;left:0;color:var(--red);font-weight:800}
   footer{margin-top:64px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:22px}
-
-  /* inline mark for light/mono demo */
-  .markwrap{width:120px;height:132px}
-  @media(max-width:760px){.logos,.pal,.use{grid-template-columns:1fr}}
+  @media(max-width:820px){.logos,.use,.voice{grid-template-columns:1fr}.pal,.states{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <div class="eyebrow">Brand Sheet · v1</div>
-    <h1>LazyCreatives <span style="color:var(--gold)">Backups</span></h1>
-    <p>Verified, deduplicated backups your label actually owns. A studio-grade visual system: dark console surfaces, a gold “signal” accent, and a green “verified” state.</p>
+    <div class="eyebrow">Brand Sheet · v2</div>
+    <h1>Lazy <span class="blue">Creatives</span></h1>
+    <p>Looks lazy. Works obsessively. A chill sloth on the outside; verified, deduplicated, relentlessly-checked backups underneath. Dark studio surfaces, a soft <strong style="color:var(--blue)">Sloth&nbsp;Blue</strong> accent, and a green “verified” state.</p>
   </header>
 
   <h2>Logo</h2>
   <div class="logos">
-    <div class="card dark"><span class="tag">Primary · on dark</span><img src="logo-lockup.svg" alt="lockup"></div>
-    <div class="card dark"><span class="tag">App mark</span><img src="logo-mark.svg" style="width:120px" alt="mark"></div>
+    <div class="card dark">
+      <span class="tag">Primary lockup · on dark</span>
+      <div class="lockup"><span class="sloth">🦥</span><span class="word blue">Lazy<br>Creatives<small>Verified backups you own</small></span></div>
+    </div>
+    <div class="card dark"><span class="tag">App mark</span><div class="appmark">🦥</div></div>
   </div>
   <div class="logos" style="margin-top:20px">
     <div class="card light">
-      <span class="tag" style="color:#6b7280">On light</span>
-      <!-- inline mono-dark lockup for light backgrounds -->
-      <svg width="420" height="96" viewBox="0 0 520 120" xmlns="http://www.w3.org/2000/svg">
-        <g transform="translate(16,18) scale(1.18)">
-          <path d="M32 3 L57 13 V31 C57 47 47.5 57.5 32 61.5 C16.5 57.5 7 47 7 31 V13 Z" fill="#0A0B0D" stroke="#0A0B0D" stroke-width="2.4"/>
-          <g stroke="#F5C451" stroke-width="3.2" stroke-linecap="round"><line x1="19" y1="34" x2="19" y2="40"/><line x1="25" y1="29" x2="25" y2="45"/></g>
-          <line x1="45" y1="31" x2="45" y2="43" stroke="#F5C451" stroke-width="3.2" stroke-linecap="round" opacity=".55"/>
-          <path d="M22 37 l7 7 l16 -17" stroke="#4ADE80" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-        </g>
-        <text x="120" y="56" font-family="-apple-system,Segoe UI,Inter,sans-serif" font-size="34" font-weight="800" letter-spacing="-0.5" fill="#0A0B0D">LazyCreatives<tspan fill="#a9842a"> Backups</tspan></text>
-        <text x="121" y="84" font-family="-apple-system,Segoe UI,Inter,sans-serif" font-size="15.5" font-weight="600" fill="#6b7280">Verified backups you own</text>
-      </svg>
+      <span class="tag">On light</span>
+      <div class="lockup"><span class="sloth">🦥</span><span class="word onlight">Lazy Creatives<small>Verified backups you own</small></span></div>
     </div>
-    <div class="card dark">
-      <span class="tag">Mono / 1-color</span>
-      <svg width="120" height="132" viewBox="0 0 64 72" xmlns="http://www.w3.org/2000/svg">
-        <path d="M32 3 L57 13 V31 C57 47 47.5 57.5 32 61.5 C16.5 57.5 7 47 7 31 V13 Z" fill="none" stroke="#F3F4F6" stroke-width="2.4"/>
-        <g stroke="#F3F4F6" stroke-width="3.2" stroke-linecap="round" opacity=".7"><line x1="19" y1="34" x2="19" y2="40"/><line x1="25" y1="29" x2="25" y2="45"/><line x1="45" y1="31" x2="45" y2="43" opacity=".5"/></g>
-        <path d="M22 37 l7 7 l16 -17" stroke="#F3F4F6" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </div>
+    <div class="card dark"><span class="tag">Mono / knockout</span><span class="word knock" style="font-size:30px">Lazy Creatives</span></div>
   </div>
-  <p style="color:var(--muted);font-size:13.5px;margin-top:16px">The mark is a <strong style="color:var(--ink)">shield</strong> (your masters, protected) holding a <strong style="color:var(--green)">verify check</strong> over a small <strong style="color:var(--gold)">waveform</strong> (audio). It reads at any size and works in full-color, mono, or knockout.</p>
+  <div class="placeholder-note">
+    🎨 <strong style="color:var(--ink)">Placeholder art.</strong> The cards above show colour, placement &amp; the rounded wordmark style — drop the artist's real exports at
+    <code>brand/logo-lockup.svg</code>, <code>brand/logo-mark.svg</code> and a square <code>brand/app-icon.png</code>, then swap the 🦥 stand-ins for them.
+    The mark is the <strong style="color:var(--ink)">headphone sloth</strong> hanging from the wordmark — relaxed pose, single Sloth-Blue line art, equally happy in full-colour, mono, or knockout.
+  </div>
 
-  <h2>Color</h2>
+  <h2>Colour</h2>
   <div class="pal">
-    <div class="sw"><div class="chip" style="background:#F5C451"></div><div class="meta"><div class="nm">Signal Gold</div><div class="role">Primary accent · CTAs, highlights</div><span class="hex">#F5C451</span></div></div>
-    <div class="sw"><div class="chip" style="background:#4ADE80"></div><div class="meta"><div class="nm">Verified Green</div><div class="role">Success · “it opens” state</div><span class="hex">#4ADE80</span></div></div>
-    <div class="sw"><div class="chip" style="background:#FF5D5D"></div><div class="meta"><div class="nm">Clip Red</div><div class="role">Risk / alert · sparingly</div><span class="hex">#FF5D5D</span></div></div>
+    <div class="sw"><div class="chip" style="background:#88B2D6"></div><div class="meta"><div class="nm">Sloth Blue</div><div class="role">Primary accent · brand, CTAs, active states</div><span class="hex">#88B2D6</span></div></div>
+    <div class="sw"><div class="chip" style="background:#3C4E60"></div><div class="meta"><div class="nm">Deep Slate</div><div class="role">Secondary surface · borders, ghost buttons</div><span class="hex">#3C4E60</span></div></div>
+    <div class="sw"><div class="chip" style="background:#4ADE80"></div><div class="meta"><div class="nm">Verified Green</div><div class="role">Success · the “it opens” state</div><span class="hex">#4ADE80</span></div></div>
+    <div class="sw"><div class="chip" style="background:#F5C451"></div><div class="meta"><div class="nm">Attention Gold</div><div class="role">Warning / heads-up · sparingly</div><span class="hex">#F5C451</span></div></div>
+    <div class="sw"><div class="chip" style="background:#F2706E"></div><div class="meta"><div class="nm">Clip Red</div><div class="role">Risk / errors · sparingly</div><span class="hex">#F2706E</span></div></div>
     <div class="sw"><div class="chip" style="background:#0A0B0D;border-bottom:1px solid var(--line)"></div><div class="meta"><div class="nm">Studio Black</div><div class="role">App background</div><span class="hex">#0A0B0D</span></div></div>
-    <div class="sw"><div class="chip" style="background:#15181D"></div><div class="meta"><div class="nm">Console</div><div class="role">Cards & panels</div><span class="hex">#15181D</span></div></div>
-    <div class="sw"><div class="chip" style="background:#9AA1AB"></div><div class="meta"><div class="nm">Muted</div><div class="role">Secondary text</div><span class="hex">#9AA1AB</span></div></div>
+    <div class="sw"><div class="chip" style="background:#141A20"></div><div class="meta"><div class="nm">Console</div><div class="role">Cards &amp; panels</div><span class="hex">#141A20</span></div></div>
+    <div class="sw"><div class="chip" style="background:#9DB0C0"></div><div class="meta"><div class="nm">Muted</div><div class="role">Secondary text</div><span class="hex">#9DB0C0</span></div></div>
   </div>
+  <p style="color:var(--muted);font-size:13.5px;margin-top:16px">Gold is no longer the lead — it moves to <strong style="color:var(--gold)">attention/warnings</strong> only. One <strong style="color:var(--blue)">Sloth Blue</strong> primary action per screen; green stays reserved for confirmed/verified.</p>
 
   <h2>Typography</h2>
   <div class="type">
-    <div class="row"><div class="lab">Display · 800</div><div class="d-display">Verified backups you own</div></div>
-    <div class="row"><div class="lab">Heading · 700</div><div class="d-h">Never lose a sample again</div></div>
-    <div class="row"><div class="lab">Body · 400–600</div><div class="d-body">Re-reads and re-hashes every file to prove the backup opens.</div></div>
-    <div class="row"><div class="lab">Mono · status</div><div class="d-mono">✓ snapshot verified · 142 files · 0 missing</div></div>
+    <div class="row"><div class="lab">Display · Fredoka 600</div><div class="d-display">Looks lazy. Works obsessively.</div></div>
+    <div class="row"><div class="lab">Heading · Fredoka 500</div><div class="d-h">Never lose a sample again</div></div>
+    <div class="row"><div class="lab">Body · Inter 400–600</div><div class="d-body">Re-reads and re-hashes every file to prove the backup opens.</div></div>
+    <div class="row"><div class="lab">Mono · JetBrains Mono</div><div class="d-mono">✓ snapshot verified · 142 files · 0 missing</div></div>
   </div>
-  <p style="color:var(--muted);font-size:13.5px;margin-top:14px">Type: <strong style="color:var(--ink)">Inter</strong> (or the system UI font) for everything; a monospace for hashes, file counts, and status lines — it reinforces the “engineering / proof” story.</p>
+  <p style="color:var(--muted);font-size:13.5px;margin-top:14px"><strong style="color:var(--ink)">Fredoka</strong> (rounded, friendly) for display &amp; headings — it echoes the logo's hand-drawn warmth. <strong style="color:var(--ink)">Inter</strong> for dense UI &amp; body. A <strong style="color:var(--ink)">monospace</strong> for hashes, file counts &amp; status lines — it sells the “proof / engineering” story.</p>
+
+  <h2>Voice &amp; tone</h2>
+  <div class="voice">
+    <div class="box">
+      <h3>Taglines</h3>
+      <div class="tagline">“Back up while you chill.”</div>
+      <div class="tagline">“Set it. Forget it. It's handled.”</div>
+      <div class="tagline">“Lazy by name. Paranoid about your projects.”</div>
+    </div>
+    <div class="box">
+      <h3>How we sound</h3>
+      <ul>
+        <li>Laid-back, plain-spoken, a little dry — never corporate.</li>
+        <li>Short sentences. The tool brags quietly.</li>
+        <li>Productive tension: chill exterior, obsessive interior.</li>
+        <li>Talk to music makers like a peer, not a vendor.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Mascot states</h2>
+  <p style="color:var(--muted);font-size:13.5px;margin:-8px 0 18px">The sloth carries the UI — these replace plain emoji in empty/loading/success states (artist line-art swaps in for each).</p>
+  <div class="states">
+    <div class="state"><div class="emo">😴</div><div class="nm">Empty</div><div class="ds">nothing here yet — napping</div></div>
+    <div class="state"><div class="emo">🔍</div><div class="nm">Scanning</div><div class="ds">peering through a glass</div></div>
+    <div class="state"><div class="emo">🫶</div><div class="nm">Backing up</div><div class="ds">hugging a drive</div></div>
+    <div class="state"><div class="emo">✅</div><div class="nm">Verified</div><div class="ds">thumbs-up, green</div></div>
+    <div class="state"><div class="emo">🦥</div><div class="nm">Loading</div><div class="ds">a deliberately slow sloth</div></div>
+  </div>
 
   <h2>Usage</h2>
   <div class="use">
     <div class="box ok"><h3>Do</h3><ul>
-      <li>Keep clear space around the mark equal to the shield’s width.</li>
-      <li>Use Signal Gold for one primary action per screen.</li>
+      <li>Keep clear space around the mark equal to the sloth's head height.</li>
+      <li>Use Sloth Blue for one primary action per screen.</li>
       <li>Reserve Verified Green strictly for confirmed / passed states.</li>
-      <li>Default to dark surfaces — it’s a studio tool.</li>
+      <li>Default to dark surfaces — it's a studio tool.</li>
+      <li>Keep the sloth chill — relaxed poses only.</li>
     </ul></div>
-    <div class="box no"><h3>Don’t</h3><ul>
-      <li>Recolor the mark outside the approved palette.</li>
-      <li>Stretch, rotate, or add drop shadows to the lockup.</li>
+    <div class="box no"><h3>Don't</h3><ul>
+      <li>Recolor the sloth or wordmark outside the approved palette.</li>
+      <li>Stretch, rotate, or drop-shadow the line art.</li>
+      <li>Use gold as a primary CTA — it's attention/warnings now.</li>
       <li>Use red for anything other than risk / errors.</li>
-      <li>Place the full-color logo on busy photos.</li>
+      <li>Place the full-colour logo on busy photos.</li>
     </ul></div>
   </div>
 
-  <footer>LazyCreatives Backups — brand sheet v1 · files: logo-mark.svg · logo-lockup.svg · this sheet</footer>
+  <footer>Lazy Creatives — brand sheet v2 · assets: logo-lockup.svg · logo-mark.svg · app-icon.png · this sheet</footer>
 </div>
 </body>
 </html>
