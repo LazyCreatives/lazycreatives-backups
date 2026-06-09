@@ -5,12 +5,12 @@
   --surface-2: #1B242C;     /* Panel */
   --surface-3: #26323D;
   --border: #243039;
-  --border-strong: #3C4E60; /* Deep Slate */
+  --border-strong: #3B4F5D; /* Deep Slate */
   --text: #EAF1F7;          /* Ink (cool white) */
   --text-dim: #9DB0C0;      /* Muted (blue-grey) */
   --text-faint: #66788A;
-  --accent: #88B2D6;        /* Sloth Blue — primary accent, CTAs */
-  --accent-press: #6E9CC2;
+  --accent: #86B3D3;        /* Sloth Blue — primary accent, CTAs */
+  --accent-press: #6C9BBE;
   --accent-2: #4ADE80;      /* Verified Green — success / "it opens" */
   --danger: #F2706E;        /* Clip Red — risk / errors */
   --warn: #F5C451;          /* Attention Gold — heads-up (demoted from primary) */
