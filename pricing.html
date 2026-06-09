@@ -6,58 +6,14 @@
 <title>Pricing — Lazy Creatives Backups</title>
 <meta property="og:title" content="Lazy Creatives Backups — Pricing">
 <meta property="og:description" content="Buy once, own it forever. No subscription, no cloud.">
-<style>
-  :root{
-    --black:#0A0B0D; --console:#141A20; --blue:#86B3D3; --slate:#3B4F5D; --green:#4ADE80;
-    --ink:#EAF1F7; --muted:#9DB0C0; --line:rgba(134,179,211,.16);
-    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","Inter",Roboto,Helvetica,Arial,sans-serif;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{background:radial-gradient(120% 70% at 50% -10%,#13171c,var(--black) 60%);
-    color:var(--ink);font-family:var(--font);line-height:1.55;min-height:100vh;padding:5vh 6vw 9vh}
-  .wrap{max-width:1040px;margin:0 auto}
-  a{color:inherit}
-  .back{color:var(--muted);font-size:14px;text-decoration:none;font-weight:600}
-  .back:hover{color:var(--blue)}
-  header{display:flex;align-items:center;gap:13px;margin:18px 0 8px}
-  header img{height:42px;width:auto}
-  .pill{border:1px solid var(--line);color:var(--blue);font-weight:700;font-size:12.5px;padding:3px 10px;border-radius:99px}
-  h1{font-size:clamp(28px,4.5vw,40px);font-weight:800;letter-spacing:-.025em;margin:26px 0 8px}
-  h1 .g{color:var(--blue)}
-  .lede{color:var(--muted);font-size:17px;max-width:60ch;margin-bottom:36px}
-  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
-  .tier{border:1px solid var(--line);border-radius:18px;padding:26px 24px;background:var(--console);display:flex;flex-direction:column}
-  .tier.pop{border-color:rgba(134,179,211,.55);box-shadow:0 16px 60px rgba(134,179,211,.12);position:relative}
-  .tier.pop::after{content:"Most popular";position:absolute;top:-11px;left:24px;background:var(--blue);color:#0A0B0D;font-size:11px;font-weight:800;letter-spacing:.04em;padding:4px 10px;border-radius:99px}
-  .tier h2{font-size:18px;font-weight:800;margin-bottom:4px}
-  .tier .who{color:var(--muted);font-size:13px;min-height:34px}
-  .price{font-size:38px;font-weight:800;letter-spacing:-.02em;margin:10px 0 2px}
-  .price small{font-size:15px;color:var(--muted);font-weight:600}
-  .once{color:var(--green);font-size:12.5px;font-weight:700;letter-spacing:.03em;margin-bottom:16px}
-  ul{list-style:none;display:flex;flex-direction:column;gap:9px;margin:6px 0 22px}
-  li{font-size:14px;color:#dbe3ec;padding-left:22px;position:relative}
-  li::before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:800}
-  li.no{color:var(--muted)} li.no::before{content:"–";color:var(--muted)}
-  .cta{margin-top:auto;text-align:center;text-decoration:none;font-weight:700;font-size:15px;
-    padding:13px 18px;border-radius:11px;border:1px solid var(--line);color:var(--ink);background:rgba(134,179,211,.05);transition:.15s}
-  .cta:hover{border-color:rgba(134,179,211,.5);background:rgba(134,179,211,.10)}
-  .cta.primary{background:var(--blue);color:#0A0B0D;border-color:var(--blue)}
-  .cta.primary:hover{background:#9bc0e0}
-  .cta.soon{opacity:.85}
-  .band{margin-top:20px;border:1px solid var(--line);border-radius:18px;padding:24px 26px;background:linear-gradient(120deg,#141a20,#0d0f12);
-    display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap}
-  .band h3{font-size:19px;font-weight:800;margin-bottom:4px}
-  .band p{color:var(--muted);font-size:14.5px;max-width:60ch}
-  .note{margin-top:34px;color:var(--muted);font-size:13.5px;line-height:1.7;border-top:1px solid var(--line);padding-top:20px}
-  .note b{color:var(--ink)}
-  .tag{display:inline-block;background:rgba(74,222,128,.12);color:var(--green);font-size:12px;font-weight:700;padding:4px 10px;border-radius:99px;margin-bottom:18px}
-  @media(max-width:780px){.grid{grid-template-columns:1fr}}
-</style>
+<meta property="og:image" content="https://lazycreatives.github.io/social/social-backups.png">
+<link rel="stylesheet" href="/brand.css">
 </head>
 <body>
-<div class="wrap">
+<div class="page-narrow">
+<div class="wrap wide">
   <a class="back" href="index.html">← Back to overview</a>
-  <header>
+  <header class="lc" style="margin:18px 0 8px">
     <img src="brand/logo.png" alt="Lazy Creatives">
     <span class="pill">Backups</span>
   </header>
@@ -127,9 +83,10 @@
 
   <p class="note" id="notify">
     <b>Updates Pass — $24/yr (optional).</b> Stay on the latest version as DAWs evolve. Let it lapse and your current version keeps working forever — you own what you paid for.<br><br>
-    <b>Coming soon:</b> checkout and license keys are being set up. Star the <a href="https://github.com/LazyCreatives/lazycreatives-backups" style="color:var(--blue)">GitHub repo</a> to be first to know when Pro goes on sale at the early-adopter price.<br><br>
+    <b>Coming soon:</b> checkout and license keys are being set up. Star the <a href="https://github.com/LazyCreatives/lazycreatives-backups">GitHub repo</a> to be first to know when Pro goes on sale at the early-adopter price.<br><br>
     Prices in USD. 14-day no-questions refund. Sales tax/VAT handled at checkout.
   </p>
+</div>
 </div>
 </body>
 </html>

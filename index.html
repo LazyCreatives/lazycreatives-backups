@@ -7,83 +7,48 @@
 <meta property="og:title" content="Lazy Creatives — Backups">
 <meta property="og:description" content="Verified, deduplicated backups for your music projects — that you own.">
 <meta property="og:type" content="website">
-<style>
-  :root{
-    --black:#0A0B0D; --console:#141A20; --blue:#86B3D3; --slate:#3B4F5D; --green:#4ADE80;
-    --ink:#EAF1F7; --muted:#9DB0C0; --line:rgba(134,179,211,.16);
-    --font:-apple-system,BlinkMacSystemFont,"Segoe UI","Inter",Roboto,Helvetica,Arial,sans-serif;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{background:radial-gradient(120% 80% at 50% -10%,#13171c,var(--black) 60%);
-    color:var(--ink);font-family:var(--font);line-height:1.55;min-height:100vh;
-    display:flex;flex-direction:column;align-items:center;padding:5vh 6vw 8vh}
-  .wrap{width:100%;max-width:900px}
-  header{display:flex;align-items:center;gap:14px;margin-bottom:38px}
-  header img{height:46px;width:auto}
-  .pill{border:1px solid var(--line);color:var(--blue);font-weight:700;font-size:13px;
-    padding:4px 11px;border-radius:99px;letter-spacing:.02em}
-  header .home{margin-left:auto;color:var(--muted);text-decoration:none;font-size:14px;font-weight:600}
-  header .home:hover{color:var(--blue)}
-  h1{font-size:clamp(30px,5vw,46px);font-weight:800;letter-spacing:-.025em;line-height:1.08;margin-bottom:14px}
-  h1 .g{color:var(--blue)}
-  .lede{color:var(--muted);font-size:18px;max-width:62ch;margin-bottom:24px}
-  .notify{display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:space-between;
-    border:1px solid rgba(134,179,211,.35);background:rgba(134,179,211,.07);border-radius:14px;padding:14px 18px;margin-bottom:30px}
-  .notify p{font-size:14.5px;color:var(--ink)} .notify p b{color:var(--blue)}
-  a.btn{text-decoration:none;font-weight:700;font-size:15px;padding:13px 22px;border-radius:11px;
-    border:1px solid var(--line);color:var(--ink);background:rgba(134,179,211,.05);transition:.15s}
-  a.btn:hover{border-color:rgba(134,179,211,.5);background:rgba(134,179,211,.10)}
-  a.btn.primary,a.btn.star{background:var(--blue);color:#0A0B0D;border-color:var(--blue);white-space:nowrap}
-  a.btn.primary:hover,a.btn.star:hover{background:#9bc0e0}
-  .player{border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#000;box-shadow:0 20px 70px rgba(0,0,0,.5)}
-  .player iframe{display:block;width:100%;aspect-ratio:16/9;border:0}
-  .actions{display:flex;flex-wrap:wrap;gap:14px;margin-top:28px}
-  .feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:48px}
-  .card{border:1px solid var(--line);border-radius:14px;padding:22px;background:var(--console)}
-  .card h3{font-size:16px;font-weight:800;margin-bottom:7px;display:flex;align-items:center;gap:8px}
-  .card h3::before{content:"✓";color:var(--green);font-weight:800}
-  .card p{color:var(--muted);font-size:14.5px}
-  footer{color:var(--muted);font-size:13px;margin-top:54px;border-top:1px solid var(--line);padding-top:20px;width:100%;max-width:900px}
-  footer a{color:var(--blue);text-decoration:none}
-</style>
+<meta property="og:image" content="https://lazycreatives.github.io/social/social-backups.png">
+<link rel="stylesheet" href="/brand.css">
 </head>
 <body>
-<div class="wrap">
-  <header>
+<div class="page">
+  <header class="lc">
     <img src="brand/logo.png" alt="Lazy Creatives">
     <span class="pill">Backups</span>
     <a class="home" href="https://lazycreatives.github.io">All tools ↗</a>
   </header>
 
-  <h1>Never lose a session <span class="g">again.</span></h1>
-  <p class="lede">Verified, deduplicated backups for your music projects — that you own. It finds every session, follows its sounds, and proves each backup actually opens. You chill; it does the work.</p>
+  <div class="wrap">
+    <h1>Never lose a session <span class="g">again.</span></h1>
+    <p class="lede">Verified, deduplicated backups for your music projects — that you own. It finds every session, follows its sounds, and proves each backup actually opens. You chill; it does the work.</p>
 
-  <div class="notify">
-    <p><b>Launching soon.</b> Star the repo to get notified the moment it ships — the first 100 get early-adopter pricing.</p>
-    <a class="btn star" href="https://github.com/LazyCreatives/lazycreatives-backups" target="_blank" rel="noopener">★ Star to get notified</a>
+    <div class="notify">
+      <p><b>Launching soon.</b> Star the repo to get notified the moment it ships — the first 100 get early-adopter pricing.</p>
+      <a class="btn star" href="https://github.com/LazyCreatives/lazycreatives-backups" target="_blank" rel="noopener">★ Star to get notified</a>
+    </div>
+
+    <div class="player">
+      <iframe src="pitch-video.html" title="Lazy Creatives Backups — animated pitch" allowfullscreen loading="lazy"></iframe>
+    </div>
+
+    <div class="actions">
+      <a class="btn primary" href="pitch-video.html">Play the pitch</a>
+      <a class="btn" href="pricing.html">Pricing</a>
+      <a class="btn" href="https://github.com/LazyCreatives/lazycreatives-backups/releases">Releases</a>
+      <a class="btn" href="https://lazycreatives.github.io/brand-guide.html">Brand guide</a>
+    </div>
+
+    <div class="feat">
+      <div class="card"><h3>Checked, not just copied</h3><p>Re-reads and re-hashes every file after backup, and confirms the project still opens.</p></div>
+      <div class="card"><h3>Never lose a sound</h3><p>Relinks missing samples automatically — matched by file size, not just name.</p></div>
+      <div class="card"><h3>Runs on its own</h3><p>Scheduled backups in the background; saves only what changed, so it stays small.</p></div>
+      <div class="card"><h3>You own it</h3><p>No cloud, no account. Your drive, your masters — across Ableton and FL Studio.</p></div>
+    </div>
   </div>
 
-  <div class="player">
-    <iframe src="pitch-video.html" title="Lazy Creatives Backups — animated pitch" allowfullscreen loading="lazy"></iframe>
-  </div>
-
-  <div class="actions">
-    <a class="btn primary" href="pitch-video.html">Play the pitch</a>
-    <a class="btn" href="pricing.html">Pricing</a>
-    <a class="btn" href="https://github.com/LazyCreatives/lazycreatives-backups/releases">Releases</a>
-    <a class="btn" href="https://lazycreatives.github.io/brand-guide.html">Brand guide</a>
-  </div>
-
-  <div class="feat">
-    <div class="card"><h3>Checked, not just copied</h3><p>Re-reads and re-hashes every file after backup, and confirms the project still opens.</p></div>
-    <div class="card"><h3>Never lose a sound</h3><p>Relinks missing samples automatically — matched by file size, not just name.</p></div>
-    <div class="card"><h3>Runs on its own</h3><p>Scheduled backups in the background; saves only what changed, so it stays small.</p></div>
-    <div class="card"><h3>You own it</h3><p>No cloud, no account. Your drive, your masters — across Ableton and FL Studio.</p></div>
-  </div>
+  <footer class="lc">
+    Lazy Creatives — Backups · <a href="https://lazycreatives.github.io">lazycreatives.github.io</a> · <a href="https://github.com/LazyCreatives/lazycreatives-backups">source on GitHub</a>
+  </footer>
 </div>
-
-<footer>
-  Lazy Creatives — Backups · <a href="https://lazycreatives.github.io">lazycreatives.github.io</a> · <a href="https://github.com/LazyCreatives/lazycreatives-backups">source on GitHub</a>
-</footer>
 </body>
 </html>
