@@ -1,7 +1,7 @@
 {
   "name": "lazycreatives-backups",
   "productName": "LazyCreatives Backups",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "LazyCreatives Backups — verified, deduplicated backups for Ableton & FL Studio projects",
   "main": "electron/main.js",
   "scripts": {
@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
-    "concurrently": "^9.0.1",
+    "concurrently": "^9.2.4",
     "cross-env": "^7.0.3",
     "electron": "^31.3.1",
     "electron-builder": "^24.13.3",

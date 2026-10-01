@@ -17,3 +17,27 @@ jobs:
       - name: Run tests
         working-directory: backend
         run: python -m pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: electron
+    env:
+      # The renderer tests and vite build don't need the Electron binary.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit -p .
+      - name: Run tests
+        run: npm test
+      - name: Build renderer
+        run: npm run build
