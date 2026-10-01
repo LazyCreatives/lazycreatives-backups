@@ -1,0 +1,26 @@
+<svg width="120" height="132" viewBox="0 0 64 72" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LazyCreatives Backups mark">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="72" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1C1F25"/><stop offset="1" stop-color="#0B0C0F"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="28%" r="62%">
+      <stop offset="0" stop-color="#F5C451" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#F5C451" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- shield -->
+  <path d="M32 3 L57 13 V31 C57 47 47.5 57.5 32 61.5 C16.5 57.5 7 47 7 31 V13 Z"
+        fill="url(#tile)" stroke="#F5C451" stroke-width="2.4"/>
+  <path d="M32 3 L57 13 V31 C57 47 47.5 57.5 32 61.5 C16.5 57.5 7 47 7 31 V13 Z" fill="url(#glow)"/>
+  <!-- waveform bars (audio) -->
+  <g stroke="#F5C451" stroke-width="3.2" stroke-linecap="round" opacity="0.85">
+    <line x1="19" y1="34" x2="19" y2="40"/>
+    <line x1="25" y1="29" x2="25" y2="45"/>
+  </g>
+  <g stroke="#F5C451" stroke-width="3.2" stroke-linecap="round" opacity="0.5">
+    <line x1="45" y1="31" x2="45" y2="43"/>
+  </g>
+  <!-- verify check -->
+  <path d="M22 37 l7 7 l16 -17" stroke="#4ADE80" stroke-width="4"
+        fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

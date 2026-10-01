@@ -1,0 +1,150 @@
+name: installers
+# Installers are slow (macOS bills 10x on private repos), so build only when
+# packaging can change: on demand, on PRs touching packaging files, and on v* tags.
+on:
+  pull_request:
+    paths:
+      - electron/package.json
+      - backend/sidecar.spec
+      - .github/workflows/installers.yml
+      - .github/scripts/smoke_sidecar.py
+  push:
+    tags: ["v*"]          # on the public repo a v<version> tag also publishes a Release
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+            builder: --win nsis --x64
+            sidecar: ablebackup-sidecar.exe
+            artifact: electron/release/*.exe
+          - os: macos-latest          # Apple Silicon (arm64)
+            name: macos-arm64
+            builder: --mac dir --arm64   # dmg is made after ad-hoc signing below
+            sidecar: ablebackup-sidecar
+            artifact: electron/release/*.dmg
+          - os: ubuntu-latest
+            name: linux
+            builder: --linux AppImage --x64
+            sidecar: ablebackup-sidecar
+            artifact: electron/release/*.AppImage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+
+      - name: Install backend + PyInstaller
+        working-directory: backend
+        run: pip install . pyinstaller
+
+      # Release builds must not sign entitlements with the public in-source default
+      # (see docs/PACKAGING.md). Use the repo secret when set, else a throwaway key.
+      - name: Write entitlement signing secret
+        working-directory: backend
+        env:
+          ENT_SECRET: ${{ secrets.ABLEBACKUP_ENT_SECRET }}
+        run: |
+          python -c "import os,secrets,pathlib; s=os.environ.get('ENT_SECRET') or secrets.token_hex(32); pathlib.Path('ablebackup/_buildsecret.py').write_text('ENT_SECRET = %r\n' % s)"
+
+      - name: Freeze sidecar
+        working-directory: backend
+        run: pyinstaller sidecar.spec --noconfirm --distpath dist
+
+      - name: Smoke-test sidecar (/health)
+        run: python .github/scripts/smoke_sidecar.py backend/dist/ablebackup-sidecar/${{ matrix.sidecar }}
+
+      - name: Install renderer deps
+        working-directory: electron
+        run: npm ci
+
+      - name: Build installer (unsigned)
+        working-directory: electron
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          npm run build
+          npx electron-builder ${{ matrix.builder }} --publish never
+
+      # Unsigned builds leave the .app with a broken bundle signature, which Apple
+      # Silicon reports as "damaged". Ad-hoc sign the whole bundle (no Apple account
+      # needed), verify it, and only then wrap it in the dmg.
+      - name: Ad-hoc sign, verify and package dmg (macOS)
+        if: runner.os == 'macOS'
+        working-directory: electron
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          app="release/mac-arm64/LazyCreatives Backups.app"
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          npx electron-builder --mac dmg --arm64 --prepackaged "$app" --publish never
+
+      # Launch the packaged app and check it starts its bundled sidecar.
+      - name: Launch packaged app (macOS)
+        if: runner.os == 'macOS'
+        working-directory: electron
+        run: |
+          "release/mac-arm64/LazyCreatives Backups.app/Contents/MacOS/LazyCreatives Backups" > "$RUNNER_TEMP/app.log" 2>&1 &
+          pid=$!
+          ok=0
+          for i in $(seq 1 45); do
+            sleep 1
+            if pgrep -f "Resources/sidecar/ablebackup-sidecar" > /dev/null; then ok=1; break; fi
+          done
+          sleep 3
+          kill $pid 2>/dev/null || true
+          pkill -f "Resources/sidecar/ablebackup-sidecar" 2>/dev/null || true
+          cat "$RUNNER_TEMP/app.log"
+          test $ok = 1 || { echo "packaged app never started its sidecar"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lazycreatives-backups-${{ matrix.name }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+  # On a v* tag: attach all three installers to a GitHub Release under fixed names,
+  # so the website can link to releases/latest/download/<name> and never go stale.
+  release:
+    # Only the public repo publishes; Releases on the private -dev repo aren't downloadable.
+    if: startsWith(github.ref, 'refs/tags/v') && !endsWith(github.repository, '-dev')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag matches app version
+        run: |
+          ver=$(node -p "require('./electron/package.json').version")
+          test "${GITHUB_REF_NAME}" = "v$ver" || { echo "tag ${GITHUB_REF_NAME} != package.json v$ver"; exit 1; }
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Rename to stable asset names
+        run: |
+          mkdir out
+          cp artifacts/lazycreatives-backups-windows/*.exe      out/LazyCreatives-Backups-Windows-Setup.exe
+          cp artifacts/lazycreatives-backups-macos-arm64/*.dmg  out/LazyCreatives-Backups-macOS-arm64.dmg
+          cp artifacts/lazycreatives-backups-linux/*.AppImage   out/LazyCreatives-Backups-Linux-x86_64.AppImage
+          ls -l out
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* \
+            --title "LazyCreatives Backups $GITHUB_REF_NAME (beta)" \
+            --notes "Unsigned beta build. See docs/PACKAGING.md for first-launch steps on each OS." \
+            --verify-tag

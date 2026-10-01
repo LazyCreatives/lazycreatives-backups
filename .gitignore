@@ -1,0 +1,30 @@
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+dist/
+.DS_Store
+
+# Python build output only — NOT electron/build/ (that holds the app icon assets)
+/build/
+backend/build/
+
+electron/node_modules/
+electron/dist/
+electron/release/
+
+# PyInstaller sidecar build output
+backend/dist/
+
+# large binary — keep the pitch video out of git
+lazycreatives-pitch.mp4
+
+# internal business docs — local only, never publish (strategy + financials)
+brand/business/
+
+# internal design specs, plans + security audit — local only, never publish
+docs/superpowers/
+docs/SECURITY-AUDIT.md
+
+# per-build entitlement signing secret — generated at packaging, never commit
+backend/ablebackup/_buildsecret.py

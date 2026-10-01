@@ -1,0 +1,28 @@
+<svg width="520" height="120" viewBox="0 0 520 120" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LazyCreatives Backups">
+  <defs>
+    <linearGradient id="tile2" x1="0" y1="24" x2="0" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1C1F25"/><stop offset="1" stop-color="#0B0C0F"/>
+    </linearGradient>
+    <radialGradient id="glow2" cx="50%" cy="30%" r="60%">
+      <stop offset="0" stop-color="#F5C451" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#F5C451" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- mark -->
+  <g transform="translate(16,18) scale(1.18)">
+    <path d="M32 3 L57 13 V31 C57 47 47.5 57.5 32 61.5 C16.5 57.5 7 47 7 31 V13 Z"
+          fill="url(#tile2)" stroke="#F5C451" stroke-width="2.4"/>
+    <path d="M32 3 L57 13 V31 C57 47 47.5 57.5 32 61.5 C16.5 57.5 7 47 7 31 V13 Z" fill="url(#glow2)"/>
+    <g stroke="#F5C451" stroke-width="3.2" stroke-linecap="round" opacity="0.85">
+      <line x1="19" y1="34" x2="19" y2="40"/>
+      <line x1="25" y1="29" x2="25" y2="45"/>
+    </g>
+    <line x1="45" y1="31" x2="45" y2="43" stroke="#F5C451" stroke-width="3.2" stroke-linecap="round" opacity="0.5"/>
+    <path d="M22 37 l7 7 l16 -17" stroke="#4ADE80" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <!-- wordmark -->
+  <text x="120" y="56" font-family="-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif"
+        font-size="34" font-weight="800" letter-spacing="-0.5" fill="#F3F4F6">LazyCreatives<tspan fill="#F5C451"> Backups</tspan></text>
+  <text x="121" y="84" font-family="-apple-system,Segoe UI,Inter,Helvetica,Arial,sans-serif"
+        font-size="15.5" font-weight="600" letter-spacing="0.5" fill="#9AA1AB">Verified backups you own</text>
+</svg>

@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lazy Creatives — Brand Sheet</title>
+<style>
+  @font-face{
+    font-family:"Slothy Jelly";  /* the logo typeface — drop the licensed webfont here to render it */
+    src:url("slothy-jelly.woff2") format("woff2"), url("slothy-jelly.ttf") format("truetype");
+    font-display:swap;
+  }
+  :root{
+    --black:#0A0B0D; --console:#141A20; --panel:#1B242C;
+    --blue:#86B3D3;        /* Sloth Blue — from the logo */
+    --slate:#3B4F5D;       /* Deep Slate */
+    --green:#4ADE80; --gold:#F5C451; --red:#F2706E;
+    --ink:#EAF1F7; --muted:#9DB0C0; --line:rgba(134,179,211,.16);
+    --font:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,"Cascadia Mono",monospace;
+    --display:"Slothy Jelly","Inter",sans-serif;  /* logo / display font */
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:
+      radial-gradient(1100px 520px at 16% -10%,rgba(134,179,211,.08),transparent 60%),
+      var(--black);
+    color:var(--ink);font-family:var(--font);line-height:1.55;padding:64px 7vw 96px}
+  .wrap{max-width:1040px;margin:0 auto}
+  header.top{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:48px}
+  .eyebrow{color:var(--blue);font-size:13px;letter-spacing:.34em;text-transform:uppercase;font-weight:700}
+  h1{font-size:42px;font-weight:800;letter-spacing:-.02em;margin:12px 0 8px}
+  header.top p{color:var(--muted);font-size:17px;max-width:62ch}
+  h2{font-size:13px;letter-spacing:.28em;text-transform:uppercase;color:var(--muted);
+    font-weight:700;margin:56px 0 20px;display:flex;align-items:center;gap:14px}
+  h2::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  /* logo */
+  .logos{display:grid;grid-template-columns:1.5fr 1fr;gap:20px}
+  .card{border:1px solid var(--line);border-radius:18px;padding:30px;
+    display:flex;align-items:center;justify-content:center;min-height:170px;position:relative}
+  .card.dark{background:radial-gradient(120% 120% at 50% 0%,#13171c,#0a0b0d)}
+  .card.slate{background:var(--slate)}
+  .card .tag{position:absolute;top:12px;left:16px;font-size:11px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--muted);font-weight:700}
+  .card.slate .tag{color:#cfe0ec}
+  .card img{max-width:100%;height:auto;display:block}
+  .logo-lg{width:78%} .logo-sm{width:150px}
+  .note{margin-top:16px;font-size:13.5px;color:var(--muted)}
+  .note code{font-family:var(--mono);color:var(--blue);font-size:12.5px}
+
+  /* palette */
+  .pal{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .sw{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--console)}
+  .chip{height:84px}
+  .sw .meta{padding:13px 15px}
+  .sw .nm{font-weight:700;font-size:14.5px}
+  .sw .role{color:var(--muted);font-size:12px;margin:2px 0 8px;min-height:30px}
+  .sw .hex{font-family:var(--mono);font-size:12.5px;color:var(--ink);
+    background:rgba(134,179,211,.10);padding:3px 8px;border-radius:6px;display:inline-block}
+
+  /* type */
+  .type{border:1px solid var(--line);border-radius:18px;padding:30px 34px;background:var(--console)}
+  .type .r{display:flex;align-items:baseline;gap:18px;padding:15px 0;border-bottom:1px solid var(--line)}
+  .type .r:last-child{border-bottom:0}
+  .type .lab{width:150px;color:var(--muted);font-size:12.5px;flex:0 0 auto}
+  .d-display{font-family:var(--display);font-size:36px;font-weight:400;letter-spacing:0}
+  .d-h{font-size:22px;font-weight:700}
+  .d-body{font-size:16px;color:#dbe3ec}
+  .d-mono{font-family:var(--mono);font-size:14px;color:var(--green)}
+
+  /* voice */
+  .voice{display:grid;grid-template-columns:1.2fr 1fr;gap:18px}
+  .voice .box{border:1px solid var(--line);border-radius:16px;padding:22px 24px;background:var(--console)}
+  .voice h3{font-size:14px;margin-bottom:12px;color:var(--blue)}
+  .tagline{font-size:19px;font-weight:700;color:var(--ink);margin-bottom:7px;letter-spacing:-.01em}
+  .voice ul{list-style:none;display:flex;flex-direction:column;gap:9px}
+  .voice li{font-size:14.5px;color:#d2dbe4;padding-left:18px;position:relative}
+  .voice li::before{content:"·";position:absolute;left:4px;color:var(--blue);font-weight:800}
+
+  /* artist brief — reference mockups for assets to commission */
+  .brief-intro{color:var(--muted);font-size:14px;margin:-8px 0 20px;max-width:74ch}
+  .briefs{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+  .brief{border:1px solid var(--line);border-radius:16px;background:var(--console);overflow:hidden;display:flex;flex-direction:column}
+  .brief .frame{position:relative;background:
+      repeating-conic-gradient(#0e141a 0% 25%,#11171e 0% 50%) 50%/22px 22px;
+    border-bottom:1px dashed var(--slate);min-height:150px;display:flex;align-items:center;justify-content:center;padding:18px;gap:14px}
+  .brief .frame img{max-height:130px;width:auto;opacity:.96}
+  .brief .frame .ph{border:2px dashed var(--slate);border-radius:14px;min-width:96px;min-height:96px;
+    display:grid;place-items:center;color:var(--muted);font-size:11px;text-align:center;padding:8px;line-height:1.3}
+  .brief .body{padding:16px 18px}
+  .brief .ttl{font-weight:700;font-size:15px;margin-bottom:4px}
+  .brief .ttl b{color:var(--blue)}
+  .brief .desc{color:var(--muted);font-size:13px;margin-bottom:8px}
+  .brief .spec{font-family:var(--mono);font-size:11.5px;color:#acc4d6;background:rgba(134,179,211,.08);
+    border-radius:8px;padding:8px 10px;display:block}
+  .poses{display:flex;flex-wrap:wrap;gap:10px}
+  .pose{flex:1 1 120px;border:2px dashed var(--slate);border-radius:12px;padding:10px;text-align:center;background:#0e141a}
+  .pose img{height:64px;width:auto;opacity:.55;filter:grayscale(.1)}
+  .pose .pn{font-weight:700;font-size:12.5px;margin-top:6px}
+  .pose .pd{color:var(--muted);font-size:11px;margin-top:2px}
+
+  /* foundation */
+  .posbox{border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:14px;
+    background:linear-gradient(120deg,rgba(134,179,211,.06),transparent);padding:20px 24px;margin-bottom:18px}
+  .poslabel{color:var(--blue);font-size:11px;letter-spacing:.28em;text-transform:uppercase;font-weight:700;margin-bottom:8px}
+  .posstmt{font-size:18px;line-height:1.5;color:#e7eef5;max-width:76ch}
+  .posstmt b{color:var(--ink)}
+  .found{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .fitem{border:1px solid var(--line);border-radius:14px;background:var(--console);padding:18px}
+  .fitem h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--blue);margin-bottom:8px}
+  .fitem p{color:#d2dbe4;font-size:13.5px}
+  @media(max-width:820px){.found{grid-template-columns:repeat(2,1fr)}}
+
+  /* usage */
+  .use{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .use .box{border:1px solid var(--line);border-radius:16px;padding:22px 24px;background:var(--console)}
+  .use h3{font-size:14px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .use ul{list-style:none;display:flex;flex-direction:column;gap:9px}
+  .use li{font-size:14.5px;color:#d2dbe4;padding-left:22px;position:relative}
+  .ok h3{color:var(--green)} .no h3{color:var(--red)}
+  .ok li::before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:800}
+  .no li::before{content:"✕";position:absolute;left:0;color:var(--red);font-weight:800}
+  footer{margin-top:64px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:22px}
+  @media(max-width:820px){.logos,.use,.voice,.briefs{grid-template-columns:1fr}.pal{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">Brand Sheet · v2</div>
+    <h1>Lazy Creatives</h1>
+    <p>Looks lazy. Works obsessively. A growing family of desktop tools that take the boring, behind-the-scenes work of making music off your plate — so you stay in flow while they obsess over the details. Dark studio surfaces, soft <strong style="color:var(--blue)">Sloth&nbsp;Blue</strong> line art, a green “verified” state.</p>
+  </header>
+
+  <h2>Foundation</h2>
+  <div class="posbox">
+    <div class="poslabel">Positioning</div>
+    <p class="posstmt">For <b>working producers</b> who'd rather make music than manage it, <b>Lazy Creatives</b> builds the desktop tools that handle the chores — <b>verified backups</b>, <b>hands-off SoundCloud uploads</b>, and more to come — so the admin runs itself. You stay in flow; the tools obsess over the boring stuff.</p>
+  </div>
+  <div class="found">
+    <div class="fitem"><h3>Purpose</h3><p>Take the tedious, behind-the-scenes work of making music off your plate — so you stay in the music.</p></div>
+    <div class="fitem"><h3>Who it's for</h3><p>Working producers, spoken to as peers — pro, never corporate.</p></div>
+    <div class="fitem"><h3>Promise</h3><p>“You make the music. We'll handle the rest — and prove it's done.”</p></div>
+    <div class="fitem"><h3>Personality</h3><p>Chill · meticulous · plain-spoken · by-makers-for-makers · quietly confident.</p></div>
+  </div>
+  <div class="voice" style="margin-top:18px">
+    <div class="box">
+      <h3>House-brand architecture</h3>
+      <ul>
+        <li><strong style="color:var(--ink)">Lazy Creatives</strong> is a family of music-maker tools — one look, one login, one licence (a unified dashboard / subscription later).</li>
+        <li>Shipping: <strong style="color:var(--ink)">Backups</strong> (never lose a session) · <strong style="color:var(--ink)">Uploader</strong> (publish &amp; manage SoundCloud, hands-off). More to come.</li>
+        <li>One sloth, one wordmark — each tool is “Lazy Creatives — &lt;Tool&gt;”, never a new logo.</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h3>Two rules that protect the brand</h3>
+      <ul>
+        <li><strong style="color:var(--ink)">Always name the tool's job.</strong> The house name sets the vibe, not the function — pair it per tool: “Lazy Creatives — Backups”, “Lazy Creatives — Uploader”.</li>
+        <li><strong style="color:var(--ink)">Looks lazy, works obsessively.</strong> Voice &amp; mascot stay chill; <em>claims are always rigorous</em>. Never let a cute line weaken a reliability promise.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Logo</h2>
+  <div class="logos">
+    <div class="card dark"><span class="tag">Primary · on Studio Black</span><img class="logo-lg" src="logo.png" alt="Lazy Creatives logo"></div>
+    <div class="card dark"><span class="tag">Small</span><img class="logo-sm" src="logo.png" alt="Lazy Creatives logo small"></div>
+  </div>
+  <div class="logos" style="margin-top:20px">
+    <div class="card slate"><span class="tag">On Deep Slate</span><img class="logo-lg" src="logo.png" alt="Lazy Creatives logo on slate"></div>
+    <div class="card dark"><span class="tag">Clear space</span>
+      <div style="border:1px dashed var(--slate);border-radius:12px;padding:22px"><img class="logo-sm" src="logo.png" alt="clear space"></div>
+    </div>
+  </div>
+  <p class="note">The artist's lockup, background removed → <code>brand/logo.png</code> (transparent). It's <strong style="color:var(--ink)">dark-first</strong> — the blue line art is built to sit on Studio Black / Deep Slate. Keep clear space ≥ the sloth's head all around, and the lockup ≥ 120&nbsp;px wide so the wordmark stays legible; never recolour or add effects. A dark/mono version for <em>light</em> backgrounds is on the commission list below.</p>
+
+  <h2>Colour</h2>
+  <div class="pal">
+    <div class="sw"><div class="chip" style="background:#86B3D3"></div><div class="meta"><div class="nm">Sloth Blue</div><div class="role">Primary · brand, CTAs, active states</div><span class="hex">#86B3D3</span></div></div>
+    <div class="sw"><div class="chip" style="background:#3B4F5D"></div><div class="meta"><div class="nm">Deep Slate</div><div class="role">Secondary surface · borders, ghost buttons</div><span class="hex">#3B4F5D</span></div></div>
+    <div class="sw"><div class="chip" style="background:#4ADE80"></div><div class="meta"><div class="nm">Verified Green</div><div class="role">Success · the “it opens” state</div><span class="hex">#4ADE80</span></div></div>
+    <div class="sw"><div class="chip" style="background:#F5C451"></div><div class="meta"><div class="nm">Attention Gold</div><div class="role">Warning / heads-up · sparingly</div><span class="hex">#F5C451</span></div></div>
+    <div class="sw"><div class="chip" style="background:#F2706E"></div><div class="meta"><div class="nm">Clip Red</div><div class="role">Risk / errors · sparingly</div><span class="hex">#F2706E</span></div></div>
+    <div class="sw"><div class="chip" style="background:#0A0B0D;border-bottom:1px solid var(--line)"></div><div class="meta"><div class="nm">Studio Black</div><div class="role">App background</div><span class="hex">#0A0B0D</span></div></div>
+    <div class="sw"><div class="chip" style="background:#141A20"></div><div class="meta"><div class="nm">Console</div><div class="role">Cards &amp; panels</div><span class="hex">#141A20</span></div></div>
+    <div class="sw"><div class="chip" style="background:#9DB0C0"></div><div class="meta"><div class="nm">Muted</div><div class="role">Secondary text</div><span class="hex">#9DB0C0</span></div></div>
+  </div>
+  <p class="note">Two hues come straight from the logo: <strong style="color:var(--blue)">Sloth Blue #86B3D3</strong> and <strong style="color:#aebfcb">Deep Slate #3B4F5D</strong>. Gold is no longer the lead — it's <strong style="color:var(--gold)">attention/warnings</strong> only. Green stays reserved for confirmed/verified. <strong style="color:var(--ink)">Contrast:</strong> Sloth&nbsp;Blue &amp; Ink read clearly on Studio&nbsp;Black; don't set Sloth-Blue <em>text</em> on Deep&nbsp;Slate (too low) — use it as a fill with near-black text instead.</p>
+
+  <h2>Typography</h2>
+  <div class="type">
+    <div class="r"><div class="lab">Display · Slothy Jelly</div><div class="d-display">Lazy Creatives</div></div>
+    <div class="r"><div class="lab">Heading · 700</div><div class="d-h">Back up while you chill</div></div>
+    <div class="r"><div class="lab">Body · 400–600</div><div class="d-body">Re-reads and re-hashes every file to prove the backup opens.</div></div>
+    <div class="r"><div class="lab">Mono · status</div><div class="d-mono">✓ snapshot verified · 142 files · 0 missing</div></div>
+  </div>
+  <p class="note"><strong style="color:var(--ink)">Display / wordmark: Slothy Jelly</strong> (by Scratch Design) — the logo's own typeface; use it for the wordmark and big display moments. <strong style="color:var(--ink)">UI &amp; body: Inter</strong>; a <strong style="color:var(--ink)">monospace</strong> for hashes, counts &amp; status. Drop the licensed webfont at <code>brand/slothy-jelly.woff2</code> (or <code>.ttf</code>) for the specimen above to render. <strong style="color:var(--gold)">⚠ Licence:</strong> Slothy Jelly is free for personal use only — buy a commercial/web licence (MyFonts / Font&nbsp;Bundles / Creative&nbsp;Market) before shipping it in the product.</p>
+
+  <h2>Voice &amp; tone</h2>
+  <div class="voice">
+    <div class="box">
+      <h3>Taglines</h3>
+      <div class="tagline">“Back up while you chill.”</div>
+      <div class="tagline">“Set it. Forget it. It's handled.”</div>
+      <div class="tagline">“Lazy by name. Paranoid about your projects.”</div>
+    </div>
+    <div class="box">
+      <h3>How we sound</h3>
+      <ul>
+        <li>Laid-back, plain-spoken, a little dry — never corporate.</li>
+        <li>Short sentences. The tool brags quietly.</li>
+        <li>Productive tension: chill exterior, obsessive interior.</li>
+        <li>Talk to music makers like a peer, not a vendor.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>In-product voice</h2>
+  <div class="type">
+    <div class="r"><div class="lab">Button</div><div class="d-body">Back it up · Publish · Verify · Restore</div></div>
+    <div class="r"><div class="lab">Empty · Backups</div><div class="d-body">Nothing to back up yet — point me at your projects folder.</div></div>
+    <div class="r"><div class="lab">Success · Uploader</div><div class="d-body">Published to SoundCloud — link copied. 1 mix, nothing double-posted.</div></div>
+    <div class="r"><div class="lab">Success · Backups</div><div class="d-body">Backed up &amp; verified — 142 files, 0 missing. Go make something.</div></div>
+    <div class="r"><div class="lab">Idle / scheduled</div><div class="d-body">Chilling. Next run at 6&nbsp;pm.</div></div>
+  </div>
+  <p class="note">One voice across every tool: chill <em>tone</em>, precise <em>facts</em>. Cute is fine; vague is not — numbers and “verified” carry the trust.</p>
+
+  <h2>Assets to commission · artist brief</h2>
+  <p class="brief-intro">References for the extra art we need from the same hand, in the same single-colour Sloth-Blue line style as the logo (transparent PNG + SVG, please). The framed sloth below is cropped from the existing lockup to show the character &amp; line weight to match.</p>
+  <div class="briefs">
+
+    <div class="brief">
+      <div class="frame"><img src="ref-sloth.png" alt="sloth reference"></div>
+      <div class="body">
+        <div class="ttl"><b>1 · App icon / favicon</b> — sloth mark, solo</div>
+        <div class="desc">The headphone sloth <em>alone</em> (no wordmark), re-posed to sit centred in a square. Used for the app icon, tray, favicon &amp; social avatar.</div>
+        <span class="spec">square 1024×1024 · transparent + a Sloth-Blue-on-Studio-Black version · safe-area padding ~12%</span>
+      </div>
+    </div>
+
+    <div class="brief">
+      <div class="frame">
+        <div class="ph">horizontal<br>lockup</div>
+        <div class="ph">stacked<br>(current)</div>
+      </div>
+      <div class="body">
+        <div class="ttl"><b>2 · Lockup variants</b></div>
+        <div class="desc">A <em>horizontal</em> lockup (sloth left, wordmark right) for wide headers &amp; the GitHub social card, plus the existing stacked one. Same spacing system.</div>
+        <span class="spec">SVG preferred · transparent · horizontal ≤ 4:1 aspect</span>
+      </div>
+    </div>
+
+    <div class="brief">
+      <div class="frame"><div class="ph" style="background:#cfd9e0;color:#3B4F5D;border-color:#8aa">dark / mono<br>on light</div></div>
+      <div class="body">
+        <div class="ttl"><b>3 · Mono &amp; light-bg versions</b></div>
+        <div class="desc">A one-colour <em>knockout</em> (all-white) and a <em>dark</em> version so the logo works on light backgrounds, merch, and print — the blue alone is too low-contrast on white.</div>
+        <span class="spec">SVG · all-white, all-Deep-Slate, single-colour</span>
+      </div>
+    </div>
+
+    <div class="brief">
+      <div class="frame" style="flex-direction:column">
+        <div class="poses">
+          <div class="pose"><img src="ref-sloth.png" alt=""><div class="pn">Napping</div><div class="pd">empty state</div></div>
+          <div class="pose"><img src="ref-sloth.png" alt=""><div class="pn">Magnifier</div><div class="pd">scanning</div></div>
+          <div class="pose"><img src="ref-sloth.png" alt=""><div class="pn">Hugging a drive</div><div class="pd">backing up</div></div>
+        </div>
+        <div class="poses">
+          <div class="pose"><img src="ref-sloth.png" alt=""><div class="pn">Thumbs-up</div><div class="pd">verified ✓</div></div>
+          <div class="pose"><img src="ref-sloth.png" alt=""><div class="pn">Mid-yawn</div><div class="pd">loading</div></div>
+        </div>
+      </div>
+      <div class="body">
+        <div class="ttl"><b>4 · Mascot poses</b> — the fun set</div>
+        <div class="desc">5 small sloth poses that carry the UI's empty / loading / success states (they replace plain emoji in the app). Same character, same line weight.</div>
+        <span class="spec">each 512×512 · transparent · single-colour Sloth-Blue line art</span>
+      </div>
+    </div>
+
+  </div>
+
+  <h2>Usage</h2>
+  <div class="use">
+    <div class="box ok"><h3>Do</h3><ul>
+      <li>Use the logo on dark surfaces (Studio Black / Deep Slate).</li>
+      <li>Keep clear space ≥ the sloth's head on all sides.</li>
+      <li>Use Sloth Blue for one primary action per screen.</li>
+      <li>Reserve Verified Green strictly for confirmed / passed states.</li>
+      <li>Keep the sloth chill — relaxed poses only.</li>
+    </ul></div>
+    <div class="box no"><h3>Don't</h3><ul>
+      <li>Recolour, redraw, or re-typeset the logo / wordmark.</li>
+      <li>Stretch, rotate, or drop-shadow the line art.</li>
+      <li>Put the blue logo on a light/busy background (use the mono version).</li>
+      <li>Use gold as a primary CTA — it's attention/warnings now.</li>
+      <li>Use red for anything other than risk / errors.</li>
+    </ul></div>
+  </div>
+
+  <footer>Lazy Creatives — brand sheet v2 · assets: logo.png (lockup) · ref-sloth.png (character ref) · to commission: icon · lockup variants · mono · mascot poses</footer>
+</div>
+</body>
+</html>
