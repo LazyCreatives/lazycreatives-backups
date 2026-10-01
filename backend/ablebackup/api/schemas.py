@@ -34,6 +34,7 @@ class CloudDisconnectRequest(BaseModel):
 class ScanRequest(BaseModel):
     sources: list[str] | None = Field(None, max_length=_LIST)  # falls back to saved config
     find_missing: bool = False        # relink missing samples from libraries
+    scope: str | None = Field(None, max_length=16)  # sources|home|volumes
 
 
 class BackupRequest(BaseModel):
@@ -45,3 +46,5 @@ class BackupRequest(BaseModel):
     portable: bool = False              # collect + rewrite so it opens anywhere
     layout: str = Field("project_date", max_length=32)  # project_date | date_project
     find_missing: bool = False          # relink missing samples from libraries
+    libraries: list[str] | None = Field(None, max_length=_LIST)  # one-off folders to also search this run (merged with saved libraries)
+    relink_map: dict[str, str] | None = Field(None)  # exact per-file remaps {missing expected_path -> chosen file} the user pointed at

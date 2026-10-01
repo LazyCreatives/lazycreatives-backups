@@ -6,7 +6,7 @@ from typing import Optional
 
 import defusedxml.ElementTree as ET
 
-from ablebackup.als_parser import _fileref_to_model, parse_als
+from ablebackup.als_parser import _fileref_to_model, parse_als, parse_als_with_meta
 from ablebackup.daws.base import COMMON_SKIP, walk_for_extensions
 from ablebackup.locator import default_libraries as _splice_libraries
 from ablebackup.models import FileRef
@@ -33,6 +33,9 @@ class AbletonAdapter:
 
     def parse_project(self, project_path: Path) -> list[FileRef]:
         return parse_als(project_path)
+
+    def parse_with_meta(self, project_path: Path) -> tuple[list[FileRef], dict]:
+        return parse_als_with_meta(project_path)
 
     def project_name(self, project_path: Path) -> str:
         return project_path.stem

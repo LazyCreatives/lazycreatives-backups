@@ -4,7 +4,8 @@ import { Setup } from "./screens/Setup";
 import { Home } from "./screens/Home";
 import { Sources } from "./screens/Sources";
 import { BackupFlow } from "./screens/BackupFlow";
-import { Browse } from "./screens/Browse";
+import { Library } from "./screens/Library";
+import { Dig } from "./screens/Dig";
 import { BrandMark } from "./components/BrandMark";
 import { FirstBackupModal } from "./components/FirstBackupModal";
 import { makeApi } from "./api";
@@ -13,7 +14,7 @@ import type { Config, ProjectSummary } from "./types";
 
 const api = makeApi();
 
-export type Tab = "home" | "history" | "settings";
+export type Tab = "home" | "library" | "dig" | "settings";
 export type FlowStep = "scan" | "review" | "progress";
 
 export interface PendingBackup {
@@ -35,6 +36,7 @@ export default function App() {
   const [pending, setPending] = useState<PendingBackup | null>(null);
   const [activeJob, setActiveJob] = useState<string | null>(null);
   const [showFirstBackup, setShowFirstBackup] = useState(false);
+  const [navProject, setNavProject] = useState<string | null>(null);  // Home → open a project in History
   const live = useLiveProgress();
 
   useEffect(() => { api.getSettings().then(setCfg).catch(() => setCfg("error")); }, []);
@@ -84,7 +86,7 @@ export default function App() {
   if (cfg === null) return (
     <div className="splash">
       <div style={{ display: "grid", placeItems: "center", gap: 14 }}>
-        <div style={{ width: 56, height: 62 }}><BrandMark active /></div>
+        <div style={{ width: 156 }}><BrandMark active /></div>
         <span className="sub" style={{ margin: 0 }}>Starting…</span>
       </div>
     </div>
@@ -132,9 +134,13 @@ export default function App() {
               onBackupNow={() => setFlow("scan")}
               onOpenSettings={() => setTab("settings")}
               onResumeProgress={() => setFlow("progress")}
+              onOpenHistory={() => setTab("library")}
+              onOpenProject={(name) => { setNavProject(name); setTab("library"); }}
             />
-          ) : tab === "history" ? (
-            <Browse />
+          ) : tab === "library" ? (
+            <Library scan={live.scan} openProject={navProject} onOpenHandled={() => setNavProject(null)} />
+          ) : tab === "dig" ? (
+            <Dig onOpenProject={(name) => { setNavProject(name); setTab("library"); }} />
           ) : (
             <Sources />
           )}
@@ -144,7 +150,7 @@ export default function App() {
       {showFirstBackup && (
         <FirstBackupModal
           completed={live.backup.completed}
-          onHistory={() => { setShowFirstBackup(false); setFlow(null); setTab("history"); }}
+          onHistory={() => { setShowFirstBackup(false); setFlow(null); setTab("library"); }}
           onClose={() => setShowFirstBackup(false)}
         />
       )}

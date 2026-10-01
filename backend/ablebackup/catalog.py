@@ -24,6 +24,25 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+-- Every project a scan has ever found, backed up or not. This is what History
+-- shows as your library; backed-up status is derived by joining `snapshots`.
+CREATE TABLE IF NOT EXISTS discovered (
+    project_id TEXT PRIMARY KEY,   -- stable id from the project file path
+    name TEXT NOT NULL,
+    path TEXT NOT NULL,            -- the project file (.als/.flp/…)
+    dir TEXT NOT NULL,             -- the project folder
+    daw TEXT,
+    owner TEXT,                    -- macOS user (or volume) the project lives under
+    size INTEGER,
+    mtime REAL,
+    missing_count INTEGER,
+    genre TEXT,                    -- guessed at scan time (BPM + name/sample keywords)
+    genre_emoji TEXT,
+    bpm REAL,
+    tracks INTEGER,                -- content track/lane count (NULL if the format hides it)
+    plugins TEXT,                  -- JSON array of plugin names used by the project
+    found_at TEXT                  -- when a scan last saw it
+);
 """
 
 # Indexes for the columns we filter/join/group on. missing_refs.snapshot_id is the
@@ -61,6 +80,12 @@ class Catalog:
         for col, typ in new.items():
             if col not in cols:
                 self.conn.execute(f"ALTER TABLE snapshots ADD COLUMN {col} {typ}")
+        # discovered: genre + metadata columns added after that table shipped
+        dcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(discovered)")}
+        for col, typ in {"genre": "TEXT", "genre_emoji": "TEXT", "bpm": "REAL",
+                         "tracks": "INTEGER", "plugins": "TEXT"}.items():
+            if col not in dcols:
+                self.conn.execute(f"ALTER TABLE discovered ADD COLUMN {col} {typ}")
 
     def record_snapshot(self, project_name, timestamp, total_size,
                         file_count, status, missing, error=None,
@@ -228,6 +253,58 @@ class Catalog:
                 "ORDER BY s.timestamp DESC, s.id DESC"
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def upsert_discovered(self, rows: list[dict], found_at: str) -> int:
+        """Record/refresh discovered projects (keyed by project_id). Returns the count.
+
+        A re-scan updates name/path/size/missing for projects it sees again; projects
+        no longer present are left in place (History keeps showing them — the file may
+        just be on an unplugged drive) and simply aren't refreshed."""
+        if not rows:
+            return 0
+        with self._lock:
+            self.conn.executemany(
+                "INSERT INTO discovered "
+                "(project_id, name, path, dir, daw, owner, size, mtime, missing_count, genre, genre_emoji, bpm, tracks, plugins, found_at) "
+                "VALUES (:project_id, :name, :path, :dir, :daw, :owner, :size, :mtime, :missing_count, :genre, :genre_emoji, :bpm, :tracks, :plugins, :found_at) "
+                "ON CONFLICT(project_id) DO UPDATE SET "
+                "  name=excluded.name, path=excluded.path, dir=excluded.dir, daw=excluded.daw, "
+                "  owner=excluded.owner, size=excluded.size, mtime=excluded.mtime, "
+                "  missing_count=excluded.missing_count, genre=excluded.genre, "
+                "  genre_emoji=excluded.genre_emoji, bpm=excluded.bpm, "
+                "  tracks=excluded.tracks, plugins=excluded.plugins, found_at=excluded.found_at",
+                # default genre/meta fields so rows that omit them still bind cleanly
+                [{"genre": None, "genre_emoji": None, "bpm": None, "tracks": None,
+                  "plugins": None, **r, "found_at": found_at} for r in rows],
+            )
+            self.conn.commit()
+        return len(rows)
+
+    def library(self) -> list[dict]:
+        """Every discovered project + its backed-up status (latest backup time and
+        snapshot count), derived by matching snapshots on project_id OR name so both
+        new (id-tagged) and legacy backups are recognised. This is the History list."""
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT d.*, "
+                "  (SELECT MAX(s.timestamp) FROM snapshots s "
+                "     WHERE (s.project_id = d.project_id OR s.project_name = d.name) "
+                "       AND s.status IN ('ok','partial')) AS last_backup, "
+                "  (SELECT COUNT(*) FROM snapshots s "
+                "     WHERE s.project_id = d.project_id OR s.project_name = d.name) AS snapshot_count "
+                "FROM discovered d "
+                "ORDER BY d.owner, d.name"
+            ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["backed_up"] = d["last_backup"] is not None
+            try:  # stored as a JSON array; serve a real list
+                d["plugins"] = json.loads(d["plugins"]) if d.get("plugins") else []
+            except (TypeError, ValueError):
+                d["plugins"] = []
+            out.append(d)
+        return out
 
     def set_genre(self, snapshot_id, genre, bpm, confidence) -> None:
         """Cache a snapshot's guessed genre so it isn't recomputed each load."""

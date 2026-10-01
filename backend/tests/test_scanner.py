@@ -59,9 +59,10 @@ def test_scan_emits_progress_events(tmp_path):
     scan_projects([tmp_path], progress=events.append)
 
     types = [e["type"] for e in events]
-    assert types[0] == "scan_start"
+    assert "scan_searching" in types  # live search-phase ticks precede the parse phase
+    start = next(e for e in events if e["type"] == "scan_start")
+    assert start["total"] == 2
     assert types[-1] == "scan_done"
-    assert events[0]["total"] == 2
     ticks = [e for e in events if e["type"] == "scan_progress"]
     assert len(ticks) == 2
     assert ticks[-1]["done"] == 2 and ticks[-1]["total"] == 2

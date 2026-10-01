@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable, Optional
 from xml.etree.ElementTree import ParseError
 
+from ablebackup.daws.base import empty_meta, parse_with_meta
 from ablebackup.daws.registry import DAW_REGISTRY, adapter_for_path
 from ablebackup.models import FileRef, ProjectScan
 from ablebackup.resolver import resolve_refs
@@ -46,52 +47,107 @@ def find_als(roots: list[Path]) -> list[Path]:
     return AbletonAdapter().discover_projects([Path(r) for r in roots])
 
 
-def scan_one(project_path: Path, locate=None) -> ProjectScan:
+def find_projects_progress(roots: list[Path], progress: ProgressCb = None,
+                           stats: Optional[dict] = None) -> list[Path]:
+    """Like find_projects but as a SINGLE walk over the roots (matching every DAW's
+    extensions at once, instead of one walk per adapter), emitting periodic
+    `scan_searching` ticks (folders seen, projects found). This gives a live search
+    phase for big/whole-Mac scans — otherwise the walk is a dead spinner — and is
+    faster (one traversal, not N).
+
+    Permission-denied directories (other accounts' 0700 homes, TCC-protected folders
+    without Full Disk Access) are COUNTED via os.walk(onerror=...) instead of being
+    silently swallowed, so the caller can tell the user the scan was incomplete and
+    offer an elevated scan — otherwise a users/entire scan finishes fast with nothing
+    new and looks broken. If `stats` is given it gets {skipped_dirs, skipped_examples}."""
+    from ablebackup.daws.base import _keep_dirs
+    exts = tuple(sorted({e.lower() for a in DAW_REGISTRY for e in a.extensions}))
+    skip: set[str] = set()
+    for a in DAW_REGISTRY:
+        skip |= a.skip_dirs()
+    out: list[Path] = []
+    dirs_seen = 0
+    skipped = 0
+    denied: list[str] = []
+
+    def _on_err(err: OSError) -> None:
+        nonlocal skipped
+        skipped += 1
+        fn = getattr(err, "filename", None)
+        if fn and len(denied) < 10 and str(fn) not in denied:
+            denied.append(str(fn))
+
+    for root in roots:
+        for dirpath, dirnames, filenames in os.walk(root, onerror=_on_err):
+            dirnames[:] = _keep_dirs(dirnames, skip)
+            dirs_seen += 1
+            for fn in filenames:
+                if fn.lower().endswith(exts):
+                    out.append(Path(dirpath) / fn)
+            if progress and dirs_seen % 250 == 0:
+                progress({"type": "scan_searching", "dirs": dirs_seen,
+                          "found": len(out), "skipped": skipped})
+    if stats is not None:
+        stats["skipped_dirs"] = skipped
+        stats["skipped_examples"] = denied
+    if progress:
+        progress({"type": "scan_searching", "dirs": dirs_seen,
+                  "found": len(out), "skipped": skipped})
+    return out
+
+
+def _parse_safely(adapter, project_path: Path) -> tuple[list[FileRef], dict]:
+    """The adapter's refs + display metadata in one read. Metadata is best-effort —
+    a meta-side failure must never cost us the refs (backups beat badges)."""
+    try:
+        return parse_with_meta(adapter, project_path)
+    except (OSError, EOFError, ParseError, ValueError, struct.error):
+        # Retry refs alone: if this also fails, the project is genuinely unreadable
+        # and the caller's except will skip it as before.
+        return adapter.parse_project(project_path), empty_meta()
+
+
+def scan_one(project_path: Path, locate=None, overrides=None) -> ProjectScan:
     """Parse + resolve a single project (the expensive part of a scan), via the
-    adapter that owns this file type."""
+    adapter that owns this file type. `overrides` lets the caller hand-map specific
+    missing samples to exact files the user pointed at (see resolve_refs)."""
     project_path = Path(project_path)
     adapter = adapter_for_path(project_path)
     if adapter is None:
         raise ValueError(f"no DAW adapter for {project_path.suffix!r}")
-    project_dir = project_path.parent
-    stat = project_path.stat()
-    refs = resolve_refs(adapter.parse_project(project_path), project_dir, locate=locate)
-    return ProjectScan(
-        project_path=project_path,
-        name=adapter.project_name(project_path),
-        project_dir=project_dir,
-        mtime=stat.st_mtime,
-        size=stat.st_size,
-        daw_id=adapter.daw_id,
-        project_id=project_id(project_path),
-        refs=refs,
-    )
+    raw_refs, meta = _parse_safely(adapter, project_path)
+    return _resolve_parsed(project_path, raw_refs, locate, meta, overrides)
 
 
-def _parse_in_worker(project_path_str: str) -> Optional[list[FileRef]]:
-    """Worker body for the process pool: parse one project to raw FileRefs.
+def _parse_in_worker(project_path_str: str) -> Optional[dict]:
+    """Worker body for the process pool: parse one project to raw FileRefs + display
+    metadata (tempo/tracks/plugins) in the same read — parallel, so metadata never
+    adds a serial pass in the parent.
 
     Returns None (rather than raising) for corrupt/unreadable/unsupported files, so a
     single bad project can't poison the pool — the parent treats None as "skip".
-    Inputs/outputs are plain str / FileRef dataclasses so they pickle cleanly.
+    Returns plain dict/FileRefs so it pickles cleanly.
     """
     try:
         project_path = Path(project_path_str)
         adapter = adapter_for_path(project_path)
         if adapter is None:
             return None
-        return adapter.parse_project(project_path)
+        raw_refs, meta = _parse_safely(adapter, project_path)
+        return {"refs": raw_refs, "meta": meta}
     except (OSError, EOFError, ParseError, ValueError, struct.error):
         return None
 
 
-def _resolve_parsed(project_path: Path, raw_refs: list[FileRef], locate) -> ProjectScan:
+def _resolve_parsed(project_path: Path, raw_refs: list[FileRef], locate,
+                    meta: Optional[dict] = None, overrides=None) -> ProjectScan:
     """Finish a project the parser already produced raw refs for: resolve against the
     filesystem and assemble the ProjectScan. This is the cheap, parent-side half."""
     adapter = adapter_for_path(project_path)
     project_dir = project_path.parent
     stat = project_path.stat()
-    refs = resolve_refs(raw_refs, project_dir, locate=locate)
+    refs = resolve_refs(raw_refs, project_dir, locate=locate, overrides=overrides)
+    meta = meta or empty_meta()
     return ProjectScan(
         project_path=project_path,
         name=adapter.project_name(project_path),
@@ -101,6 +157,9 @@ def _resolve_parsed(project_path: Path, raw_refs: list[FileRef], locate) -> Proj
         daw_id=adapter.daw_id,
         project_id=project_id(project_path),
         refs=refs,
+        tempo=meta.get("tempo"),
+        track_count=meta.get("tracks"),
+        plugins=meta.get("plugins") or [],
     )
 
 
@@ -113,7 +172,7 @@ def _scan_safely(project_path: Path, locate) -> Optional[ProjectScan]:
 
 
 def scan_projects(roots: list[Path], progress: ProgressCb = None,
-                  locate=None) -> list[ProjectScan]:
+                  locate=None, stats: Optional[dict] = None) -> list[ProjectScan]:
     """Discover and resolve every project under the roots (all DAWs).
 
     Counting project files up front lets us emit a real progress bar (scan_start/
@@ -125,7 +184,12 @@ def scan_projects(roots: list[Path], progress: ProgressCb = None,
     returned in discovery order; progress ticks are emitted here as each project
     finishes, so `done` still climbs 1..total with the last tick at total.
     """
-    project_files = find_projects(roots)
+    # With progress (or a stats request), walk once with live ticks + skip counting;
+    # without either (plain tests), the simple walk.
+    if progress is not None or stats is not None:
+        project_files = find_projects_progress(roots, progress, stats)
+    else:
+        project_files = find_projects(roots)
     total = len(project_files)
     if progress:
         progress({"type": "scan_start", "total": total})
@@ -164,7 +228,7 @@ def scan_projects(roots: list[Path], progress: ProgressCb = None,
                     scan = None
                     if raw is not None:
                         try:
-                            scan = _resolve_parsed(project_files[idx], raw, locate)
+                            scan = _resolve_parsed(project_files[idx], raw["refs"], locate, raw.get("meta"))
                         except (OSError, EOFError, ParseError, ValueError, struct.error):
                             scan = None
                     _tick(idx, scan)

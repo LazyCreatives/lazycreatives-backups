@@ -37,9 +37,9 @@ export function Setup({ onDone }: { onDone: (c: Config) => void }) {
       <div className="wizard">
         <div className="wizard__wave"><Waveform bars={64} /></div>
         <div className="wizard__head">
-          <div className="nav__logo" style={{ width: 34, height: 38 }}><BrandMark /></div>
+          <div style={{ width: 104, flexShrink: 0 }}><BrandMark /></div>
           <div style={{ flex: 1 }}>
-            <strong>LazyCreatives <span style={{ color: "var(--accent)" }}>Backups</span></strong>
+            <strong className="display">Backups</strong>
             <div className="sub" style={{ margin: 0, fontSize: 12 }}>Verified backups you own</div>
           </div>
           <span className="sub" style={{ margin: 0 }}>Step {step + 1} of 3</span>

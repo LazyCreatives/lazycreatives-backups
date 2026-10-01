@@ -566,21 +566,100 @@ def build_overview(catalog: Catalog, dest: str) -> dict:
     }
 
 
+def owner_for_path(path) -> str:
+    """The macOS account (or external volume) a project lives under — used to
+    smart-organise History by user. /Users/<u>/… -> <u>; /Volumes/<name>/… -> the
+    drive name; anything else -> 'system'."""
+    try:
+        parts = Path(path).resolve().parts
+    except OSError:
+        parts = Path(path).parts
+    if "Users" in parts:  # /Users/<u>/… (macOS) and C:\Users\<u>\… (Windows)
+        i = parts.index("Users")
+        if i + 1 < len(parts) and parts[i + 1] not in ("Shared", "Public", "Default"):
+            return parts[i + 1]
+    if "Volumes" in parts:  # macOS external/mounted drive -> use the volume name
+        i = parts.index("Volumes")
+        if i + 1 < len(parts):
+            return parts[i + 1]
+    if os.name == "nt" and parts:  # Windows non-system drive -> use the drive letter
+        drive = parts[0].rstrip("\\/")
+        if drive and drive.upper() != os.environ.get("SystemDrive", "C:").upper():
+            return drive
+    return "system"
+
+
+def _mounted_volumes() -> list[Path]:
+    """Mounted drives, cross-platform: /Volumes/* on macOS, present drive letters on
+    Windows, common mount points on Linux."""
+    if os.name == "nt":
+        import string
+        return [Path(f"{d}:\\") for d in string.ascii_uppercase if os.path.exists(f"{d}:\\")]
+    import glob
+    vols = glob.glob("/Volumes/*")          # macOS
+    vols += glob.glob("/media/*/*") + glob.glob("/mnt/*")  # Linux (harmless if absent)
+    return [Path(p) for p in vols]
+
+
+def resolve_scan_roots(scope: str, configured: list[Path]) -> list[Path]:
+    """Map a scan-scope keyword to filesystem roots (cross-platform).
+
+      sources  – the user's configured source folders (default / unchanged behaviour)
+      home     – this account's home folder
+      volumes  – home + every mounted volume (/Volumes/*, Windows drive letters)
+
+    Per-account by design: we never scan OTHER users' homes. macOS blocks that without
+    root + Full Disk Access, and the supported multi-user story is a per-account install
+    (each user backs up their own projects in their own session)."""
+    home = Path.home()
+    if scope in (None, "", "sources"):
+        return configured
+    roots: list[Path] = [home]
+    if scope == "volumes":
+        roots += _mounted_volumes()
+    # de-dupe while preserving order
+    seen, out = set(), []
+    for r in roots:
+        k = str(r)
+        if k not in seen:
+            seen.add(k); out.append(r)
+    return out
+
+
+def full_disk_access_ok() -> bool:
+    """Best-effort probe: can we read a TCC-protected location (~/Documents)? If not,
+    a whole-Mac scan will silently miss Documents/Desktop/Downloads until the user
+    grants Full Disk Access. Used to nudge, never to block."""
+    try:
+        os.listdir(Path.home() / "Documents")
+        return True
+    except (PermissionError, OSError):
+        return False
+
+
 def scan_summary(sources: list[Path], progress: ProgressCb = None,
-                 find_missing: bool = False, libraries=None) -> list[dict]:
+                 find_missing: bool = False, libraries=None, stats=None) -> list[dict]:
     """Scan sources and return JSON-serializable project summaries.
 
     When progress is given, emits scan_start/scan_progress/scan_done events so the
     UI can show live scan progress instead of an indefinite spinner. When
     find_missing is set, samples missing from their referenced path are searched
     for (by filename) in the user's libraries + sources and relinked when found.
+    If `stats` (a dict) is given, it's populated with {skipped_dirs, skipped_examples}
+    for directories the walk couldn't read (other accounts / missing Full Disk Access).
     """
+    from ablebackup.genre import guess_genre
     locate = _build_locator(sources, libraries) if find_missing else None
     out = []
-    for p in scan_projects([Path(s) for s in sources], progress=progress, locate=locate):
+    for p in scan_projects([Path(s) for s in sources], progress=progress, locate=locate, stats=stats):
+        # Genre-tag at scan time from BPM (Ableton) + project name + sample filenames,
+        # so the whole scanned library is diggable by genre, not just backed-up projects.
+        g = guess_genre(p.name, p.tempo, [r.name for r in p.refs])
         out.append({
             "name": p.name,
             "daw": p.daw_id,
+            "project_id": p.project_id,
+            "owner": owner_for_path(p.project_path),
             "project_dir": str(p.project_dir),
             "als_path": str(p.project_path),
             "present_count": sum(1 for r in p.refs if r.exists),
@@ -589,6 +668,11 @@ def scan_summary(sources: list[Path], progress: ProgressCb = None,
             "missing": [r.expected_path or r.name for r in p.missing],
             "total_size": p.total_size,
             "mtime": p.mtime,  # for "recently modified" sorting in the UI
+            "genre": g.get("genre"),
+            "genre_emoji": g.get("emoji"),
+            "bpm": p.tempo,
+            "tracks": p.track_count,
+            "plugins": p.plugins,
         })
     return out
 
@@ -611,7 +695,7 @@ def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
                als_paths: Optional[list[str]] = None, label: Optional[str] = None,
                portable: bool = False, layout: str = "project_date",
                find_missing: bool = False, libraries=None, should_cancel=None,
-               mirrors=None) -> dict:
+               mirrors=None, relink_map=None) -> dict:
     """Serialize all backups process-wide, then run one.
 
     Only one backup may run at a time (manual or scheduled), so two runs can't race
@@ -621,7 +705,7 @@ def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
     with _backup_lock:
         return _run_backup_locked(
             sources, dest, catalog, timestamp, progress, als_paths, label,
-            portable, layout, find_missing, libraries, should_cancel, mirrors)
+            portable, layout, find_missing, libraries, should_cancel, mirrors, relink_map)
 
 
 def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
@@ -629,7 +713,7 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
                        als_paths: Optional[list[str]] = None, label: Optional[str] = None,
                        portable: bool = False, layout: str = "project_date",
                        find_missing: bool = False, libraries=None, should_cancel=None,
-                       mirrors=None) -> dict:
+                       mirrors=None, relink_map=None) -> dict:
     """Back up discovered projects to dest, recording history and emitting progress.
 
     When als_paths is given, only the projects whose .als matches are backed up
@@ -642,9 +726,14 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
     # and a silent gap looks like nothing is happening.
     _emit(progress, {"type": "backup_preparing"})
     locate = _build_locator(sources, libraries) if find_missing else None
+    # Explicit per-file remaps the user pointed at ("this missing sample IS that
+    # file"). Only meaningful on the targeted (als_paths) path — the global pool scan
+    # has no single project to attribute them to.
+    overrides = relink_map or None
     if als_paths is not None:
         # Scan only the chosen projects (fast) rather than re-walking every source.
-        projects = [scan_one(Path(a), locate=locate) for a in als_paths if Path(a).exists()]
+        projects = [scan_one(Path(a), locate=locate, overrides=overrides)
+                    for a in als_paths if Path(a).exists()]
     else:
         projects = scan_projects([Path(s) for s in sources], locate=locate)
 

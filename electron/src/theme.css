@@ -1,3 +1,13 @@
+/* Display / wordmark face — "Slothy Jelly" (the logo typeface). The licensed file
+   is NOT in the repo (personal-use-only until a commercial licence is bought); drop
+   it at electron/public/fonts/ and it renders automatically. Falls back to Inter. */
+@font-face {
+  font-family: "Slothy Jelly";
+  src: url("/fonts/slothy-jelly.woff2") format("woff2"),
+       url("/fonts/slothy-jelly.ttf") format("truetype");
+  font-display: swap;
+}
+
 :root {
   /* Lazy Creatives brand system v2 (brand/brand-guide.html) — sloth / blue */
   --bg: #0A0B0D;            /* Studio Black */
@@ -21,7 +31,28 @@
   --radius: 12px;
   --radius-lg: 16px;
   --shadow: 0 10px 34px rgba(0, 0, 0, 0.42);
+  --display: "Slothy Jelly", "Inter", system-ui, sans-serif; /* wordmark / big moments */
+
+  /* --- accessibility fixes (brand technical audit) ---
+     Clip Red #F2706E is text/icon-on-dark ONLY (2.52:1 with white = fail). Solid
+     destructive surfaces use --danger-solid with WHITE text (clears 4.5:1). And
+     --border-strong (Deep Slate) is 2.31:1 on Studio Black — fails WCAG 1.4.11 for
+     interactive boundaries — so inputs/toggles/focus rings use --border-interactive (≥3:1). */
+  --danger-solid: #C8403E;        /* solid error fill, white text — passes 4.5:1 */
+  --border-interactive: #52697B;  /* input/toggle/focus boundary — ≥3:1 on Studio Black */
+
+  /* --- motion tokens (crate-digger spec §3) — "looks lazy, works obsessively" ---
+     Slow, soft, transform/opacity only; all gated behind prefers-reduced-motion. */
+  --ease-lazy:  cubic-bezier(0.2, 0.8, 0.2, 1);   /* settle */
+  --ease-glide: cubic-bezier(0.16, 1, 0.3, 1);    /* big moves */
+  --dur-quick: 180ms;
+  --dur-base: 320ms;
+  --dur-slow: 550ms;
+  --dur-open: 600ms;
+  --spin-rpm: 7000ms;             /* one platter revolution */
 }
+/* big display / wordmark moments only — never body or dense UI (per brand sheet) */
+.display { font-family: var(--display); font-weight: 400; letter-spacing: 0; }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body {
@@ -36,9 +67,20 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: content-box; }
 
+/* Fluid shell: the content column grows with the window (comfortable cap, centred
+   in the remaining space) instead of pinning to a fixed 920px column. */
 .app { display: grid; grid-template-columns: 244px 1fr; height: 100%; }
-.main { padding: 30px 36px; overflow: auto; }
-.content { max-width: 920px; }
+.main { padding: 30px clamp(20px, 3vw, 44px); overflow: auto; }
+.content { max-width: 1480px; margin: 0 auto; }
+/* Narrow windows: the nav rail collapses to icons so content keeps its room. */
+@media (max-width: 880px) {
+  .app { grid-template-columns: 64px 1fr; }
+  .nav { padding: 18px 8px; }
+  .nav__label, .nav__brandtool { display: none; }
+  .nav__item { justify-content: center; padding: 11px 0; }
+  .nav__brand--lockup { justify-content: center; padding-left: 0; padding-right: 0; }
+  .nav__brand--lockup .brandlockup { width: 40px; }
+}
 
 h1 { font-size: 21px; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 4px; }
 h2 { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin: 0 0 12px; }
@@ -64,6 +106,20 @@ h2 { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: 
 .mark--on .mark__wave--single line { animation-delay: -0.2s; }
 @keyframes markWave { 0%, 100% { transform: scaleY(0.55); } 50% { transform: scaleY(1.25); } }
 .nav__brandname { font-weight: 650; font-size: 14px; }
+
+/* ---- brand lockup (sloth) ---- */
+.brandlockup { width: 100%; height: auto; display: block; user-select: none; -webkit-user-drag: none; }
+.brandlockup--busy { animation: brandPulse 1.7s ease-in-out infinite; }
+@keyframes brandPulse {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(136, 178, 214, 0)); }
+  50% { filter: drop-shadow(0 2px 11px rgba(136, 178, 214, 0.5)); }
+}
+.nav__brand--lockup { flex-direction: column; align-items: flex-start; gap: 5px; padding: 4px 6px 18px; }
+.nav__brand--lockup .brandlockup { width: 150px; max-width: 100%; }
+.nav__brandtool {
+  font-weight: 700; font-size: 11px; letter-spacing: 0.26em; text-transform: uppercase;
+  color: var(--text-dim); padding-left: 3px;
+}
 .nav__item {
   display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
   padding: 9px 11px; border-radius: 9px; border: none; cursor: pointer;
@@ -101,6 +157,9 @@ button.row:hover { background: var(--surface-2); }
   background: linear-gradient(180deg, var(--surface), #121319);
   border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 17px;
 }
+.tile--btn { cursor: pointer; text-align: left; font: inherit; color: inherit; width: 100%; transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease; }
+.tile--btn:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: 0 0 0 1px var(--accent-soft), var(--shadow); }
+.tile--btn:active { transform: translateY(0); }
 .tile__label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
 .tile__value { font-size: 23px; font-weight: 680; margin-top: 7px; letter-spacing: -0.01em; }
 .tile__hint { color: var(--text-dim); font-size: 12px; margin-top: 3px; }
@@ -161,10 +220,13 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 select { cursor: pointer; }
 
 /* ---- misc ---- */
-.linkbtn { background: none; border: none; cursor: pointer; padding: 0; font: inherit; }
+.linkbtn { background: none; border: none; cursor: pointer; padding: 0; font: inherit; color: var(--accent); }
+.linkbtn:hover { text-decoration: underline; }
 .badge-warn { color: var(--warn); font-size: 12px; }
 .empty { text-align: center; color: var(--text-dim); padding: 48px 20px; }
 .empty__icon { font-size: 30px; opacity: 0.5; margin-bottom: 8px; }
+.sloth-mascot { display: block; margin: 0 auto; opacity: 0.92; }
+.empty__icon:has(.sloth-mascot) { opacity: 1; } /* don't dim the mascot via the parent */
 
 /* =====================================================================
    Animations (bold & playful, pure CSS). Respect reduced-motion.
@@ -292,7 +354,7 @@ select { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   .seal__badge, .seal__check, .seal__ray, .tile--enter, .scanrow--enter, .sonar span, .shimmer,
   .celebrate, .celebrate::before, .eq--on i, .view-enter, .progress__fill--active::after,
-  .waveform span, .dedupbar__actual, .mark--on .mark__wave line,
+  .waveform span, .dedupbar__actual, .mark--on .mark__wave line, .brandlockup--busy,
   .nav__item--active::before, .logline, .empty__icon {
     animation: none !important; opacity: 1 !important; stroke-dashoffset: 0 !important; transform: none !important;
   }

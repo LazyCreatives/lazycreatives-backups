@@ -36,6 +36,9 @@ class ProjectScan:
     daw_id: str = "ableton"           # which DAW adapter owns this project
     project_id: str = ""              # stable identity; distinguishes same-named projects
     refs: list[ResolvedRef] = field(default_factory=list)
+    tempo: float | None = None        # project BPM; feeds genre-guessing
+    track_count: int | None = None    # content track/lane count (None if the format hides it)
+    plugins: list[str] = field(default_factory=list)  # third-party plugin/instrument names used
 
     @property
     def als_path(self) -> Path:

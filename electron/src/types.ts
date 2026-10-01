@@ -78,6 +78,26 @@ export interface ProjectRow {
   genre_confidence?: number;
   genre_pending?: boolean;
 }
+export interface LibraryItem {
+  project_id: string;
+  name: string;
+  path: string;
+  dir: string;
+  daw?: string;
+  owner: string;
+  size: number;
+  mtime: number;
+  missing_count: number;
+  genre?: string | null;       // guessed at scan time
+  genre_emoji?: string | null;
+  bpm?: number | null;
+  tracks?: number | null;      // content track/lane count (null if the format hides it)
+  plugins?: string[];          // plugin names the project uses
+  found_at: string;
+  last_backup: string | null;
+  snapshot_count: number;
+  backed_up: boolean;
+}
 export interface AttentionItem {
   project_name: string;
   kind: "error" | "missing";
@@ -120,6 +140,7 @@ export interface JobStatus {
   error?: string;
 }
 export type ProgressEvent =
+  | { type: "scan_searching"; dirs: number; found: number }
   | { type: "scan_start"; total: number }
   | { type: "scan_progress"; done: number; total: number; name: string }
   | { type: "scan_done"; count: number }

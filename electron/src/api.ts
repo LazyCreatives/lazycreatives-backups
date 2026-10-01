@@ -1,4 +1,4 @@
-import type { Config, Entitlement, JobStatus, Overview, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, VerifyResult } from "./types";
+import type { Config, Entitlement, JobStatus, LibraryItem, Overview, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, VerifyResult } from "./types";
 
 function base() {
   const port = (window as any).ablebackup?.port ?? "8753";
@@ -29,10 +29,28 @@ export function makeApi() {
     async scan(sources?: string[], findMissing = false): Promise<ProjectSummary[]> {
       return (await req("POST", "/api/scan", { sources, find_missing: findMissing })).projects;
     },
+    // Scan by scope (sources|home|volumes); persists to the library.
+    async scanMac(scope: string, findMissing = false): Promise<{ projects: ProjectSummary[]; scope: string; full_disk_access: boolean; skipped_dirs: number; skipped_examples: string[] }> {
+      return req("POST", "/api/scan", { scope, find_missing: findMissing });
+    },
+    async library(): Promise<{ projects: LibraryItem[]; owners: string[]; count: number }> {
+      return req("GET", "/api/library");
+    },
+    // Live, complete list of one project's missing samples — re-scanned on demand so
+    // it reflects the current state of disk (the trust view). With find=true each
+    // sample is also marked `recoverable` (auto-findable in the library).
+    async projectMissing(path: string, find = false): Promise<{
+      name: string; path: string; present_count: number; missing_count: number;
+      recoverable_count: number; probed: boolean;
+      missing: { name: string; expected_path: string; recoverable: boolean }[];
+    }> {
+      return req("GET", `/api/project/missing?path=${encodeURIComponent(path)}${find ? "&find=1" : ""}`);
+    },
     async startBackup(opts: {
       sources?: string[]; dest?: string; timestamp?: string; als_paths?: string[];
       label?: string; portable?: boolean; layout?: "project_date" | "date_project";
-      find_missing?: boolean;
+      find_missing?: boolean; libraries?: string[];  // one-off folders to also search this run
+      relink_map?: Record<string, string>;  // exact per-file remaps {expected_path -> chosen file}
     }): Promise<{ job_id: string }> {
       return req("POST", "/api/backup", opts);
     },

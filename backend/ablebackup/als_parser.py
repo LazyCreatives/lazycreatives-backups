@@ -159,6 +159,68 @@ class _FileRefHandler:
             self._fr_depth = -1
 
 
+class _MetaHandler:
+    """Streams display metadata out of the .als in the SAME pass as the FileRefs:
+    master tempo (first <Tempo><Manual Value>), content track count (Audio/Midi/Group
+    — returns and the pre-listen track aren't content lanes), and third-party plugin
+    names. Plugin names come from <VstPluginInfo>/<Vst3PluginInfo>/<AuPluginInfo>
+    blocks: each block describes ONE plugin, whose display name is its PlugName
+    (VST2) or first non-empty Name (VST3/AU); nested preset Names are ignored by
+    taking only the first non-empty value per block."""
+
+    __slots__ = ("tempo", "tracks", "plugins", "_seen",
+                 "_depth", "_in_tempo", "_plug_depth", "_plug_name", "_plugname")
+
+    _TRACK_TAGS = ("AudioTrack", "MidiTrack", "GroupTrack")
+    _PLUGIN_INFO = ("VstPluginInfo", "Vst3PluginInfo", "AuPluginInfo")
+
+    def __init__(self) -> None:
+        self.tempo: float | None = None
+        self.tracks = 0
+        self.plugins: list[str] = []   # ordered, deduped
+        self._seen: set[str] = set()
+        self._depth = 0
+        self._in_tempo = 0             # depth of the first <Tempo>, while inside it
+        self._plug_depth = -1          # depth of the *PluginInfo block we're inside
+        self._plug_name: str | None = None
+        self._plugname: str | None = None
+
+    def start(self, name: str, attrs: dict) -> None:
+        self._depth += 1
+        if name in self._TRACK_TAGS:
+            self.tracks += 1
+        elif self._plug_depth >= 0:
+            v = attrs.get("Value")
+            if v:
+                if name == "PlugName" and self._plugname is None:
+                    self._plugname = v
+                elif name == "Name" and self._plug_name is None:
+                    self._plug_name = v
+        elif name in self._PLUGIN_INFO:
+            self._plug_depth = self._depth
+            self._plug_name = None
+            self._plugname = None
+        elif self.tempo is None:
+            if name == "Tempo" and self._in_tempo == 0:
+                self._in_tempo = self._depth
+            elif self._in_tempo and name == "Manual" and "Value" in attrs:
+                try:
+                    self.tempo = float(attrs["Value"])
+                except (TypeError, ValueError):
+                    pass
+
+    def end(self, name: str) -> None:
+        if self._plug_depth == self._depth and name in self._PLUGIN_INFO:
+            chosen = self._plugname or self._plug_name
+            if chosen and chosen not in self._seen:
+                self._seen.add(chosen)
+                self.plugins.append(chosen)
+            self._plug_depth = -1
+        elif self._in_tempo == self._depth and name == "Tempo":
+            self._in_tempo = 0
+        self._depth -= 1
+
+
 def _forbid_dtd(name, sysid, pubid, has_internal_subset):
     raise DTDForbidden(name, sysid, pubid)
 
@@ -253,3 +315,21 @@ def parse_als(als_path: Path) -> list[FileRef]:
     with gzip.open(als_path, "rb") as fh:
         parser.ParseFile(fh)
     return handler.refs
+
+
+def parse_als_with_meta(als_path: Path) -> tuple[list[FileRef], dict]:
+    """parse_als plus display metadata (tempo / track count / plugin names), captured
+    by a second handler riding the SAME streaming pass — no extra decompress."""
+    refs = _FileRefHandler()
+    meta = _MetaHandler()
+    parser = xml.parsers.expat.ParserCreate()
+    parser.StartElementHandler = lambda n, a: (refs.start(n, a), meta.start(n, a))
+    parser.EndElementHandler = lambda n: (refs.end(n), meta.end(n))
+    parser.StartDoctypeDeclHandler = _forbid_dtd
+    parser.EntityDeclHandler = _forbid_entity
+    parser.UnparsedEntityDeclHandler = _forbid_unparsed_entity
+    parser.ExternalEntityRefHandler = _forbid_external
+    with gzip.open(als_path, "rb") as fh:
+        parser.ParseFile(fh)
+    return refs.refs, {"tempo": meta.tempo, "tracks": meta.tracks or None,
+                       "plugins": meta.plugins}

@@ -1,0 +1,65 @@
+/* Missing-samples panel — the "see exactly what's missing" trust view. */
+
+.miss { padding: 16px 18px; border-color: var(--warn-soft); }
+.miss-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+}
+.miss-title {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--warn); margin-bottom: 5px;
+}
+.miss-sum { font-size: 13.5px; color: var(--text); line-height: 1.45; }
+.miss-sum .found { color: var(--accent); font-weight: 600; }
+.miss-sum .lost  { color: var(--warn);   font-weight: 600; }
+.miss-sum .ok    { color: var(--accent-2); }
+.miss-sum .dim   { color: var(--text-dim); }
+
+.miss-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+
+.miss-trust {
+  font-size: 12px; color: var(--text-dim); line-height: 1.5;
+  margin: 12px 0 0; max-width: 78ch;
+}
+.miss-trust strong { color: var(--text); font-weight: 600; }
+
+.miss-note {
+  margin-top: 12px; padding: 8px 11px; border-radius: 8px; font-size: 12.5px;
+}
+.miss-note.ok  { background: var(--ok-soft);     color: var(--accent-2); }
+.miss-note.err { background: var(--danger-soft);  color: var(--danger); }
+
+.miss-list {
+  list-style: none; margin: 14px 0 0; padding: 0;
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  max-height: 380px; overflow-y: auto;
+}
+.miss-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 12px; border-top: 1px solid var(--border);
+}
+.miss-row:first-child { border-top: none; }
+.miss-row:nth-child(odd) { background: rgba(255,255,255,0.012); }
+
+.miss-file { flex: 1; min-width: 0; }
+.miss-name {
+  font-size: 13px; color: var(--text); font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.miss-path {
+  font-size: 11px; color: var(--text-dim); margin-top: 1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  direction: rtl; text-align: left;   /* keep the filename end visible when truncated */
+}
+
+.miss-badge {
+  flex-shrink: 0; font-size: 11px; font-weight: 600; padding: 3px 9px;
+  border-radius: 999px; white-space: nowrap; max-width: 220px;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.miss-badge.found    { background: var(--accent-soft); color: var(--accent); }
+.miss-badge.lost     { background: var(--warn-soft);   color: var(--warn); }
+.miss-badge.pointed  { background: var(--accent-soft); color: var(--accent); }
+.miss-badge.checking { background: var(--surface-3);   color: var(--text-dim); }
+
+.miss-foot { margin-top: 10px; font-size: 11.5px; color: var(--text-dim); }

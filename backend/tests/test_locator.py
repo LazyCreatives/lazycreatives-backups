@@ -1,4 +1,5 @@
 from ablebackup.locator import build_index, make_locator
+from ablebackup.service import _build_locator
 
 
 def test_index_and_locate_by_filename(tmp_path):
@@ -27,3 +28,22 @@ def test_index_returns_all_candidates_and_skips_backup_dirs(tmp_path):
     # both real copies are returned (so the caller can disambiguate); Backup skipped
     assert len(paths) == 2
     assert all("Backup" not in str(p) for p in paths)
+
+
+def test_pointed_library_makes_an_otherwise_unfindable_sample_findable(tmp_path, monkeypatch):
+    """The "look in this folder" feature: a sample that lives ONLY in a folder the
+    user pointed at — not under any source, not in the auto-detected Splice folder —
+    is found because that folder is added to the locator's search roots."""
+    # No Splice auto-detect, so the control is hermetic (machine may have a real ~/Splice).
+    monkeypatch.setattr("ablebackup.service.default_libraries", lambda: [])
+    src = tmp_path / "project_source"; src.mkdir()
+    hint = tmp_path / "where I think they are"; hint.mkdir()
+    (hint / "vocal_chop.wav").write_bytes(b"audio-bytes")
+
+    # Without the hint, the auto-finder can't see it (not in sources, no Splice).
+    auto = _build_locator([src], [])
+    assert auto("vocal_chop.wav") == []
+
+    # Pointing at the folder makes it findable.
+    pointed = _build_locator([src], [str(hint)])
+    assert pointed("vocal_chop.wav") == [hint / "vocal_chop.wav"]

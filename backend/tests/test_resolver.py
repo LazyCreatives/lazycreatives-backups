@@ -96,6 +96,47 @@ def test_does_not_relink_wrong_sized_same_named_file(tmp_path):
     assert r.relinked is False
 
 
+def test_explicit_override_relinks_the_exact_file_user_pointed_at(tmp_path):
+    # The "point to the correct sample" feature: the user hand-picks a replacement.
+    # It may have a different name AND size than the original — the auto-finder would
+    # never match it, but an explicit pick must be honored verbatim.
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    pick = tmp_path / "picks" / "my_replacement.wav"
+    pick.parent.mkdir()
+    pick.write_bytes(b"the-real-audio-bytes")
+    refs = [FileRef(name="kick.wav", absolute_path="/old/place/kick.wav", size=8)]
+
+    assert resolve_refs(refs, project_dir=proj)[0].exists is False  # missing without help
+    r = resolve_refs(refs, project_dir=proj,
+                     overrides={"/old/place/kick.wav": str(pick)})[0]
+    assert r.exists is True and r.relinked is True
+    assert r.resolved_path == pick
+
+
+def test_override_keyed_by_basename_also_matches(tmp_path):
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    pick = tmp_path / "kick_replacement.wav"
+    pick.write_bytes(b"audio")
+    refs = [FileRef(name="kick.wav", absolute_path="/old/place/kick.wav", size=8)]
+    r = resolve_refs(refs, project_dir=proj, overrides={"kick.wav": str(pick)})[0]
+    assert r.exists is True and r.relinked is True
+
+
+def test_override_to_non_media_outside_project_is_refused(tmp_path):
+    # An explicit pick still passes the media-extension guard, so a hostile relink_map
+    # (not the file dialog) can't remap a sample onto ~/.ssh/id_rsa and exfil it.
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    secret = tmp_path / "id_rsa"
+    secret.write_bytes(b"-----BEGIN PRIVATE KEY-----")
+    refs = [FileRef(name="kick.wav", absolute_path="/old/place/kick.wav", size=8)]
+    r = resolve_refs(refs, project_dir=proj,
+                     overrides={"/old/place/kick.wav": str(secret)})[0]
+    assert r.exists is False  # refused — not a media file
+
+
 def test_relinks_by_path_tail_when_size_unknown(tmp_path):
     # Older projects may not record a size; require a strong path-tail match instead.
     proj = tmp_path / "proj"

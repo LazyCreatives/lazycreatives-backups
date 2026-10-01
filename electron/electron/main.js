@@ -69,13 +69,48 @@ ipcMain.handle("pick-folder", async () => {
   return r.canceled ? null : r.filePaths[0];
 });
 
+// Pick a single audio file — used by "Point to file…" to hand-map one missing sample
+// to its exact replacement. Filtered to audio so the relink stays a media file.
+ipcMain.handle("pick-file", async () => {
+  const r = await dialog.showOpenDialog(win, {
+    properties: ["openFile"],
+    filters: [
+      { name: "Audio", extensions: [
+        "wav", "aif", "aiff", "aifc", "flac", "mp3", "ogg", "oga", "opus", "m4a",
+        "aac", "alac", "wma", "wv", "caf", "ape", "rex", "rx2", "w64", "au", "snd",
+      ] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  });
+  return r.canceled ? null : r.filePaths[0];
+});
+
 ipcMain.handle("reveal-path", (_e, target) => {
   if (target) shell.showItemInFolder(target);
+});
+
+// Open a project in its DAW (OS default app). Allowlisted to project extensions so
+// this channel can never be used to launch arbitrary files.
+const OPENABLE_PROJECT = /\.(als|flp|rpp|dawproject|aup3|aup)$/i;
+ipcMain.handle("open-project", (_e, target) => {
+  if (typeof target === "string" && OPENABLE_PROJECT.test(target)) {
+    return shell.openPath(target); // resolves to "" on success, error string otherwise
+  }
+  return "not a project file";
 });
 
 ipcMain.handle("open-external", (_e, url) => {
   if (typeof url === "string" && /^https?:\/\//.test(url)) shell.openExternal(url);
 });
+
+// Deep-link to the macOS Full Disk Access pane so the user can grant the app access
+// to TCC-protected folders (Documents/Desktop/Downloads) that even root can't read.
+ipcMain.handle("open-fda-settings", () => {
+  if (process.platform === "darwin") {
+    shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles");
+  }
+});
+
 
 app.whenReady().then(async () => {
   try {

@@ -20,11 +20,14 @@ from ablebackup.api.schemas import (
 from ablebackup.catalog import Catalog
 from ablebackup.scheduler import BackupScheduler
 from ablebackup.service import (
+    _build_locator,
     CLOUD_PROVIDERS, CloudConnectSession, build_overview, cloud_disconnect,
-    default_timestamp, pool_cache_age, rclone_available, backfill_genres,
-    project_genres, rclone_remotes, refresh_pool_cache, restore_snapshot,
-    run_backup, safe_remote_name, scan_summary, share_snapshot, snapshot_diff,
+    default_timestamp, full_disk_access_ok, pool_cache_age, rclone_available,
+    backfill_genres, project_genres, rclone_remotes, refresh_pool_cache,
+    resolve_scan_roots, restore_snapshot, run_backup, safe_remote_name, scan_summary,
+    share_snapshot, snapshot_diff,
 )
+from ablebackup.scanner import scan_one
 from ablebackup.verifier import verify_snapshot
 
 
@@ -242,8 +245,13 @@ def create_app(token: str, db_path: Path) -> FastAPI:
 
     @app.post("/api/scan", dependencies=[Depends(require_token)])
     def scan(req: ScanRequest):
-        sources = _resolve_sources(req.sources)
         cfg = app.state.catalog.get_setting("config") or {}
+        # A scope ("home"/"volumes"/"users"/"entire") scans the Mac; otherwise the
+        # configured sources (or an explicit list) — the default, unchanged behaviour.
+        if req.scope and req.scope != "sources":
+            sources = resolve_scan_roots(req.scope, _resolve_sources(req.sources))
+        else:
+            sources = _resolve_sources(req.sources)
         hub = app.state.hub
 
         def progress(ev):
@@ -253,15 +261,82 @@ def create_app(token: str, db_path: Path) -> FastAPI:
                 pass  # no event loop bound (e.g. bare TestClient) — skip live ticks
 
         find_missing = req.find_missing and _allows("auto_relink")
+        stats: dict = {}
         projects = scan_summary(
             sources, progress=progress, find_missing=find_missing,
-            libraries=cfg.get("libraries", []))
+            libraries=cfg.get("libraries", []), stats=stats)
         if not _allows("multi_daw"):
             projects = [p for p in projects if p.get("daw") == "ableton"]
-        return {"projects": projects}
+        # Persist what we found so History shows the whole library, not just backups.
+        app.state.catalog.upsert_discovered([
+            {"project_id": p["project_id"], "name": p["name"], "path": p["als_path"],
+             "dir": p["project_dir"], "daw": p["daw"], "owner": p.get("owner", "system"),
+             "size": p["total_size"], "mtime": p["mtime"], "missing_count": p["missing_count"],
+             "genre": p.get("genre"), "genre_emoji": p.get("genre_emoji"), "bpm": p.get("bpm"),
+             "tracks": p.get("tracks"),
+             "plugins": json.dumps(p.get("plugins") or []) if p.get("plugins") else None}
+            for p in projects
+        ], default_timestamp())
+        return {"projects": projects, "scope": req.scope or "sources",
+                "full_disk_access": full_disk_access_ok(),
+                "skipped_dirs": stats.get("skipped_dirs", 0),
+                "skipped_examples": stats.get("skipped_examples", [])}
+
+    @app.get("/api/library", dependencies=[Depends(require_token)])
+    def library():
+        """Every project a scan has found, with backed-up status — grouped client-side
+        by owner. This is the persistent History list."""
+        rows = app.state.catalog.library()
+        owners = sorted({r["owner"] or "system" for r in rows})
+        return {"projects": rows, "owners": owners, "count": len(rows)}
+
+    @app.get("/api/project/missing", dependencies=[Depends(require_token)])
+    def project_missing(path: str, find: bool = False):
+        """The live, complete list of a single project's missing samples.
+
+        Re-parses the project on demand so the list reflects the CURRENT state of disk
+        (samples may have been moved or restored since the last scan) — an honest
+        "what's missing right now, and exactly which files" the user can trust, rather
+        than a stale count. Each entry is the sample's name and the path the project
+        expects it at.
+
+        When `find=1`, each missing sample is also classified `recoverable` — i.e. an
+        exact match exists in the user's sample libraries + source folders, so "Fix
+        now" will relink and back it up. Ones that aren't recoverable are the ones that
+        genuinely need the user to point at the file. (The library walk makes find=1
+        slower, so the UI loads the plain list first, then annotates.)
+        """
+        p = Path(path)
+        if not p.exists():
+            raise HTTPException(status_code=404, detail="project not found on disk")
+        try:
+            scan = scan_one(p)  # disk truth: every sample not at its expected path
+        except ValueError:
+            raise HTTPException(status_code=400, detail="not a recognized project file")
+        recoverable: set[str] = set()
+        if find and scan.missing:
+            saved = app.state.catalog.get_setting("config") or {}
+            sources = [str(s) for s in saved.get("sources", [])]
+            locate = _build_locator(sources, saved.get("libraries", []))
+            found = scan_one(p, locate=locate)  # same scan, but allowed to relink
+            still_missing = {r.expected_path or r.name for r in found.missing}
+            recoverable = {(r.expected_path or r.name) for r in scan.missing
+                           if (r.expected_path or r.name) not in still_missing}
+        missing = [{"name": r.name, "expected_path": r.expected_path or r.name,
+                    "recoverable": (r.expected_path or r.name) in recoverable}
+                   for r in scan.missing]
+        return {
+            "name": scan.name,
+            "path": str(p),
+            "present_count": sum(1 for r in scan.refs if r.exists),
+            "missing_count": len(missing),
+            "recoverable_count": len(recoverable),
+            "probed": bool(find),
+            "missing": missing,
+        }
 
     async def _run_job(job_id, sources, dest, timestamp, als_paths, label,
-                       portable, layout, find_missing, libraries, mirrors):
+                       portable, layout, find_missing, libraries, mirrors, relink_map=None):
         hub = app.state.hub
         cat = app.state.catalog
         cancel = app.state.cancels[job_id]
@@ -273,7 +348,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
             result = await asyncio.to_thread(
                 run_backup, sources, dest, cat, timestamp, progress, als_paths,
                 label, portable, layout, find_missing, libraries, cancel.is_set,
-                mirrors)
+                mirrors, relink_map)
             app.state.jobs[job_id] = {"state": "done", "result": result}
             _refresh_pool_async(str(dest))  # the pool grew — recompute the cached size
         except Exception as e:  # pragma: no cover - defensive
@@ -294,6 +369,16 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         if als_paths is not None and not _allows("multi_daw"):
             als_paths = [a for a in als_paths if str(a).lower().endswith(".als")]
         find_missing = req.find_missing and _allows("auto_relink")
+        # Saved sample libraries + any one-off folder the user pointed at for THIS
+        # run ("look in this folder"). Deduped, order-preserving — only consulted
+        # when find_missing relinking is active.
+        libraries = list(saved.get("libraries", []))
+        for extra in (req.libraries or []):
+            if extra and extra not in libraries:
+                libraries.append(extra)
+        # Exact per-file remaps the user pointed at ("this missing sample IS that
+        # file"). Same auto_relink gating as the auto-finder — it's still a relink.
+        relink_map = req.relink_map if find_missing else None
         # offsite/cloud mirrors are a top-tier (Studio) feature
         mirrors = saved.get("mirrors", []) if _allows("cloud_backup") else []
         # bind the loop here so the worker thread's progress publishing works even
@@ -305,7 +390,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         asyncio.create_task(
             _run_job(job_id, sources, Path(dest), timestamp, als_paths,
                      req.label, req.portable, req.layout, find_missing,
-                     saved.get("libraries", []), mirrors))
+                     libraries, mirrors, relink_map))
         return {"job_id": job_id, "state": "running"}
 
     @app.get("/api/jobs/{job_id}", dependencies=[Depends(require_token)])

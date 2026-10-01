@@ -21,6 +21,34 @@ def test_crafted_project_cannot_pull_a_non_media_file(tmp_path):
     assert any(not r.exists for r in scan.refs)                                # marked missing
 
 
+def test_point_to_file_remap_captures_the_pointed_file(tmp_path):
+    """End-to-end for "point to the correct sample": a missing external sample is
+    hand-remapped to an exact file (a different name, even) the auto-finder would
+    never match; scan_one resolves it via the override and backup_project captures
+    that exact file into the snapshot so it can never be lost.
+
+    (Repointing the portable project file at the stored copy is a separate, pre-existing
+    gap shared with the auto-finder — rewrite_portable re-resolves from disk and so
+    skips any relinked ref — tracked apart from this feature.)"""
+    proj = tmp_path / "Song Project"
+    proj.mkdir()
+    write_als(proj / "Song.als", [fileref_abs("/gone/away/lead.wav", "lead.wav")])  # missing
+    pick = tmp_path / "picks" / "the_real_lead.wav"
+    pick.parent.mkdir()
+    pick.write_bytes(b"REAL-LEAD-AUDIO-BYTES")
+
+    assert any(not r.exists for r in scan_one(proj / "Song.als").refs)  # missing without help
+
+    scan = scan_one(proj / "Song.als", overrides={"/gone/away/lead.wav": str(pick)})
+    relinked = [r for r in scan.refs if r.exists and r.relinked]
+    assert relinked and relinked[0].resolved_path == pick   # the override resolved to the exact pick
+
+    res = backup_project(scan, tmp_path / "NAS" / "AbletonBackups", "t", portable=True)
+    stored = [p for p in res.snapshot_dir.rglob("*")
+              if p.is_file() and p.read_bytes() == b"REAL-LEAD-AUDIO-BYTES"]
+    assert stored, "the file the user pointed at was not captured into the backup"
+
+
 def test_portable_keeps_same_basename_externals_distinct(tmp_path):
     # Two different samples both named kick.wav from different libraries: the
     # portable .als must point each ref at a DISTINCT stored file (regression for

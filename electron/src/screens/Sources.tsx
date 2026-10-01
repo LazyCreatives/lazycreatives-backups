@@ -54,6 +54,12 @@ export function Sources() {
     const dir = await (window as any).ablebackup.pickFolder();
     if (dir && !cfg.sources.includes(dir)) setCfg({ ...cfg, sources: [...cfg.sources, dir] });
   }
+  const libraries = cfg.libraries ?? [];
+  async function addLibrary() {
+    const dir = await (window as any).ablebackup.pickFolder();
+    if (dir && !libraries.includes(dir)) setCfg({ ...cfg, libraries: [...libraries, dir] });
+  }
+  function removeLibrary(l: string) { setCfg({ ...cfg, libraries: libraries.filter((x) => x !== l) }); }
   async function pickDest() {
     const dir = await (window as any).ablebackup.pickFolder();
     if (dir) setCfg({ ...cfg, dest: dir });
@@ -163,6 +169,25 @@ export function Sources() {
             <button className="linkbtn" onClick={() => removeSource(s)} style={{ color: "var(--danger)", flexShrink: 0 }}>remove</button>
           </div>
         ))}
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <h2 style={{ margin: 0, display: "flex", alignItems: "center" }}>Sample libraries
+            <Info text="When a project is missing samples, the finder searches these folders (plus your source folders) for a file of the same name and relinks it. Point it at wherever your samples live — Splice, a packs drive, an old project archive. Splice's default folder is found automatically." /></h2>
+          <Button variant="ghost" onClick={addLibrary} disabled={!loaded}>+ Add a sample folder</Button>
+        </div>
+        <p className="sub" style={{ margin: "4px 0 10px", fontSize: 12.5 }}>
+          Where your samples live, so missing ones can be found and relinked. Your <code>~/Splice</code> folder is searched automatically — add others here.
+        </p>
+        {libraries.length === 0
+          ? <p className="sub" style={{ margin: 0 }}>{loaded ? "No extra folders — Splice is still searched automatically." : "Loading…"}</p>
+          : libraries.map((l) => (
+            <div key={l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", gap: 12 }}>
+              <span style={{ color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🎚 {l}</span>
+              <button className="linkbtn" onClick={() => removeLibrary(l)} style={{ color: "var(--danger)", flexShrink: 0 }}>remove</button>
+            </div>
+          ))}
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>

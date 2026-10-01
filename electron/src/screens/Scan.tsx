@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SlothMascot } from "../components/SlothMascot";
 import type { CSSProperties } from "react";
 import { makeApi } from "../api";
 import type { ProjectSummary } from "../types";
@@ -9,7 +10,8 @@ import { PageHeader } from "../components/PageHeader";
 import { ProgressBar } from "../components/ProgressBar";
 import { ProBadge } from "../components/ProBadge";
 import { useEntitlement } from "../entitlement";
-import { fmtSize, dawLabel } from "../format";
+import { fmtSize } from "../format";
+import { DawBadge } from "../components/DawBadge";
 
 const api = makeApi();
 type SortKey = "name" | "recent" | "size" | "issues";
@@ -157,8 +159,8 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
         </div>
       )}
 
-      {!projects && !scanning && <div className="empty"><div className="empty__icon">🔍</div>Hit “Scan now” to discover projects in your source folders.</div>}
-      {projects && projects.length === 0 && !scanning && <div className="empty"><div className="empty__icon">📁</div>No projects found. Check your folders in Settings.</div>}
+      {!projects && !scanning && <div className="empty"><div className="empty__icon"><SlothMascot label="Ready to scan" /></div>Hit “Scan now” to discover projects in your source folders.</div>}
+      {projects && projects.length === 0 && !scanning && <div className="empty"><div className="empty__icon"><SlothMascot label="No projects found" /></div>No projects found. Check your folders in Settings.</div>}
 
       {hasProjects && (
         <>
@@ -214,7 +216,7 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                           <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 8 }}>
-                            <span className="daw-badge">{dawLabel(p.daw)}</span>{p.name}
+                            <DawBadge daw={p.daw} />{p.name}
                           </strong>
                           <span className="sub mono" style={{ margin: 0, whiteSpace: "nowrap" }}>
                             {p.present_count} sample{p.present_count === 1 ? "" : "s"} · {fmtSize(p.total_size)}

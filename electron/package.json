@@ -1,7 +1,7 @@
 {
   "name": "lazycreatives-backups",
   "productName": "LazyCreatives Backups",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "LazyCreatives Backups — verified, deduplicated backups for Ableton & FL Studio projects",
   "main": "electron/main.js",
   "scripts": {
@@ -16,14 +16,26 @@
   "build": {
     "appId": "com.lazycreatives.backups",
     "productName": "LazyCreatives Backups",
-    "directories": { "output": "release", "buildResources": "build" },
-    "files": ["dist/**/*", "electron/**/*", "package.json"],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
     "extraResources": [
-      { "from": "../backend/dist/ablebackup-sidecar", "to": "sidecar" }
+      {
+        "from": "../backend/dist/ablebackup-sidecar",
+        "to": "sidecar"
+      }
     ],
     "mac": {
       "category": "public.app-category.music",
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "build/icon.png",
       "hardenedRuntime": true,
       "gatekeeperAssess": false
@@ -34,6 +46,8 @@
     "linux": { "target": ["AppImage"], "category": "Audio", "icon": "build/icon.png" }
   },
   "devDependencies": {
+    "@types/react": "^18.3.4",
+    "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "concurrently": "^9.2.4",
     "cross-env": "^7.0.3",
@@ -44,8 +58,9 @@
     "typescript": "^5.5.4",
     "vite": "^5.4.2",
     "vitest": "^2.0.5",
-    "wait-on": "^8.0.0",
-    "@types/react": "^18.3.4",
-    "@types/react-dom": "^18.3.0"
+    "wait-on": "^8.0.0"
+  },
+  "dependencies": {
+    "motion": "^12.40.0"
   }
 }

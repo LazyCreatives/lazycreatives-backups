@@ -91,8 +91,24 @@ def _match_located(ref: FileRef, locate: Locator) -> Optional[Path]:
     return None
 
 
+def _ref_key(ref: FileRef) -> str:
+    """The identifier a missing ref is shown and addressed by (matches
+    ResolvedRef.expected_path): its relative path, else absolute, else name."""
+    return ref.relative_path or ref.absolute_path or ref.name or ""
+
+
 def resolve_refs(refs: list[FileRef], project_dir: Path,
-                 locate: Locator = None) -> list[ResolvedRef]:
+                 locate: Locator = None,
+                 overrides: Optional[dict] = None) -> list[ResolvedRef]:
+    """Resolve each referenced sample to a real file on disk.
+
+    `overrides` maps a missing ref's identifier (its expected path, as shown to the
+    user; basename also accepted) to an exact file the user pointed at ("this missing
+    sample IS that file"). An override takes priority over the project's own path and
+    the library auto-finder, but still passes the same media-extension guard as any
+    other out-of-project file, so a hostile caller can't remap a sample onto a secret.
+    """
+    overrides = overrides or {}
     resolved: list[ResolvedRef] = []
     # A sample used by N clips appears as N identical FileRefs; collapse them so
     # counts and sizes reflect unique files, not how many times each is triggered.
@@ -103,7 +119,14 @@ def resolve_refs(refs: list[FileRef], project_dir: Path,
     for ref in refs:
         chosen: Path | None = None
         relinked = False
+        # An explicit user remap wins over everything — they hand-picked this file.
+        ov = overrides.get(_ref_key(ref)) or (ref.name and overrides.get(ref.name))
+        if ov and Path(ov).is_file():
+            chosen = Path(ov)
+            relinked = True
         for cand in _candidates(ref, project_dir):
+            if chosen is not None:
+                break
             # Only real files are backable. A reference can resolve to a directory
             # (e.g. an Ableton built-in device bundle like Simpler inside the .app);
             # those are not user samples and must not be hashed/copied as files.

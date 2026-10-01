@@ -3,9 +3,13 @@ import type { ProgressEvent } from "./types";
 
 export interface ScanProgress {
   active: boolean;
+  phase: "searching" | "parsing" | null;
   done: number;
   total: number;
   current: string | null;
+  dirs: number;        // folders walked (search phase)
+  found: number;       // projects found so far (search phase)
+  startedAt: number | null;  // ms epoch when parsing began — for the ETA
 }
 export interface BackupProgress {
   active: boolean;
@@ -27,19 +31,22 @@ export interface LiveProgress {
 
 export function initialProgress(): LiveProgress {
   return {
-    scan: { active: false, done: 0, total: 0, current: null },
+    scan: { active: false, phase: null, done: 0, total: 0, current: null, dirs: 0, found: 0, startedAt: null },
     backup: { active: false, preparing: false, total: 0, completed: 0, skipped: 0, errors: 0, current: null, done: false, cancelled: false, mirrorFailed: 0, log: [] },
   };
 }
 
 export function reduceProgress(s: LiveProgress, ev: ProgressEvent): LiveProgress {
   switch (ev.type) {
+    case "scan_searching":
+      return { ...s, scan: { ...s.scan, active: true, phase: "searching", dirs: ev.dirs, found: ev.found, done: 0, total: 0, current: null } };
     case "scan_start":
-      return { ...s, scan: { active: true, done: 0, total: ev.total, current: null } };
+      // Parsing begins — stamp the start so the ETA can be derived from the parse rate.
+      return { ...s, scan: { ...s.scan, active: true, phase: "parsing", done: 0, total: ev.total, current: null, startedAt: Date.now() } };
     case "scan_progress":
-      return { ...s, scan: { active: true, done: ev.done, total: ev.total, current: ev.name } };
+      return { ...s, scan: { ...s.scan, active: true, phase: "parsing", done: ev.done, total: ev.total, current: ev.name } };
     case "scan_done":
-      return { ...s, scan: { active: false, done: 0, total: 0, current: null } };
+      return { ...s, scan: { active: false, phase: null, done: 0, total: 0, current: null, dirs: 0, found: 0, startedAt: null } };
     case "backup_preparing":
       return { ...s, backup: { active: true, preparing: true, total: 0, completed: 0, skipped: 0, errors: 0, current: null, done: false, cancelled: false, mirrorFailed: 0, log: ["Preparing… resolving projects"] } };
     case "backup_start":

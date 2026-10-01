@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SlothMascot } from "../components/SlothMascot";
 import type { BackupProgress } from "../useProgress";
 import { ProgressBar } from "../components/ProgressBar";
 import { PageHeader } from "../components/PageHeader";
@@ -60,7 +61,7 @@ export function Backup({ progress: p, jobId }: { progress: BackupProgress; jobId
               <p className="sub" style={{ margin: "10px 0 0" }}>Start a new backup from Scan &amp; Back up.</p>
             </>
           ) : (
-            <div className="empty"><div className="empty__icon">💤</div>No backups yet. Start one from Scan &amp; Back up.</div>
+            <div className="empty"><div className="empty__icon"><SlothMascot label="Napping — no backups yet" /></div>No backups yet. Start one from Scan &amp; Back up.</div>
           )}
         </div>
       ) : (
