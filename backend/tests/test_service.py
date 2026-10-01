@@ -179,3 +179,20 @@ def test_run_backup_isolates_project_errors(tmp_path, monkeypatch):
     assert row["status"] == "error"
     assert "disk full" in row["error"]
     cat.close()
+
+
+def test_full_disk_access_is_a_mac_only_nudge(monkeypatch, tmp_path):
+    from ablebackup import service
+
+    monkeypatch.setattr(service.Path, "home", classmethod(lambda cls: tmp_path))
+    # No Documents folder: nothing is hidden from us, so no nudge on any system.
+    for plat in ("darwin", "linux", "win32"):
+        monkeypatch.setattr(service.sys, "platform", plat)
+        assert service.full_disk_access_ok() is True
+
+    # Off a Mac, an unreadable Documents is never a Full Disk Access problem.
+    monkeypatch.setattr(service.os, "listdir", lambda p: (_ for _ in ()).throw(PermissionError()))
+    monkeypatch.setattr(service.sys, "platform", "linux")
+    assert service.full_disk_access_ok() is True
+    monkeypatch.setattr(service.sys, "platform", "darwin")
+    assert service.full_disk_access_ok() is False

@@ -72,43 +72,58 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
         </div>
       )}
 
+      {(rows.length > 0 || (data?.uploads_elsewhere ?? []).length > 0) && (
+        <div className="cols cols-head song-cols" aria-hidden>
+          <span /><span>Song</span><span className="col-num">Exported</span><span className="col-num">Size</span><span /><span />
+        </div>
+      )}
       {rows.map((e) => (
-        <div key={e.path} className="row" style={{ gap: 10 }}>
-          {e.exists ? <PlayButton path={e.path} title={e.name} /> : <span style={{ width: 30 }} />}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={e.path}>{e.name}</div>
-            <div className="sub" style={{ margin: 0, fontSize: 11.5 }}>
-              {e.exists ? `${fmtWhen(e.mtime)} · ${fmtSize(e.size ?? 0)} · ${HOW[e.match]}` : "File has been moved or deleted"}
+        <div key={e.path} className="row cols song-cols">
+          {e.exists ? <PlayButton path={e.path} title={e.name} /> : <span />}
+          <div>
+            <div className="col-trunc" title={e.path}>{e.name}</div>
+            <div className="sub col-trunc" style={{ margin: 0, fontSize: 11.5 }}>
+              {e.exists ? HOW[e.match] : "File has been moved or deleted"}
             </div>
           </div>
-          {e.upload?.url && (
-            <button type="button" className="pill pill--ok" style={{ border: 0, cursor: "pointer" }}
-              title={`Uploaded as "${e.upload.title}"`} onClick={() => bridge()?.openExternal?.(e.upload!.url)}>
-              On SoundCloud ↗
-            </button>
-          )}
-          {e.exists && (
-            <Button variant="ghost" size="sm" onClick={() => bridge()?.revealPath?.(e.path)}>Show file</Button>
-          )}
-          <Button variant="ghost" size="sm" disabled={busy}
-            title="Remove this song from the project. It won't be matched again."
-            onClick={() => run(() => api.unlinkExport(e.path, item.project_id))}>
-            Not from this project
-          </Button>
+          <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{e.exists ? fmtWhen(e.mtime) : "—"}</div>
+          <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{e.exists ? fmtSize(e.size ?? 0) : "—"}</div>
+          <div className="col-end">
+            {e.upload?.url && (
+              <button type="button" className="pill pill--ok" style={{ border: 0, cursor: "pointer" }}
+                title={`Uploaded as "${e.upload.title}"`} onClick={() => bridge()?.openExternal?.(e.upload!.url)}>
+                On SoundCloud ↗
+              </button>
+            )}
+          </div>
+          <div className="song-actions">
+            <Button variant="ghost" size="sm" onClick={() => bridge()?.revealPath?.(e.path)}
+              style={{ visibility: e.exists ? "visible" : "hidden" }}>Show file</Button>
+            <Button variant="ghost" size="sm" disabled={busy}
+              title="Remove this song from the project. It won't be matched again."
+              onClick={() => run(() => api.unlinkExport(e.path, item.project_id))}>
+              Not from this project
+            </Button>
+          </div>
         </div>
       ))}
 
       {(data?.uploads_elsewhere ?? []).map((u) => (
-        <div key={u.url ?? u.title} className="row" style={{ gap: 10 }}>
-          <span style={{ width: 30 }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div>{u.title}</div>
-            <div className="sub" style={{ margin: 0, fontSize: 11.5 }}>On SoundCloud · the file has since moved</div>
+        <div key={u.url ?? u.title} className="row cols song-cols">
+          <span />
+          <div>
+            <div className="col-trunc">{u.title}</div>
+            <div className="sub col-trunc" style={{ margin: 0, fontSize: 11.5 }}>On SoundCloud · the file has since moved</div>
           </div>
-          {u.url && (
-            <button type="button" className="pill pill--ok" style={{ border: 0, cursor: "pointer" }}
-              onClick={() => bridge()?.openExternal?.(u.url)}>On SoundCloud ↗</button>
-          )}
+          <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>—</div>
+          <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>—</div>
+          <div className="col-end">
+            {u.url && (
+              <button type="button" className="pill pill--ok" style={{ border: 0, cursor: "pointer" }}
+                onClick={() => bridge()?.openExternal?.(u.url)}>On SoundCloud ↗</button>
+            )}
+          </div>
+          <div className="song-actions" />
         </div>
       ))}
 

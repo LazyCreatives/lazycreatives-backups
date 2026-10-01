@@ -12,6 +12,7 @@ import { ProjectLabel } from "./ProjectLabel";
 import { ProjectExports } from "./ProjectExports";
 import { PlayButton } from "../components/Player";
 import { MissingSamples } from "./MissingSamples";
+import { currentOs, osWords } from "../platform";
 import "../library.css";
 
 const api = makeApi();
@@ -25,9 +26,10 @@ function fmtEta(secs: number): string {
 // Scan reach — mirrors the backend scopes. "My folders" = the configured sources.
 const SCOPES: { key: string; label: string }[] = [
   { key: "sources", label: "My folders" },
-  { key: "home", label: "My whole Mac" },
+  { key: "home", label: `My whole ${osWords().computer}` },
   { key: "volumes", label: "+ External drives" },
 ];
+const IS_MAC = currentOs() === "mac";
 
 function ownerLabel(owner: string): string {
   if (owner === "system") return "Other / system";
@@ -40,13 +42,16 @@ const revealPath = (p?: string) => { if (p) bridge()?.revealPath?.(p); };
 
 // One plain line that says the truth about a project: missing samples beat
 // "backed up", because a verified backup of a project with holes still needs you.
-function statusLine(it: LibraryItem): { tone: "ok" | "warn" | "none"; text: string } {
+// One row of the library table: the status column in plain words, then the last
+// backup date and the size on disk in their own columns so every row lines up.
+function statusLine(it: LibraryItem): { tone: "ok" | "warn" | "none"; text: string; when: string; size: string } {
+  const size = fmtSize(it.size);
   if (it.missing_count > 0) {
     const n = it.missing_count;
-    return { tone: "warn", text: `${n} sample${n === 1 ? "" : "s"} missing · ${it.backed_up ? `backed up ${fmtDate(it.last_backup)}` : "not backed up"}` };
+    return { tone: "warn", text: `${n} sample${n === 1 ? "" : "s"} missing`, when: it.backed_up ? fmtDate(it.last_backup) : "not backed up", size };
   }
-  if (it.backed_up) return { tone: "ok", text: `Verified · ${fmtDate(it.last_backup)} · ${fmtSize(it.size)}` };
-  return { tone: "none", text: `Not backed up yet · ${fmtSize(it.size)}` };
+  if (it.backed_up) return { tone: "ok", text: "Verified", when: fmtDate(it.last_backup), size };
+  return { tone: "none", text: "Not backed up yet", when: "—", size };
 }
 
 // The "···" menu on a row: the less common actions, out of the way.
@@ -276,14 +281,21 @@ export function Library({ scan, openProject, onOpenHandled }: {
         {(skipped > 0 || !fdaOk) && !scanning && (
           <div className="locked-note" style={{ flexBasis: "100%", flexDirection: "column", alignItems: "stretch", gap: 9 }}>
             <div style={{ fontSize: 12.5 }}>
-              Skipped {skipped > 0 ? skipped.toLocaleString() + " " : ""}folder{skipped === 1 ? "" : "s"} that macOS hides
-              (Documents / Desktop / Downloads) until you grant this app Full Disk Access.
+              {IS_MAC ? (
+                <>Skipped {skipped > 0 ? skipped.toLocaleString() + " " : ""}folder{skipped === 1 ? "" : "s"} that macOS hides
+                (Documents / Desktop / Downloads) until you grant this app Full Disk Access.</>
+              ) : (
+                <>Skipped {skipped.toLocaleString()} folder{skipped === 1 ? "" : "s"} this app isn't allowed to open.
+                Projects inside {skipped === 1 ? "it" : "them"} weren't scanned.</>
+              )}
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Button variant="ghost" size="sm" onClick={() => (window as any).ablebackup?.openFdaSettings?.()}>
-                Grant Full Disk Access
-              </Button>
-            </div>
+            {IS_MAC && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Button variant="ghost" size="sm" onClick={() => (window as any).ablebackup?.openFdaSettings?.()}>
+                  Grant Full Disk Access
+                </Button>
+              </div>
+            )}
           </div>
         )}
         {err && <div className="sub" style={{ color: "var(--danger)", flexBasis: "100%", margin: 0, fontSize: 12 }}>{err}</div>}
@@ -337,28 +349,33 @@ export function Library({ scan, openProject, onOpenHandled }: {
                   </button>
                 </div>
               )}
+              {!isCollapsed && (
+                <div className="cols cols-head lib-cols" aria-hidden>
+                  <span /><span /><span>Project</span><span>Status</span><span className="col-num">Last backup</span><span className="col-num">Size</span><span /><span /><span />
+                </div>
+              )}
               {!isCollapsed && list.map((it) => {
                 const working = busy.has(it.project_id);
                 const st = statusLine(it);
                 const dawName = it.daw === "flstudio" ? "FL Studio" : it.daw === "ableton" ? "Ableton Live" : "its DAW";
                 const openIt = () => setExpanded(it.project_id);
                 return (
-                  <div key={it.project_id} data-pid={it.project_id} className="row lib-row" role="button" tabIndex={0}
+                  <div key={it.project_id} data-pid={it.project_id} className="row cols lib-row lib-cols" role="button" tabIndex={0}
                     onClick={openIt}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openIt(); } }}>
                     {it.latest_export
                       ? <PlayButton path={it.latest_export.path} title={it.latest_export.name} size={28} />
                       : <span className="playbtn-slot" aria-hidden />}
                     <span className={`lib-dot${st.tone === "ok" ? " lib-dot--ok" : st.tone === "warn" ? " lib-dot--warn" : ""}`} aria-hidden />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="lib-name">{it.name}</div>
-                      <div className={`lib-status${st.tone === "warn" ? " lib-status--warn" : st.tone === "ok" ? " lib-status--ok" : ""}`}
-                        title={it.plugins?.length ? `Plugins: ${it.plugins.join(", ")}` : undefined}>
-                        {working ? "Backing up…" : st.text}
-                      </div>
+                    <div className="lib-name col-trunc" title={it.plugins?.length ? `Plugins: ${it.plugins.join(", ")}` : undefined}>{it.name}</div>
+                    <div className={`lib-status col-trunc${st.tone === "warn" ? " lib-status--warn" : st.tone === "ok" ? " lib-status--ok" : ""}`}>
+                      {working ? "Backing up…" : st.text}
                     </div>
+                    <div className="lib-status col-num">{st.when}</div>
+                    <div className="lib-status col-num">{st.size}</div>
                     <DawBadge daw={it.daw} />
                     {/* one main button: the thing this project most needs */}
+                    <div className="col-act">
                     {it.missing_count > 0 ? (
                       <Button size="sm" disabled={working} onClick={(e) => { e.stopPropagation(); openIt(); }}
                         title="See which samples are missing and point me to them">Fix</Button>
@@ -368,12 +385,13 @@ export function Library({ scan, openProject, onOpenHandled }: {
                       <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openInDaw(it.path); }}
                         title={`Open in ${dawName}`}>Open</Button>
                     )}
+                    </div>
                     <RowMenu items={[
                       { label: `Open in ${dawName}`, onClick: () => openInDaw(it.path) },
                       { label: "Show backups & details", onClick: openIt },
                       { label: it.backed_up ? "Back up again" : "Back up", onClick: () => backupOne(it), disabled: working },
                       ...(it.missing_count > 0 ? [{ label: "Look for samples in a folder…", onClick: () => lookInFolder(it), disabled: working }] : []),
-                      { label: "Show in Finder", onClick: () => revealPath(it.path) },
+                      { label: `Show in ${osWords().fileManager}`, onClick: () => revealPath(it.path) },
                     ]} />
                   </div>
                 );

@@ -6,6 +6,7 @@ import { VerifiedSeal } from "../components/VerifiedSeal";
 import { fmtSize, fmtDate, shortPath, sourceLabel } from "../format";
 import { runRelinkBackup, pointSampleToFile } from "../relink";
 import "../missing.css";
+import { osWords } from "../platform";
 
 const api = makeApi();
 function reveal(p?: string) { if (p) (window as any).ablebackup?.revealPath?.(p); }
@@ -293,7 +294,7 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
 
           {loadingFiles && <p className="sub">Reading the backup…</p>}
           {!loadingFiles && files && !files.manifest_present && (
-            <p className="sub">File details weren't recorded for this older backup — use Reveal to open it in Finder.</p>
+            <p className="sub">File details weren't recorded for this older backup — use Reveal to open it in {osWords().fileManager}.</p>
           )}
           {!loadingFiles && files?.manifest_present && (
             <div className="filebrowser">

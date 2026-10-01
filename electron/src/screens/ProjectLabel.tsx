@@ -220,12 +220,11 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal }: {
               ["Crate", crate, ""],
               ["Size on disk", fmtSize(item.size), ""],
               ["Files", latest ? String(latest.file_count) : "—", ""],
-              ["Tracks", item.tracks ? String(item.tracks) : "—", ""],
               ["Backups", String(item.snapshot_count), ""],
               ["Last verified", lastVerifiedSnap ? fmtD(parseStamp(lastVerifiedSnap.timestamp)) : "never", lastVerifiedSnap ? "ok" : ""],
               ["Missing", warn ? `${warn} sample${warn === 1 ? "" : "s"}` : "none", warn ? "at" : "ok"],
               ["DAW", dawLabel(item.daw), ""],
-              ["BPM", item.bpm ? String(Math.round(item.bpm)) : "—", ""],
+              ["Tracks · BPM", `${item.tracks ? item.tracks : "—"} · ${item.bpm ? Math.round(item.bpm) : "—"}`, ""],
             ] as [string, string, string][]).map(([k, v, c]) => (
               <div key={k} className="fact"><div className="k">{k}</div><div className={`v mono ${c}`}>{v}</div></div>
             ))}

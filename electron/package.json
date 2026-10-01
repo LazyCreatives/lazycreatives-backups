@@ -1,7 +1,7 @@
 {
   "name": "lazycreatives-backups",
   "productName": "LazyCreatives Backups",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "LazyCreatives Backups — verified, deduplicated backups for Ableton & FL Studio projects",
   "main": "electron/main.js",
   "scripts": {
@@ -23,12 +23,19 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "build/icon.png",
+      "build/tray.png",
+      "build/tray@2x.png",
       "package.json"
     ],
     "extraResources": [
       {
         "from": "../backend/dist/ablebackup-sidecar",
         "to": "sidecar"
+      },
+      {
+        "from": "rclone",
+        "to": "rclone"
       }
     ],
     "mac": {
@@ -62,9 +69,10 @@
     }
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "@types/react": "^18.3.4",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
+    "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^9.2.4",
     "cross-env": "^7.0.3",
     "electron": "^31.3.1",
@@ -72,8 +80,8 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "typescript": "^5.5.4",
-    "vite": "^5.4.2",
-    "vitest": "^2.0.5",
+    "vite": "^8.1.0",
+    "vitest": "^4.1.9",
     "wait-on": "^8.0.0"
   },
   "dependencies": {

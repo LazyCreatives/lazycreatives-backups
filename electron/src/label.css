@@ -51,7 +51,7 @@
 }
 .lsummary .mono { color: var(--text-dim); display: block; margin-top: 8px; font-size: 12.5px; }
 
-.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }  /* 9 facts = 3 x 3, never a lone tile */
 .fact { padding: 11px 13px; border-radius: 12px; background: rgba(10, 11, 13, 0.35); border: 1px solid var(--glass-border, rgba(134, 179, 211, 0.16)); }
 .fact .k { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
 .fact .v { font-size: 13.5px; margin-top: 3px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

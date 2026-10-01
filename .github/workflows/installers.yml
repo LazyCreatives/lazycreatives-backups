@@ -22,16 +22,22 @@ jobs:
             name: windows
             builder: --win nsis --x64
             sidecar: ablebackup-sidecar.exe
+            rclone: windows-amd64
+            bundled: release/win-unpacked/resources/rclone/rclone.exe
             artifact: electron/release/*.exe
           - os: macos-latest          # Apple Silicon (arm64)
             name: macos-arm64
             builder: --mac dir --arm64   # dmg is made after ad-hoc signing below
             sidecar: ablebackup-sidecar
+            rclone: osx-arm64
+            bundled: release/mac-arm64/LazyCreatives Backups.app/Contents/Resources/rclone/rclone
             artifact: electron/release/*.dmg
           - os: ubuntu-latest
             name: linux
             builder: --linux AppImage --x64
             sidecar: ablebackup-sidecar
+            rclone: linux-amd64
+            bundled: release/linux-unpacked/resources/rclone/rclone
             artifact: electron/release/*.AppImage
     runs-on: ${{ matrix.os }}
     steps:
@@ -69,6 +75,12 @@ jobs:
         working-directory: electron
         run: npm ci
 
+      # Cloud copies run through rclone; ship it so they work out of the box.
+      - name: Bundle rclone
+        working-directory: electron
+        shell: bash
+        run: scripts/fetch-rclone.sh ${{ matrix.rclone }}
+
       - name: Build installer (unsigned)
         working-directory: electron
         env:
@@ -76,6 +88,11 @@ jobs:
         run: |
           npm run build
           npx electron-builder ${{ matrix.builder }} --publish never
+
+      - name: Check bundled rclone runs
+        working-directory: electron
+        shell: bash
+        run: '"${{ matrix.bundled }}" version'
 
       # Unsigned builds leave the .app with a broken bundle signature, which Apple
       # Silicon reports as "damaged". Ad-hoc sign the whole bundle (no Apple account
@@ -87,6 +104,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: |
           app="release/mac-arm64/LazyCreatives Backups.app"
+          codesign --force --sign - "$app/Contents/Resources/rclone/rclone"
           codesign --force --deep --sign - "$app"
           codesign --verify --deep --strict --verbose=2 "$app"
           npx electron-builder --mac dmg --arm64 --prepackaged "$app" --publish never
@@ -99,15 +117,17 @@ jobs:
           "release/mac-arm64/LazyCreatives Backups.app/Contents/MacOS/LazyCreatives Backups" > "$RUNNER_TEMP/app.log" 2>&1 &
           pid=$!
           ok=0
-          for i in $(seq 1 45); do
+          # Wait for main.js to finish starting (sidecar, window, tray), not just for
+          # the sidecar process: a crash after the sidecar is up must fail this step.
+          for i in $(seq 1 60); do
             sleep 1
-            if pgrep -f "Resources/sidecar/ablebackup-sidecar" > /dev/null; then ok=1; break; fi
+            if grep -q "\[main\] app ready" "$RUNNER_TEMP/app.log"; then ok=1; break; fi
           done
           sleep 3
           kill $pid 2>/dev/null || true
           pkill -f "Resources/sidecar/ablebackup-sidecar" 2>/dev/null || true
           cat "$RUNNER_TEMP/app.log"
-          test $ok = 1 || { echo "packaged app never started its sidecar"; exit 1; }
+          test $ok = 1 || { echo "packaged app never finished starting"; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:

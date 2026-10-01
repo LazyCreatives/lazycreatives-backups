@@ -19,6 +19,7 @@ to the tray so scheduled backups keep running; Tray → Quit stops everything.
 ## Tests
     npm test         # renderer unit tests (api client + progress reducer)
 
-## Packaging (later)
-Not yet wired. A future step bundles the Python backend (PyInstaller) into
-`resources/backend` and builds installers with electron-builder.
+## Packaging
+`npm run dist` bundles the Python backend (PyInstaller) and builds the installer
+with electron-builder. Releases are built by `.github/workflows/installers.yml`;
+see `docs/PACKAGING.md`.

@@ -10,6 +10,13 @@
 .lib-scan__count { margin: 0 0 0 auto; }
 
 .lib-row { padding: 11px 14px; }
+/* play · dot · name · status · last backup · size · DAW · main button · menu */
+.lib-cols { --cols: 28px 9px minmax(0, 1fr) 150px 118px 64px 44px 84px 32px; }
+.lib-cols.cols-head { padding-left: 14px; padding-right: 14px; }
+@media (max-width: 1040px) {
+  .lib-cols { --cols: 28px 9px minmax(0, 1fr) 150px 118px 44px 84px 32px; }
+  .lib-cols > :nth-child(6) { display: none; }  /* size column goes first when narrow */
+}
 .lib-row[role="button"] { cursor: pointer; }
 .lib-dot {
   width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
@@ -18,10 +25,10 @@
 .lib-dot--ok { background: var(--accent-2); box-shadow: 0 0 0 3px var(--ok-soft); }
 .lib-dot--warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
 .lib-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.lib-status { margin: 1px 0 0; font-size: 11.5px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-status { margin: 0; font-size: 12px; color: var(--text-faint); white-space: nowrap; }
 .lib-status--warn { color: var(--warn); }
 .lib-status--ok { color: var(--text-dim); }
-.lib-row .daw-badge { flex-shrink: 0; }
+.lib-row .daw-badge { justify-self: center; }
 
 /* "···" menu */
 .lib-menu { position: relative; flex-shrink: 0; }
@@ -51,3 +58,8 @@
 .lib-notice { font-size: 12.5px; color: var(--text-dim); margin: 0; }
 /* an open menu must paint above the rows below it */
 .lib-row:has(.lib-menu--open) { position: relative; z-index: 30; }
+
+/* "Songs from this project": play · song · exported · size · SoundCloud · actions */
+.song-cols { --cols: 30px minmax(0, 1fr) 150px 64px 118px 236px; }
+.song-cols.cols-head { padding-left: 15px; padding-right: 15px; }
+.song-actions { display: flex; gap: 6px; justify-content: flex-end; }

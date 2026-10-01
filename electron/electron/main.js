@@ -3,6 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const { startSidecar, stopSidecar, killGroup } = require("./sidecar");
 const { createTray } = require("./tray");
+const { isOpenAtLogin, setOpenAtLogin, initOpenAtLogin } = require("./startup");
 
 const isDev = !!process.env.ABLEBACKUP_DEV;
 let win = null;
@@ -23,10 +24,15 @@ function dbPath() {
   return process.env.ABLEBACKUP_DB || path.join(app.getPath("userData"), "catalog.db");
 }
 
+// The app icon (build/icon.png). Packaged builds carry it inside app.asar; if it is
+// ever missing, run without it rather than fail to start (dock.setIcon throws).
+const ICON = path.join(__dirname, "..", "build", "icon.png");
+const hasIcon = () => fs.existsSync(ICON);
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1100, height: 760, backgroundColor: "#0A0B0D",
-    icon: path.join(__dirname, "..", "build", "icon.png"),
+    ...(hasIcon() ? { icon: ICON } : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true, nodeIntegration: false,
@@ -36,8 +42,8 @@ function createWindow() {
       ],
     },
   });
-  if (process.platform === "darwin" && app.dock) {
-    app.dock.setIcon(path.join(__dirname, "..", "build", "icon.png"));
+  if (process.platform === "darwin" && app.dock && hasIcon()) {
+    try { app.dock.setIcon(ICON); } catch (err) { console.error("[main] dock icon:", err.message); }
   }
   if (isDev) win.loadURL("http://localhost:5173");
   else win.loadFile(path.join(__dirname, "..", "dist", "index.html"));
@@ -111,6 +117,9 @@ ipcMain.handle("open-fda-settings", () => {
   }
 });
 
+// Settings → "Start with your computer".
+ipcMain.handle("get-open-at-login", () => isOpenAtLogin());
+ipcMain.handle("set-open-at-login", (_e, enabled) => setOpenAtLogin(enabled));
 
 app.whenReady().then(async () => {
   try {
@@ -138,6 +147,10 @@ app.whenReady().then(async () => {
         isQuitting = true; app.quit(); return;
       }
       sidecarOpts = { backendDir: path.dirname(bin), dbPath: dbPath(), command: bin, args: [] };
+      // Cloud copies use the rclone shipped in Resources/rclone (see scripts/fetch-rclone.sh).
+      const rclone = path.join(process.resourcesPath, "rclone",
+        process.platform === "win32" ? "rclone.exe" : "rclone");
+      if (!process.env.ABLEBACKUP_RCLONE && fs.existsSync(rclone)) process.env.ABLEBACKUP_RCLONE = rclone;
     } else {
       // Dev: macOS/Linux usually expose `python3` (no bare `python`); Windows uses `python`.
       const pythonCmd = process.env.ABLEBACKUP_PYTHON
@@ -150,7 +163,8 @@ app.whenReady().then(async () => {
       onShow: () => { win.show(); },
       onQuit: () => { isQuitting = true; app.quit(); },
     });
-    app.setLoginItemSettings({ openAtLogin: true });
+    initOpenAtLogin();
+    console.log("[main] app ready"); // the installers check waits for this line
   } catch (err) {
     // A dead-silent launch (sidecar spawn failed / health timed out) is the worst
     // failure for a paid app — surface it instead of showing nothing.

@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from datetime import datetime
@@ -62,10 +63,28 @@ def _is_rclone_remote(dest: str) -> bool:
     return not os.path.isabs(dest) and bool(re.match(r"^[\w-]+:", dest))
 
 
+# Where people usually install rclone themselves. An app opened from the Dock or
+# Start menu doesn't get the shell's PATH, so look in these too.
+_RCLONE_DIRS = ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "~/bin", "~/.local/bin",
+                "~/scoop/shims", "C:/ProgramData/chocolatey/bin")
+
+
 def rclone_path() -> str | None:
     """Path to the rclone binary: an explicit override (a packaged build points
-    ABLEBACKUP_RCLONE at the bundled binary) else whatever is on PATH."""
-    return os.environ.get("ABLEBACKUP_RCLONE") or shutil.which("rclone")
+    ABLEBACKUP_RCLONE at the bundled binary), else PATH, else the usual install
+    folders."""
+    env = os.environ.get("ABLEBACKUP_RCLONE")
+    if env and Path(env).is_file():
+        return env
+    found = shutil.which("rclone")
+    if found:
+        return found
+    exe = "rclone.exe" if sys.platform == "win32" else "rclone"
+    for d in _RCLONE_DIRS:
+        cand = Path(d).expanduser() / exe
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return str(cand)
+    return None
 
 
 def rclone_available() -> bool:
@@ -629,9 +648,14 @@ def resolve_scan_roots(scope: str, configured: list[Path]) -> list[Path]:
 def full_disk_access_ok() -> bool:
     """Best-effort probe: can we read a TCC-protected location (~/Documents)? If not,
     a whole-Mac scan will silently miss Documents/Desktop/Downloads until the user
-    grants Full Disk Access. Used to nudge, never to block."""
+    grants Full Disk Access. Used to nudge, never to block. Full Disk Access is a
+    macOS thing, so every other system (and a Mac with no Documents folder) is fine."""
+    if sys.platform != "darwin":
+        return True
     try:
         os.listdir(Path.home() / "Documents")
+        return True
+    except FileNotFoundError:
         return True
     except (PermissionError, OSError):
         return False

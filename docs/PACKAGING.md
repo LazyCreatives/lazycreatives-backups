@@ -12,6 +12,12 @@ The wiring is already in place:
   (and `python -m ablebackup.server` in dev — unchanged).
 - `electron/package.json` → `build` block (electron-builder config) + `dist` script
   + `extraResources` copying the PyInstaller output into `Resources/sidecar`.
+- `electron/scripts/fetch-rclone.sh <osx-arm64|windows-amd64|linux-amd64>` downloads
+  the official rclone (checksum-checked, MIT licence alongside) into `electron/rclone/`,
+  which `extraResources` ships as `Resources/rclone`. `main.js` points the sidecar at it
+  via `ABLEBACKUP_RCLONE`, so cloud copies (Google Drive, Dropbox, OneDrive, S3…) work
+  without the user installing anything. Skip it and the app falls back to an rclone the
+  user installed themselves (PATH, Homebrew and other usual folders).
 
 ## Build (unsigned — works today, no accounts needed)
 
@@ -25,6 +31,7 @@ cd backend
 # 2. build the app (vite build + electron-builder)
 cd ../electron
 npm install            # pulls electron-builder (added to devDependencies)
+scripts/fetch-rclone.sh osx-arm64   # optional: bundle rclone for cloud copies
 npm run dist
 #    -> electron/release/LazyCreatives Backups-0.1.0.dmg  (unsigned)
 ```
@@ -44,8 +51,8 @@ app). For a public download you need signing + notarization (below).
 `.github/workflows/installers.yml` builds **unsigned** installers on demand (Actions →
 "installers" → Run workflow), on PRs that touch packaging files
 (`electron/package.json`, `backend/sidecar.spec`, the workflow itself), and on `v*` tags. Each OS job
-freezes the sidecar, checks the frozen binary answers `/health`, runs `vite build` +
-`electron-builder`, and uploads the result as a build artifact:
+freezes the sidecar, checks the frozen binary answers `/health`, bundles rclone, runs
+`vite build` + `electron-builder`, checks the bundled rclone runs, and uploads the result as a build artifact:
 
 | Artifact | File | Notes |
 |---|---|---|

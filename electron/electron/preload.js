@@ -14,4 +14,7 @@ contextBridge.exposeInMainWorld("ablebackup", {
   openProject: (target) => ipcRenderer.invoke("open-project", target),
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
   openFdaSettings: () => ipcRenderer.invoke("open-fda-settings"),
+  platform: process.platform,
+  getOpenAtLogin: () => ipcRenderer.invoke("get-open-at-login"),
+  setOpenAtLogin: (enabled) => ipcRenderer.invoke("set-open-at-login", enabled),
 });

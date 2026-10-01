@@ -210,18 +210,13 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
                   const isSel = selected.has(p.als_path);
                   const isOpen = expanded.has(p.als_path);
                   return (
-                    <div key={p.als_path} className="row scanrow--enter"
+                    <div key={p.als_path} className="row cols scan-cols scanrow--enter"
                       style={{ "--i": Math.min(i, 14), alignItems: "flex-start", opacity: isSel ? 1 : 0.5, marginLeft: groupByFolder ? 18 : 0 } as CSSProperties}>
                       <input type="checkbox" checked={isSel} onChange={() => toggle(p.als_path)} style={{ marginTop: 3 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                          <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 8 }}>
-                            <DawBadge daw={p.daw} />{p.name}
-                          </strong>
-                          <span className="sub mono" style={{ margin: 0, whiteSpace: "nowrap" }}>
-                            {p.present_count} sample{p.present_count === 1 ? "" : "s"} · {fmtSize(p.total_size)}
-                          </span>
-                        </div>
+                      <div>
+                        <strong style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <DawBadge daw={p.daw} /><span className="col-trunc">{p.name}</span>
+                        </strong>
                         {!groupByFolder && <div className="sub" style={{ margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.project_dir}</div>}
                         {p.relinked_count > 0 && <div style={{ marginTop: 5, color: "var(--accent-2)", fontSize: 12 }}>✓ {p.relinked_count} auto-found in your library</div>}
                         {p.missing_count > 0 && (
@@ -237,6 +232,8 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
                           </div>
                         )}
                       </div>
+                      <span className="sub col-num" style={{ margin: 0, paddingTop: 2 }}>{p.present_count} sample{p.present_count === 1 ? "" : "s"}</span>
+                      <span className="sub col-num" style={{ margin: 0, paddingTop: 2 }}>{fmtSize(p.total_size)}</span>
                     </div>
                   );
                 })}

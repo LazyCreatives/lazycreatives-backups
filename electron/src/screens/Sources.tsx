@@ -8,6 +8,7 @@ import { PlanCard } from "../components/PlanCard";
 import { ProBadge } from "../components/ProBadge";
 import { useEntitlement } from "../entitlement";
 import { fmtInterval, fmtClock } from "../format";
+import { osWords } from "../platform";
 
 const api = makeApi();
 
@@ -31,7 +32,9 @@ export function Sources() {
   const [connecting, setConnecting] = useState<string | null>(null);  // provider key in progress
   const [connectMsg, setConnectMsg] = useState<string | null>(null);
   const [connectErr, setConnectErr] = useState<string | null>(null);
+  const [openAtLogin, setOpenAtLogin] = useState<boolean | null>(null);  // null = unknown (dev page)
   const { allows, beta } = useEntitlement();
+  const words = osWords();
   const canSchedule = allows("scheduled");
   const canCloud = allows("cloud_backup");
 
@@ -48,7 +51,15 @@ export function Sources() {
     load(); refreshNextRun();
     api.rclone().then(setRclone).catch(() => {});
     api.cloudProviders().then(setProviders).catch(() => {});
+    (window as any).ablebackup?.getOpenAtLogin?.().then(setOpenAtLogin).catch(() => {});
   }, []);
+
+  async function toggleOpenAtLogin(on: boolean) {
+    const b = (window as any).ablebackup;
+    if (!b?.setOpenAtLogin) return;
+    try { setOpenAtLogin(await b.setOpenAtLogin(on)); }
+    catch { setSaveError(`Couldn't change whether the app starts with your ${words.computer}.`); }
+  }
 
   async function addSource() {
     const dir = await (window as any).ablebackup.pickFolder();
@@ -263,7 +274,7 @@ export function Sources() {
       <div className="card">
         <h2 style={{ display: "flex", alignItems: "center" }}>Automatic backup
           {!canSchedule && <ProBadge />}
-          <Info text="Leave the app running (it lives in your menu-bar tray) and it backs up on this schedule on its own — set it and forget it." /></h2>
+          <Info text={`Leave the app running (it lives in your ${words.tray}) and it backs up on this schedule on its own — set it and forget it.`} /></h2>
         <div className={`seg${canSchedule ? "" : " locked"}`} role="group" style={{ marginTop: 10, flexWrap: "wrap" }}>
           {PRESETS.map((p) => (
             <button key={p.min} disabled={!loaded || !canSchedule}
@@ -276,7 +287,7 @@ export function Sources() {
             {cfg.interval_minutes > 0 ? (
               <span style={{ color: "var(--accent-2)" }}>
                 ✓ On — backs up {fmtInterval(cfg.interval_minutes)}
-                {nextRun ? ` · next ${fmtClock(nextRun)}` : ""}. Keep the app running (menu-bar tray).
+                {nextRun ? ` · next ${fmtClock(nextRun)}` : ""}. Keep the app running ({words.tray}).
               </span>
             ) : "Off — you'll back up manually whenever you like."}
           </div>
@@ -284,6 +295,22 @@ export function Sources() {
           <div className="locked-note">🔒 Automatic backups are a <strong style={{ color: "var(--text)" }}>Pro</strong> feature. Back up manually any time — or unlock Pro above.</div>
         )}
       </div>
+
+      {openAtLogin !== null && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h2 style={{ display: "flex", alignItems: "center" }}>Start with your {words.computer}
+            <Info text={`Opens the app when you log in, so automatic backups keep running without you remembering to open it. You can also change this in your ${words.computer}'s own settings.`} /></h2>
+          <div className="seg" role="group" style={{ marginTop: 10 }}>
+            <button className={`seg__opt${openAtLogin ? " seg__opt--on" : ""}`} onClick={() => toggleOpenAtLogin(true)}>On</button>
+            <button className={`seg__opt${!openAtLogin ? " seg__opt--on" : ""}`} onClick={() => toggleOpenAtLogin(false)}>Off</button>
+          </div>
+          <div className="sub" style={{ margin: "11px 0 0", fontSize: 12.5 }}>
+            {openAtLogin
+              ? <span style={{ color: "var(--accent-2)" }}>✓ On — the app opens when you log in.</span>
+              : `Off — open the app yourself when you want it.${cfg.interval_minutes > 0 ? " Automatic backups only run while it's open." : ""}`}
+          </div>
+        </div>
+      )}
     </>
   );
 }

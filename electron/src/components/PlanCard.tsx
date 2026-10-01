@@ -7,8 +7,14 @@ const api = makeApi();
 // TODO(payments): replace with the real Lemon Squeezy product checkout link.
 const CHECKOUT_URL = "https://lazycreatives.lemonsqueezy.com/checkout";
 
-const PRO_PERKS = ["Every DAW (Ableton, FL, Reaper, Bitwig/Studio One)", "Automatic scheduled backups",
-  "Auto-find missing samples", "Restore any backup", "Unlimited destinations"];
+// Keep in step with FEATURES["pro"] in backend/ablebackup/entitlement.py.
+const PRO_PERKS = [
+  "FL Studio, Reaper and Audacity projects, plus Bitwig and Studio One via their DAWproject export",
+  "Automatic scheduled backups",
+  "Auto-find missing samples",
+  "Restore or share any backup",
+  "Full byte-by-byte check of every backup",
+];
 
 export function PlanCard() {
   const { tier, isPro, refresh } = useEntitlement();
