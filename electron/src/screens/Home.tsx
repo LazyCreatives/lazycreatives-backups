@@ -290,9 +290,16 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   const ringPct = backup.total > 0 ? backup.completed / backup.total : (working ? 0.06 : 0);
 
   // §8 voice: chill tone, precise facts — numbers are real, never vague
-  const title = doneFlash ? "Backed up & verified." : working ? "On it." : "Chilling.";
+  // Don't claim "all good" when some projects are missing samples or the run had errors.
+  const doneClean = backup.errors === 0 && warnItems.length === 0;
+  const title = doneFlash
+    ? (backup.errors > 0 ? "Backed up, with errors." : doneClean ? "Backed up & verified." : "Backed up.")
+    : working ? "On it." : "Chilling.";
   const sub = doneFlash
-    ? `${backup.completed} project${backup.completed === 1 ? "" : "s"}, ${backup.errors} error${backup.errors === 1 ? "" : "s"} — every file re-read and proven to open. Go make something.`
+    ? `${backup.completed} project${backup.completed === 1 ? "" : "s"}, ${backup.errors} error${backup.errors === 1 ? "" : "s"} — every file re-read and proven to open.${
+        warnItems.length > 0
+          ? ` ${warnItems.length} project${warnItems.length === 1 ? " is" : "s are"} missing samples and could use a look.`
+          : backup.errors === 0 ? " Go make something." : ""}`
     : working
     ? "Reading every file, hashing it, and proving the copy opens. You don't have to watch — but it is pretty satisfying."
     : items.length === 0
@@ -304,7 +311,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
     : working
     ? `⟳ ${kick && !backup.active ? "finding projects…" : `backing up ${backup.current || "…"} · ${backup.completed}/${backup.total} projects`}`
     : ov.last_run
-    ? `✓ last run ${fmtDate(ov.last_run)} · ${ov.attention.length} need attention`
+    ? `✓ last run ${fmtDate(ov.last_run)}${ov.attention.length > 0 ? ` · ${ov.attention.length} need${ov.attention.length === 1 ? "s" : ""} attention` : ""}`
     : "no runs yet";
 
   return (
@@ -312,7 +319,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
       <WaveBackdrop energized={working} />
 
       {/* hero — the sloth is the status */}
-      <section ref={heroRef} className={`hero glass elev-1${working ? " hero--working" : ""}${doneFlash ? " hero--done" : ""}`}>
+      <section ref={heroRef} className={`hero glass elev-1${working ? " hero--working" : ""}${doneFlash ? " hero--done" : ""}${doneFlash && !doneClean ? " hero--done-warn" : ""}`}>
         <div className="sloth-stage"><img src={slothUrl} alt="" /></div>
         <div className="hero-copy">
           <h1 className="hero-title">{title}</h1>

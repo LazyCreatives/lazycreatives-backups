@@ -43,6 +43,21 @@ CREATE TABLE IF NOT EXISTS discovered (
     plugins TEXT,                  -- JSON array of plugin names used by the project
     found_at TEXT                  -- when a scan last saw it
 );
+-- Song exports (bounces/renders) linked to the project they came from. One row per
+-- (file, project). match: 'folder' | 'name' (automatic, rebuilt on refresh) or
+-- 'manual' (user-linked). hidden=1 records "not from this project" so an automatic
+-- match never comes back. Uploader reads this table (read-only) to know exactly
+-- which project a song came from.
+CREATE TABLE IF NOT EXISTS exports (
+    path TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    size INTEGER,
+    mtime REAL,
+    match TEXT NOT NULL,
+    hidden INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (path, project_id)
+);
 """
 
 # Indexes for the columns we filter/join/group on. missing_refs.snapshot_id is the
@@ -52,6 +67,7 @@ _INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_missing_snapshot ON missing_refs(snapshot_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_project_name ON snapshots(project_name);
 CREATE INDEX IF NOT EXISTS idx_snapshots_project_id ON snapshots(project_id);
+CREATE INDEX IF NOT EXISTS idx_exports_project ON exports(project_id);
 """
 
 
@@ -305,6 +321,74 @@ class Catalog:
                 d["plugins"] = []
             out.append(d)
         return out
+
+    # ---- exports (song renders linked to projects) ------------------------------
+    def discovered_projects(self) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT project_id, name, dir, daw, mtime FROM discovered").fetchall()
+        return [dict(r) for r in rows]
+
+    def replace_auto_exports(self, rows: list[dict]) -> int:
+        """Swap in a fresh set of automatic matches. Manual links and dismissed
+        ("not from this project") rows are kept and take precedence."""
+        with self._lock:
+            self.conn.execute(
+                "DELETE FROM exports WHERE match IN ('folder', 'name') AND hidden = 0")
+            self.conn.executemany(
+                "INSERT OR IGNORE INTO exports (path, project_id, name, size, mtime, match) "
+                "VALUES (:path, :project_id, :name, :size, :mtime, :match)", rows)
+            self.conn.commit()
+            n = self.conn.execute(
+                "SELECT COUNT(*) FROM exports WHERE match IN ('folder', 'name') AND hidden = 0"
+            ).fetchone()[0]
+        return n
+
+    def exports_for(self, project_id: str) -> list[dict]:
+        """Visible exports of one project, newest first."""
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM exports WHERE project_id = ? AND hidden = 0 "
+                "ORDER BY mtime DESC", (project_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def latest_exports(self) -> dict[str, dict]:
+        """project_id -> {count, latest export row} for the Library list."""
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM exports WHERE hidden = 0 ORDER BY mtime ASC").fetchall()
+        out: dict[str, dict] = {}
+        for r in rows:
+            cur = out.setdefault(r["project_id"], {"count": 0, "latest": None})
+            cur["count"] += 1
+            cur["latest"] = dict(r)  # ASC => the newest wins
+        return out
+
+    def link_export(self, path: str, project_id: str, name: str, size, mtime) -> None:
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO exports (path, project_id, name, size, mtime, match, hidden) "
+                "VALUES (?, ?, ?, ?, ?, 'manual', 0) "
+                "ON CONFLICT(path, project_id) DO UPDATE SET match = 'manual', hidden = 0, "
+                "  size = excluded.size, mtime = excluded.mtime",
+                (path, project_id, name, size, mtime))
+            self.conn.commit()
+
+    def hide_export(self, path: str, project_id: str) -> bool:
+        with self._lock:
+            cur = self.conn.execute(
+                "UPDATE exports SET hidden = 1 WHERE path = ? AND project_id = ?",
+                (path, project_id))
+            self.conn.commit()
+        return cur.rowcount > 0
+
+    def is_export(self, path: str) -> bool:
+        """True if path is a visible, linked export (guards the audio endpoint)."""
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT 1 FROM exports WHERE path = ? AND hidden = 0 LIMIT 1",
+                (path,)).fetchone()
+        return row is not None
 
     def set_genre(self, snapshot_id, genre, bpm, confidence) -> None:
         """Cache a snapshot's guessed genre so it isn't recomputed each load."""

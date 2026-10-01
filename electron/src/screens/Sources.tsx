@@ -31,7 +31,7 @@ export function Sources() {
   const [connecting, setConnecting] = useState<string | null>(null);  // provider key in progress
   const [connectMsg, setConnectMsg] = useState<string | null>(null);
   const [connectErr, setConnectErr] = useState<string | null>(null);
-  const { allows } = useEntitlement();
+  const { allows, beta } = useEntitlement();
   const canSchedule = allows("scheduled");
   const canCloud = allows("cloud_backup");
 
@@ -155,7 +155,7 @@ export function Sources() {
 
       {saveError && <div className="card" style={{ borderColor: "var(--danger)", color: "var(--danger)", marginBottom: 16 }}>{saveError}</div>}
 
-      <PlanCard />
+      {!beta && <PlanCard />}
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>

@@ -121,7 +121,8 @@ app.whenReady().then(async () => {
         cb({ responseHeaders: { ...details.responseHeaders,
           "Content-Security-Policy": [
             "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-            "connect-src http://127.0.0.1:* ws://127.0.0.1:*; img-src 'self' data:; font-src 'self' data:",
+            "connect-src http://127.0.0.1:* ws://127.0.0.1:*; img-src 'self' data:; font-src 'self' data:; " +
+            "media-src http://127.0.0.1:*",  // the in-app player streams exports from the sidecar
           ] } });
       });
     }

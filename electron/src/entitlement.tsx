@@ -21,6 +21,7 @@ export function useEntitlement() {
   return {
     tier,
     isPro: tier !== "free",
+    beta: Boolean(ent?.beta),
     loaded: ent !== null,
     allows: (f: Feature) => Boolean(ent?.features?.[f]),
     refresh,

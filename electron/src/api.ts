@@ -1,4 +1,4 @@
-import type { Config, Entitlement, JobStatus, LibraryItem, Overview, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, VerifyResult } from "./types";
+import type { Config, ProjectExports, Entitlement, JobStatus, LibraryItem, Overview, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, VerifyResult } from "./types";
 
 function base() {
   const port = (window as any).ablebackup?.port ?? "8753";
@@ -91,6 +91,28 @@ export function makeApi() {
     },
     async cloudDisconnect(name: string): Promise<{ ok: boolean; remotes: string[] }> {
       return req("POST", "/api/cloud/disconnect", { name });
+    },
+    // Song exports linked to a project, with their SoundCloud uploads (from Uploader).
+    async projectExports(projectId: string): Promise<ProjectExports> {
+      return req("GET", `/api/exports?project_id=${encodeURIComponent(projectId)}`);
+    },
+    async exportFolders(): Promise<{ folders: string[]; uploader_folders: string[] }> {
+      return req("GET", "/api/exports/folders");
+    },
+    async setExportFolders(folders: string[]): Promise<{ folders: string[]; linked: number }> {
+      return req("PUT", "/api/exports/folders", { folders });
+    },
+    async refreshExports(): Promise<{ linked: number }> { return req("POST", "/api/exports/refresh"); },
+    async linkExport(path: string, projectId: string): Promise<{ ok: boolean }> {
+      return req("POST", "/api/exports/link", { path, project_id: projectId });
+    },
+    async unlinkExport(path: string, projectId: string): Promise<{ ok: boolean }> {
+      return req("POST", "/api/exports/unlink", { path, project_id: projectId });
+    },
+    // <audio> can't send headers, so the token rides in the query (sidecar only
+    // serves files already linked as exports).
+    exportAudioUrl(path: string): string {
+      return `${base()}/api/exports/audio?path=${encodeURIComponent(path)}&t=${encodeURIComponent(token())}`;
     },
     async entitlement(): Promise<Entitlement> { return req("GET", "/api/entitlement"); },
     async activateLicense(key: string): Promise<Entitlement> { return req("POST", "/api/entitlement/activate", { key }); },

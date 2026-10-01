@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { RefObject } from "react";
 
 export const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -69,7 +70,10 @@ export function WaveBackdrop({ energized }: { energized: boolean }) {
     document.addEventListener("visibilitychange", vis);
     return () => { cancelAnimationFrame(raf); removeEventListener("resize", size); document.removeEventListener("visibilitychange", vis); };
   }, []);
-  return <canvas id="bgWave" ref={ref} aria-hidden="true" />;
+  // Portalled to <body>: the screen wrapper animates with a transform, which would
+  // otherwise make this fixed canvas position against the content column (not the
+  // window) and stick out past the right edge, causing a sideways scrollbar.
+  return createPortal(<canvas id="bgWave" ref={ref} aria-hidden="true" />, document.body);
 }
 
 /* Pointer-tracked specular highlight on every .glass panel under `ref`. */

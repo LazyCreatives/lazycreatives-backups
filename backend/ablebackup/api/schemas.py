@@ -37,6 +37,15 @@ class ScanRequest(BaseModel):
     scope: str | None = Field(None, max_length=16)  # sources|home|volumes
 
 
+class ExportLinkRequest(BaseModel):
+    path: str = Field(..., min_length=1, max_length=_PATH)
+    project_id: str = Field(..., min_length=1, max_length=128)
+
+
+class ExportFoldersRequest(BaseModel):
+    folders: list[str] = Field(default_factory=list, max_length=_LIST)
+
+
 class BackupRequest(BaseModel):
     sources: list[str] | None = Field(None, max_length=_LIST)
     dest: str | None = Field(None, max_length=_PATH)

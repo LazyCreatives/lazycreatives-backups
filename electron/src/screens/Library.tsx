@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { makeApi } from "../api";
 import type { LibraryItem } from "../types";
 import type { ScanProgress } from "../useProgress";
@@ -9,7 +9,10 @@ import { DawBadge } from "../components/DawBadge";
 import { SlothMascot } from "../components/SlothMascot";
 import { ProjectBackups } from "./ProjectBackups";
 import { ProjectLabel } from "./ProjectLabel";
+import { ProjectExports } from "./ProjectExports";
+import { PlayButton } from "../components/Player";
 import { MissingSamples } from "./MissingSamples";
+import "../library.css";
 
 const api = makeApi();
 
@@ -35,6 +38,43 @@ const bridge = () => (window as any).ablebackup;
 const openInDaw = (p?: string) => { if (p) bridge()?.openProject?.(p); };
 const revealPath = (p?: string) => { if (p) bridge()?.revealPath?.(p); };
 
+// One plain line that says the truth about a project: missing samples beat
+// "backed up", because a verified backup of a project with holes still needs you.
+function statusLine(it: LibraryItem): { tone: "ok" | "warn" | "none"; text: string } {
+  if (it.missing_count > 0) {
+    const n = it.missing_count;
+    return { tone: "warn", text: `${n} sample${n === 1 ? "" : "s"} missing · ${it.backed_up ? `backed up ${fmtDate(it.last_backup)}` : "not backed up"}` };
+  }
+  if (it.backed_up) return { tone: "ok", text: `Verified · ${fmtDate(it.last_backup)} · ${fmtSize(it.size)}` };
+  return { tone: "none", text: `Not backed up yet · ${fmtSize(it.size)}` };
+}
+
+// The "···" menu on a row: the less common actions, out of the way.
+function RowMenu({ items }: { items: { label: string; onClick: () => void; disabled?: boolean }[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", close); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  return (
+    <div ref={ref} className={`lib-menu${open ? " lib-menu--open" : ""}`} onClick={(e) => e.stopPropagation()}>
+      <button className="lib-menu__btn" aria-label="More actions" aria-expanded={open} onClick={() => setOpen((o) => !o)}>···</button>
+      {open && (
+        <div className="lib-menu__list" role="menu">
+          {items.map((m) => (
+            <button key={m.label} role="menuitem" className="lib-menu__item" disabled={m.disabled}
+              onClick={() => { setOpen(false); m.onClick(); }}>{m.label}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Library({ scan, openProject, onOpenHandled }: {
   scan: ScanProgress; openProject?: string | null; onOpenHandled?: () => void;
 }) {
@@ -50,6 +90,7 @@ export function Library({ scan, openProject, onOpenHandled }: {
   const [expanded, setExpanded] = useState<string | null>(null);  // project_id of the open detail row
   const [filter, setFilter] = useState<"all" | "attention">("all");
   const [fixingAll, setFixingAll] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);  // one-line result of "Fix all"
 
   function load() {
     api.library().then((r) => setItems(r.projects)).catch(() => {}).finally(() => setLoading(false));
@@ -67,13 +108,12 @@ export function Library({ scan, openProject, onOpenHandled }: {
       // The row lives in its owner group; if that group is collapsed the row
       // isn't in the DOM, so un-collapse it before trying to scroll.
       setCollapsed((c) => ({ ...c, [hit.owner || "system"]: false }));
-      requestAnimationFrame(() => {
-        document.querySelector(`[data-pid="${hit.project_id}"]`)
-          ?.scrollIntoView({ block: "start", behavior: "smooth" });
-      });
     }
     onOpenHandled?.();
   }, [openProject, items]);
+
+  // The project page replaces the list, so start it at the top.
+  useEffect(() => { document.querySelector(".main")?.scrollTo({ top: 0 }); }, [expanded]);
 
   async function runScan() {
     setScanning(true); setErr(null);
@@ -117,7 +157,8 @@ export function Library({ scan, openProject, onOpenHandled }: {
   async function fixAll() {
     const targets = items.filter((i) => i.missing_count > 0);
     if (targets.length === 0) return;
-    setFixingAll(true); setErr(null);
+    setFixingAll(true); setErr(null); setNotice(null);
+    const before = targets.reduce((n, t) => n + t.missing_count, 0);
     try {
       const { job_id } = await api.startBackup({
         als_paths: targets.map((t) => t.path), portable: true, layout: "project_date", find_missing: true,
@@ -127,8 +168,15 @@ export function Library({ scan, openProject, onOpenHandled }: {
         if (st.state === "done" || st.state === "error") break;
         await new Promise((r) => setTimeout(r, 1500));
       }
+      const r = await api.library();
+      setItems(r.projects);
+      const after = r.projects.reduce((n, t) => n + t.missing_count, 0);
+      const found = before - after;
+      setNotice(found > 0
+        ? `Found ${found} of ${before} missing sample${before === 1 ? "" : "s"}.${after > 0 ? ` ${after} still missing — open a project and point me to them.` : ""}`
+        : `None of the ${before} missing sample${before === 1 ? "" : "s"} turned up in your folders — open a project and point me to them.`);
     } catch (e: any) { setErr(e.message || "Fix-all failed."); }
-    finally { setFixingAll(false); load(); }
+    finally { setFixingAll(false); }
   }
 
   const attentionCount = items.filter((i) => i.missing_count > 0).length;
@@ -147,26 +195,61 @@ export function Library({ scan, openProject, onOpenHandled }: {
     ? fmtEta((elapsed / scan.done) * (scan.total - scan.done)) : "";
   const showProgress = scanning || scan.active;
 
+  // ── project page: replaces the list, with a way back ──
+  const openItem = expanded ? items.find((i) => i.project_id === expanded) : null;
+  if (openItem) {
+    const it = openItem;
+    return (
+      <>
+        <button className="lib-back" onClick={() => setExpanded(null)}>← Library</button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* missing samples first — it's the thing that needs a decision */}
+          {it.missing_count > 0 && <MissingSamples item={it} onChanged={load} />}
+          {/* the project as a record — vitals on the label, life on the timeline */}
+          <ProjectLabel item={it}
+            onOpenInDaw={() => openInDaw(it.path)}
+            onReveal={() => revealPath(it.path)} />
+          {/* the songs exported from it: play, SoundCloud link, fix a wrong match */}
+          <ProjectExports item={it} onChanged={load} />
+          {/* Backups ARE this project's detail — actions live here. */}
+          {it.backed_up ? (
+            <div className="card" style={{ padding: "14px 16px" }}>
+              <div className="sub" style={{ margin: "0 0 10px", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                Backups
+              </div>
+              <ProjectBackups projectName={it.name} projectPath={it.path} onFixed={load} />
+            </div>
+          ) : (
+            <div className="card" style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+              <span className="sub" style={{ margin: 0 }}>No backups of this project yet.</span>
+              <Button size="sm" disabled={busy.has(it.project_id)} onClick={() => backupOne(it)} style={{ marginLeft: "auto" }}>
+                {busy.has(it.project_id) ? "Backing up…" : "Back up now"}
+              </Button>
+            </div>
+          )}
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <h1>Library</h1>
-      <p className="sub">Every project a scan has found — backed up or not. Click one for details and its backups.</p>
+      <p className="sub">Every project a scan has found, backed up or not. Click one for its details and backups.</p>
 
-      <div className="card" style={{ marginBottom: 18 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span className="sub" style={{ margin: 0 }}>Scan</span>
-          <select value={scope} onChange={(e) => setScope(e.target.value)} disabled={scanning}>
-            {SCOPES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-          </select>
-          <Button onClick={runScan} disabled={scanning}>
-            {scanning ? "Scanning your Mac…" : "Scan now"}
-          </Button>
-          <span className="sub mono" style={{ margin: 0, marginLeft: "auto" }}>
-            {items.length} projects · {backedUp} backed up
-          </span>
-        </div>
+      <div className="card lib-scan">
+        <span className="sub" style={{ margin: 0 }}>Scan</span>
+        <select value={scope} onChange={(e) => setScope(e.target.value)} disabled={scanning}>
+          {SCOPES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+        </select>
+        <Button size="sm" onClick={runScan} disabled={scanning}>
+          {scanning ? "Scanning…" : "Scan now"}
+        </Button>
+        <span className="sub mono lib-scan__count">
+          {items.length} project{items.length === 1 ? "" : "s"} · {backedUp} backed up
+        </span>
         {showProgress && (
-          <div style={{ marginTop: 12 }}>
+          <div style={{ flexBasis: "100%", marginTop: 4 }}>
             {scan.phase === "searching" || (!scan.phase && scanning) ? (
               <>
                 <div className="sub" style={{ margin: "0 0 6px", fontSize: 12.5 }}>
@@ -190,13 +273,8 @@ export function Library({ scan, openProject, onOpenHandled }: {
             )}
           </div>
         )}
-        {scope !== "sources" && (
-          <div className="sub" style={{ fontSize: 12, marginTop: 8 }}>
-            Whole-Mac scans skip system, app & cache folders automatically. Big scopes can take a moment.
-          </div>
-        )}
         {(skipped > 0 || !fdaOk) && !scanning && (
-          <div className="locked-note" style={{ marginTop: 10, flexDirection: "column", alignItems: "stretch", gap: 9 }}>
+          <div className="locked-note" style={{ flexBasis: "100%", flexDirection: "column", alignItems: "stretch", gap: 9 }}>
             <div style={{ fontSize: 12.5 }}>
               Skipped {skipped > 0 ? skipped.toLocaleString() + " " : ""}folder{skipped === 1 ? "" : "s"} that macOS hides
               (Documents / Desktop / Downloads) until you grant this app Full Disk Access.
@@ -208,7 +286,7 @@ export function Library({ scan, openProject, onOpenHandled }: {
             </div>
           </div>
         )}
-        {err && <div className="sub" style={{ color: "var(--danger)", marginTop: 8, fontSize: 12 }}>{err}</div>}
+        {err && <div className="sub" style={{ color: "var(--danger)", flexBasis: "100%", margin: 0, fontSize: 12 }}>{err}</div>}
       </div>
 
       {!loading && items.length > 0 && (
@@ -218,15 +296,16 @@ export function Library({ scan, openProject, onOpenHandled }: {
               All ({items.length})
             </button>
             <button className={`seg__opt${filter === "attention" ? " seg__opt--on" : ""}`} onClick={() => setFilter("attention")}>
-              ⚠ Needs attention ({attentionCount})
+              Needs a look ({attentionCount})
             </button>
           </div>
           {attentionCount > 0 && (
             <button className="btn-blue" onClick={fixAll} disabled={fixingAll} style={{ marginLeft: "auto" }}
-              title="Back up every project with missing samples, auto-finding from your libraries">
-              {fixingAll ? "Fixing all…" : `Fix all ${attentionCount}`}
+              title="Back up every project with missing samples, searching your sample folders for them">
+              {fixingAll ? "Looking for samples…" : `Find missing samples (${attentionCount})`}
             </button>
           )}
+          {notice && <p className="lib-notice" style={{ flexBasis: "100%" }}>{notice}</p>}
         </div>
       )}
 
@@ -240,7 +319,7 @@ export function Library({ scan, openProject, onOpenHandled }: {
       ) : shown.length === 0 ? (
         <div className="empty">
           <div className="empty__icon"><SlothMascot label="All clear" /></div>
-          Nothing needs attention — every project’s samples are accounted for.
+          Nothing needs a look — every project’s samples are accounted for.
         </div>
       ) : (
         owners.map((owner) => {
@@ -249,80 +328,53 @@ export function Library({ scan, openProject, onOpenHandled }: {
           const ownerBacked = list.filter((i) => i.backed_up).length;
           return (
             <div key={owner} style={{ marginBottom: 14 }}>
-              <div className="foldergroup__head">
-                <button className="foldergroup__title" onClick={() => setCollapsed((c) => ({ ...c, [owner]: !c[owner] }))}>
-                  <span>{isCollapsed ? "▸" : "▾"}</span>
-                  <span>👤 {ownerLabel(owner)}</span>
-                  <span className="sub">{list.length} project{list.length === 1 ? "" : "s"} · {ownerBacked} backed up</span>
-                </button>
-              </div>
+              {owners.length > 1 && (
+                <div className="foldergroup__head">
+                  <button className="foldergroup__title" onClick={() => setCollapsed((c) => ({ ...c, [owner]: !c[owner] }))}>
+                    <span>{isCollapsed ? "▸" : "▾"}</span>
+                    <span>👤 {ownerLabel(owner)}</span>
+                    <span className="sub">{list.length} project{list.length === 1 ? "" : "s"} · {ownerBacked} backed up</span>
+                  </button>
+                </div>
+              )}
               {!isCollapsed && list.map((it) => {
                 const working = busy.has(it.project_id);
-                const open = expanded === it.project_id;
+                const st = statusLine(it);
+                const dawName = it.daw === "flstudio" ? "FL Studio" : it.daw === "ableton" ? "Ableton Live" : "its DAW";
+                const openIt = () => setExpanded(it.project_id);
                 return (
-                  <div key={it.project_id} data-pid={it.project_id}>
-                    <div className="row" role="button" tabIndex={0} style={{ cursor: "pointer" }}
-                      aria-expanded={open}
-                      onClick={() => setExpanded(open ? null : it.project_id)}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded(open ? null : it.project_id); } }}>
-                      <DawBadge daw={it.daw} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</div>
-                        <div className="sub mono" style={{ margin: 0, fontSize: 11.5 }}
-                          title={it.plugins?.length ? `Plugins: ${it.plugins.join(", ")}` : undefined}>
-                          {fmtSize(it.size)}
-                          {it.tracks ? ` · ${it.tracks} track${it.tracks === 1 ? "" : "s"}` : ""}
-                          {it.plugins?.length
-                            ? ` · 🔌 ${it.plugins.slice(0, 3).join(", ")}${it.plugins.length > 3 ? ` +${it.plugins.length - 3}` : ""}`
-                            : ""}
-                          {it.missing_count > 0 ? ` · ${it.missing_count} missing` : ""}
-                        </div>
+                  <div key={it.project_id} data-pid={it.project_id} className="row lib-row" role="button" tabIndex={0}
+                    onClick={openIt}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openIt(); } }}>
+                    {it.latest_export
+                      ? <PlayButton path={it.latest_export.path} title={it.latest_export.name} size={28} />
+                      : <span className="playbtn-slot" aria-hidden />}
+                    <span className={`lib-dot${st.tone === "ok" ? " lib-dot--ok" : st.tone === "warn" ? " lib-dot--warn" : ""}`} aria-hidden />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="lib-name">{it.name}</div>
+                      <div className={`lib-status${st.tone === "warn" ? " lib-status--warn" : st.tone === "ok" ? " lib-status--ok" : ""}`}
+                        title={it.plugins?.length ? `Plugins: ${it.plugins.join(", ")}` : undefined}>
+                        {working ? "Backing up…" : st.text}
                       </div>
-                      {it.backed_up ? (
-                        <span className="pill pill--ok" title={`Last backed up ${fmtDate(it.last_backup)}`}>
-                          ✓ backed up · {fmtDate(it.last_backup)}
-                        </span>
-                      ) : (
-                        <span className="pill">not backed up</span>
-                      )}
-                      <Button variant="ghost" size="sm"
-                        onClick={(e) => { e.stopPropagation(); openInDaw(it.path); }}
-                        title={`Open in ${it.daw === "flstudio" ? "FL Studio" : it.daw === "ableton" ? "Ableton Live" : "its DAW"}`}>
-                        ▶ Open
-                      </Button>
-                      {it.missing_count > 0 && (
-                        <Button variant="ghost" size="sm" disabled={working}
-                          onClick={(e) => { e.stopPropagation(); lookInFolder(it); }}
-                          title="Pick a folder you think these samples are in, and search there">
-                          Look in a folder…
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="sm" disabled={working}
-                        onClick={(e) => { e.stopPropagation(); backupOne(it); }}>
-                        {working ? "Backing up…" : it.backed_up ? "Back up again" : "Back up"}
-                      </Button>
                     </div>
-                    {open && (
-                      <div style={{ margin: "8px 0 14px", display: "flex", flexDirection: "column", gap: 14 }}>
-                        {/* missing samples first — it's the thing that needs a decision */}
-                        {it.missing_count > 0 && (
-                          <MissingSamples item={it} onChanged={load} />
-                        )}
-                        {/* the project as a record — vitals on the label, life on the timeline */}
-                        <ProjectLabel item={it}
-                          onOpenInDaw={() => openInDaw(it.path)}
-                          onReveal={() => revealPath(it.path)} />
-                        {/* Backups ARE this project's detail — actions live here. */}
-                        {it.backed_up && (
-                          <div className="card" style={{ padding: "14px 16px" }}>
-                            <div className="sub" style={{ margin: "0 0 10px", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                              Backups
-                            </div>
-                            <ProjectBackups projectName={it.name} projectPath={it.path} onFixed={load} />
-                          </div>
-                        )}
-                      </div>
+                    <DawBadge daw={it.daw} />
+                    {/* one main button: the thing this project most needs */}
+                    {it.missing_count > 0 ? (
+                      <Button size="sm" disabled={working} onClick={(e) => { e.stopPropagation(); openIt(); }}
+                        title="See which samples are missing and point me to them">Fix</Button>
+                    ) : !it.backed_up ? (
+                      <Button size="sm" disabled={working} onClick={(e) => { e.stopPropagation(); backupOne(it); }}>Back up</Button>
+                    ) : (
+                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openInDaw(it.path); }}
+                        title={`Open in ${dawName}`}>Open</Button>
                     )}
+                    <RowMenu items={[
+                      { label: `Open in ${dawName}`, onClick: () => openInDaw(it.path) },
+                      { label: "Show backups & details", onClick: openIt },
+                      { label: it.backed_up ? "Back up again" : "Back up", onClick: () => backupOne(it), disabled: working },
+                      ...(it.missing_count > 0 ? [{ label: "Look for samples in a folder…", onClick: () => lookInFolder(it), disabled: working }] : []),
+                      { label: "Show in Finder", onClick: () => revealPath(it.path) },
+                    ]} />
                   </div>
                 );
               })}

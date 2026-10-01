@@ -1,5 +1,6 @@
 import type { Tab } from "../App";
 import { BrandMark } from "./BrandMark";
+import { useEntitlement } from "../entitlement";
 
 function Icon({ path }: { path: string }) {
   return (
@@ -27,11 +28,12 @@ const ITEMS: { id: Tab; label: string }[] = [
 export function Nav({ tab, onNavigate, busy, flowActive }: {
   tab: Tab; onNavigate: (t: Tab) => void; busy?: boolean; flowActive?: boolean;
 }) {
+  const { beta } = useEntitlement();
   return (
     <nav className="nav">
       <div className="nav__brand nav__brand--lockup" title="Lazy Creatives — Backups">
         <BrandMark active={busy} />
-        <span className="nav__brandtool">Backups</span>
+        <span className="nav__brandtool">Backups{beta && <em className="nav__beta">free beta</em>}</span>
       </div>
       {ITEMS.map((it) => (
         <button key={it.id} onClick={() => onNavigate(it.id)}

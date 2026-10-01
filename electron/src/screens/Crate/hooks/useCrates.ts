@@ -47,10 +47,13 @@ export function groupCrates(
   }
   const arr = [...map.values()];
   const minDays = (g: CrateGroup) => Math.min(...g.projects.map((p) => daysSince(p.modifiedAt, now)));
+  // "Unknown" crates (no genre / no tempo) always go last, whatever the sort.
+  const unknown = (g: CrateGroup) => (g.label.startsWith("Unknown") ? 1 : 0);
   arr.sort((a, b) =>
-    sort === "name" ? a.label.localeCompare(b.label)
+    unknown(a) - unknown(b)
+    || (sort === "name" ? a.label.localeCompare(b.label)
     : sort === "recent" ? minDays(a) - minDays(b)
-    : b.count - a.count);
+    : b.count - a.count));
   return arr;
 }
 

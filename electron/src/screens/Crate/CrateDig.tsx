@@ -54,7 +54,7 @@ export function CrateDig({ group, active, setActive, digSort, setDigSort, verifi
 
       {list.length > 0 && (
         <div className="dig-readout mono" role="status" aria-live="polite" aria-atomic="true">
-          {cur && `${cur.name} — ${cur.bpm ? `${cur.bpm} BPM` : "— BPM"} — ${cur.musicalKey ?? "—"} — ${safe + 1} of ${list.length}`}
+          {cur && [cur.name, cur.bpm ? `${cur.bpm} BPM` : null, cur.musicalKey, `${safe + 1} of ${list.length}`].filter(Boolean).join(" · ")}
         </div>
       )}
     </div>

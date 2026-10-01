@@ -18,9 +18,11 @@ export function Vinyl({ project, isActive, reduce }: { project: Project; isActiv
       <div className="label">
         <div>
           <div className="label__name">{project.name}</div>
-          <div className="label__meta">
-            {project.bpm ? `${project.bpm} BPM` : "— BPM"}{project.musicalKey ? ` · ${project.musicalKey}` : ""}
-          </div>
+          {(project.bpm || project.musicalKey) && (
+            <div className="label__meta">
+              {[project.bpm ? `${project.bpm} BPM` : null, project.musicalKey].filter(Boolean).join(" · ")}
+            </div>
+          )}
         </div>
       </div>
       <div className="hole" />

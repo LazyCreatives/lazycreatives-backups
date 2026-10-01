@@ -60,10 +60,11 @@
 .hero--working .sloth-stage img { animation: hero-peer 1.2s ease-in-out infinite; }
 @keyframes hero-peer { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 .hero-copy { flex: 1; min-width: 0; }
-.hero-title { font-size: 34px; font-weight: 800; letter-spacing: -0.03em; margin: 0; transition: color 0.3s; }
+.hero-title { font-family: var(--display); font-size: 44px; font-weight: 400; letter-spacing: 0; line-height: 1; margin: 0; transition: color 0.3s; }
 .hero-sub { color: var(--text-dim); margin: 6px 0 0; max-width: 46ch; }
 .hero-status { display: block; margin-top: 14px; color: var(--text-dim); min-height: 20px; }
 .hero--done .hero-title, .hero--done .hero-status { color: var(--accent-2); }
+.hero--done-warn .hero-title { color: var(--warn); }  /* finished, but something needs a look */
 .hero-cta { display: flex; flex-direction: column; align-items: center; gap: 14px; flex-shrink: 0; }
 .bigbtn {
   width: 128px; height: 128px; border-radius: 50%; border: none; cursor: pointer;

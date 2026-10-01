@@ -80,3 +80,11 @@ def test_free_restore_is_blocked(tmp_path):
     sid = cat.snapshots_for("S")[0]["id"]
     r = c.post("/api/restore", json={"snapshot_id": sid, "target": str(tmp_path / "out")})
     assert r.status_code == 402  # Pro feature
+
+
+def test_free_beta_unlocks_everything(tmp_path, monkeypatch):
+    monkeypatch.setenv("ABLEBACKUP_FREE_BETA", "1")
+    c, _ = _client(tmp_path)
+    d = c.get("/api/entitlement").json()
+    assert d["tier"] == "free" and d["beta"] is True
+    assert all(d["features"].values())  # restore, schedules, every DAW, cloud...

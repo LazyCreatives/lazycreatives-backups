@@ -28,3 +28,23 @@ describe("api client", () => {
     await expect(api.startBackup({})).rejects.toThrow(/no destination configured/);
   });
 });
+
+describe("exports api", () => {
+  beforeEach(() => {
+    (globalThis as any).window = { ablebackup: { token: "T&x", port: "9000" } };
+  });
+
+  it("builds a player URL with the token in the query", () => {
+    const url = makeApi().exportAudioUrl("/Music/WAVS/Night Drive.wav");
+    expect(url).toBe("http://127.0.0.1:9000/api/exports/audio?path=%2FMusic%2FWAVS%2FNight%20Drive.wav&t=T%26x");
+  });
+
+  it("links a song to a project", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    (globalThis as any).fetch = fetchMock;
+    await makeApi().linkExport("/a.wav", "p1");
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://127.0.0.1:9000/api/exports/link");
+    expect(JSON.parse(opts.body)).toEqual({ path: "/a.wav", project_id: "p1" });
+  });
+});

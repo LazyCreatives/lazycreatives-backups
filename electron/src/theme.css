@@ -1,13 +1,6 @@
-/* Display / wordmark face — "Slothy Jelly" (the logo typeface). The licensed file
-   is NOT in the repo (personal-use-only until a commercial licence is bought); drop
-   it at electron/public/fonts/ and it renders automatically. Falls back to Inter. */
-@font-face {
-  font-family: "Slothy Jelly";
-  src: url("/fonts/slothy-jelly.woff2") format("woff2"),
-       url("/fonts/slothy-jelly.ttf") format("truetype");
-  font-display: swap;
-}
-
+/* Display / big-moment face. The logo is hand-lettered in "Slothy Jelly", which is
+   personal-use only, so headings use Caveat Brush (SIL Open Font Licence) instead:
+   a free brush face with the same playful feel, bundled via @fontsource. */
 :root {
   /* Lazy Creatives brand system v2 (brand/brand-guide.html) — sloth / blue */
   --bg: #0A0B0D;            /* Studio Black */
@@ -31,7 +24,7 @@
   --radius: 12px;
   --radius-lg: 16px;
   --shadow: 0 10px 34px rgba(0, 0, 0, 0.42);
-  --display: "Slothy Jelly", "Inter", system-ui, sans-serif; /* wordmark / big moments */
+  --display: "Caveat Brush", "Inter", system-ui, sans-serif; /* headings / big moments */
 
   /* --- accessibility fixes (brand technical audit) ---
      Clip Red #F2706E is text/icon-on-dark ONLY (2.52:1 with white = fail). Solid
@@ -69,7 +62,7 @@ body {
 
 /* Fluid shell: the content column grows with the window (comfortable cap, centred
    in the remaining space) instead of pinning to a fixed 920px column. */
-.app { display: grid; grid-template-columns: 244px 1fr; height: 100%; }
+.app { display: grid; grid-template-columns: 244px 1fr; height: 100%; position: relative; z-index: 1; }  /* above the #bgWave canvas */
 .main { padding: 30px clamp(20px, 3vw, 44px); overflow: auto; }
 .content { max-width: 1480px; margin: 0 auto; }
 /* Narrow windows: the nav rail collapses to icons so content keeps its room. */
@@ -82,7 +75,7 @@ body {
   .nav__brand--lockup .brandlockup { width: 40px; }
 }
 
-h1 { font-size: 21px; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 4px; }
+h1 { font-family: var(--display); font-size: 27px; font-weight: 400; letter-spacing: 0; margin: 0 0 4px; }
 h2 { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin: 0 0 12px; }
 .sub { color: var(--text-dim); margin: 0 0 24px; }
 .mono { font-variant-numeric: tabular-nums; }
@@ -116,6 +109,10 @@ h2 { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: 
 }
 .nav__brand--lockup { flex-direction: column; align-items: flex-start; gap: 5px; padding: 4px 6px 18px; }
 .nav__brand--lockup .brandlockup { width: 150px; max-width: 100%; }
+.nav__beta {
+  font-style: normal; font-weight: 600; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+  margin-left: 8px; padding: 1px 6px; border-radius: 999px; color: var(--accent); background: var(--accent-soft);
+}
 .nav__brandtool {
   font-weight: 700; font-size: 11px; letter-spacing: 0.26em; text-transform: uppercase;
   color: var(--text-dim); padding-left: 3px;
@@ -503,3 +500,16 @@ select { cursor: pointer; }
   padding: 7px 13px; border-radius: 7px; font: inherit; font-weight: 600; transition: background .14s, color .14s;
 }
 .seg__opt--on { background: var(--accent); color: #0a0c12; }
+
+/* round play button (song exports) */
+.playbtn {
+  flex: none; display: inline-grid; place-items: center; border-radius: 50%;
+  border: 1px solid var(--border-strong); background: var(--accent-soft); color: var(--accent);
+  font-size: 11px; line-height: 1; cursor: pointer; padding: 0;
+  transition: background .15s, color .15s, transform .1s;
+}
+.playbtn:hover { background: var(--accent); color: #0A0B0D; }
+.playbtn:active { transform: scale(0.94); }
+.playbtn-slot { flex: none; width: 28px; }
+.playbtn--on { background: var(--accent); color: #0A0B0D; }
+.playbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

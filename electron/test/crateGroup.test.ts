@@ -38,6 +38,7 @@ describe("groupCrates", () => {
     expect(g[0].count).toBe(2);
     expect(g[0].accent).toBe(GENRE_COLOR.House);
     expect(new Set(g.map((c) => c.label))).toEqual(new Set(["House", "Techno", "Hip-Hop", "Unknown"]));
+    expect(g[g.length - 1].label).toBe("Unknown");  // unknown genre always sits last
   });
   it("groups by daw with display labels", () => {
     const g = groupCrates(FIX, "daw", "count", "", NOW);

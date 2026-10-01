@@ -1,5 +1,13 @@
 import os
 
+# Tests exercise the real free/Pro/Studio locks, not the free-beta unlock.
+os.environ.setdefault("ABLEBACKUP_FREE_BETA", "0")
+
+import os
+
 # The test suite runs in "dev" mode: enable the demo license keys (they are
 # fail-closed / disabled in shipped builds — see entitlement._dev_keys_enabled).
 os.environ.setdefault("ABLEBACKUP_DEV", "1")
+# Never read a real Uploader install on the machine running the tests; tests that
+# need one point this at a fixture catalog.
+os.environ.setdefault("ABLEBACKUP_UPLOADER_DB", os.path.join(os.sep, "nonexistent", "uploader.db"))

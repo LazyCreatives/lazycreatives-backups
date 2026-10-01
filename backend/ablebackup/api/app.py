@@ -1,6 +1,8 @@
 """FastAPI application factory for the backup sidecar."""
 import asyncio
+import hmac
 import json
+import mimetypes
 import os
 import threading
 import uuid
@@ -9,13 +11,14 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
-from ablebackup import entitlement
+from ablebackup import entitlement, exports
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
 from ablebackup.api.schemas import (
     ActivateRequest, BackupRequest, CloudConnectRequest, CloudDisconnectRequest,
-    Config, RestoreRequest, ScanRequest,
+    Config, ExportFoldersRequest, ExportLinkRequest, RestoreRequest, ScanRequest,
 )
 from ablebackup.catalog import Catalog
 from ablebackup.scheduler import BackupScheduler
@@ -202,7 +205,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     @app.get("/api/entitlement", dependencies=[Depends(require_token)])
     def get_entitlement():
         tier = _tier()
-        return {"tier": tier, "features": entitlement.features_for(tier)}
+        return {"tier": tier, "beta": entitlement.free_beta(), "features": entitlement.features_for(tier)}
 
     @app.post("/api/entitlement/activate", dependencies=[Depends(require_token)])
     def activate(req: ActivateRequest):
@@ -277,6 +280,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
              "plugins": json.dumps(p.get("plugins") or []) if p.get("plugins") else None}
             for p in projects
         ], default_timestamp())
+        exports.refresh(app.state.catalog)  # link song renders to the projects just found
         return {"projects": projects, "scope": req.scope or "sources",
                 "full_disk_access": full_disk_access_ok(),
                 "skipped_dirs": stats.get("skipped_dirs", 0),
@@ -287,8 +291,83 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         """Every project a scan has found, with backed-up status — grouped client-side
         by owner. This is the persistent History list."""
         rows = app.state.catalog.library()
+        latest = app.state.catalog.latest_exports()
+        uploaded = {e.get("path") for e in _uploaded_paths()}
+        for r in rows:
+            ex = latest.get(r["project_id"])
+            r["export_count"] = ex["count"] if ex else 0
+            r["latest_export"] = (
+                {"path": ex["latest"]["path"], "name": ex["latest"]["name"],
+                 "mtime": ex["latest"]["mtime"],
+                 "uploaded": ex["latest"]["path"] in uploaded} if ex else None)
         owners = sorted({r["owner"] or "system" for r in rows})
         return {"projects": rows, "owners": owners, "count": len(rows)}
+
+    def _uploaded_paths() -> list[dict]:
+        out = []
+        for u in exports.uploader_uploads():
+            if u.get("file_path"):
+                out.append({"path": exports._resolve(Path(u["file_path"]))})
+        return out
+
+    # ---- song exports linked to projects (and their SoundCloud uploads) --------
+    @app.get("/api/exports", dependencies=[Depends(require_token)])
+    def project_exports(project_id: str):
+        rows = app.state.catalog.exports_for(project_id)
+        for r in rows:
+            r["exists"] = os.path.isfile(r["path"])
+        elsewhere = exports.attach_uploads(rows, project_id)
+        return {"project_id": project_id, "exports": rows, "uploads_elsewhere": elsewhere,
+                "uploader_installed": exports.find_uploader_db() is not None}
+
+    @app.get("/api/exports/folders", dependencies=[Depends(require_token)])
+    def exports_folders():
+        """Where songs get exported: the user's own list, plus Uploader's watch
+        folders (read-only, shown so people see why a song was found)."""
+        return {"folders": [str(p) for p in exports.export_folders(app.state.catalog)],
+                "uploader_folders": [str(p) for p in exports.uploader_sources()]}
+
+    @app.put("/api/exports/folders", dependencies=[Depends(require_token)])
+    def exports_set_folders(req: ExportFoldersRequest):
+        folders = list(dict.fromkeys(f for f in req.folders if f.strip()))
+        app.state.catalog.set_setting("export_folders", folders)
+        return {"folders": folders, "linked": exports.refresh(app.state.catalog)}
+
+    @app.post("/api/exports/refresh", dependencies=[Depends(require_token)])
+    def exports_refresh():
+        return {"linked": exports.refresh(app.state.catalog)}
+
+    @app.post("/api/exports/link", dependencies=[Depends(require_token)])
+    def exports_link(req: ExportLinkRequest):
+        p = Path(req.path)
+        if p.suffix.lower() not in exports.AUDIO_EXTS or not p.is_file():
+            raise HTTPException(status_code=400, detail="not an audio file")
+        known = {d["project_id"] for d in app.state.catalog.discovered_projects()}
+        if req.project_id not in known:
+            raise HTTPException(status_code=404, detail="unknown project")
+        st = p.stat()
+        app.state.catalog.link_export(exports._resolve(p), req.project_id, p.stem,
+                                      st.st_size, st.st_mtime)
+        return {"ok": True}
+
+    @app.post("/api/exports/unlink", dependencies=[Depends(require_token)])
+    def exports_unlink(req: ExportLinkRequest):
+        if not app.state.catalog.hide_export(req.path, req.project_id):
+            raise HTTPException(status_code=404, detail="not linked")
+        return {"ok": True}
+
+    @app.get("/api/exports/audio")
+    def exports_audio(path: str, t: str = ""):
+        """Stream a linked export for the in-app player. An <audio> element can't send
+        the auth header, so the token rides in the query; and only files already in the
+        exports list are served, so this can't be used to read anything else."""
+        expected = app.state.token
+        if expected and not hmac.compare_digest(t or "", expected):
+            raise HTTPException(status_code=401, detail="invalid or missing token")
+        if not app.state.catalog.is_export(path) or not os.path.isfile(path):
+            raise HTTPException(status_code=404, detail="not a linked export")
+        media = mimetypes.guess_type(path)[0] or "application/octet-stream"
+        return FileResponse(path, media_type=media)
 
     @app.get("/api/project/missing", dependencies=[Depends(require_token)])
     def project_missing(path: str, find: bool = False):

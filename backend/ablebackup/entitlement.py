@@ -97,7 +97,20 @@ def verify_stored(stored: dict) -> str:
     return tier if hmac.compare_digest(sig, expected) else "free"
 
 
+# Free beta: while the app is not for sale, every feature is on for everyone and
+# the plan box is hidden. Flip this to False (or set ABLEBACKUP_FREE_BETA=0) when
+# selling starts; the tier/licence code underneath is untouched and keeps working.
+FREE_BETA = True
+
+
+def free_beta() -> bool:
+    env = os.environ.get("ABLEBACKUP_FREE_BETA")
+    return FREE_BETA if env is None else env not in ("", "0", "false", "no")
+
+
 def features_for(tier: str) -> dict:
+    if free_beta():
+        return dict(FEATURES["studio"])
     return dict(FEATURES.get(tier, FEATURES["free"]))
 
 

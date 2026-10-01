@@ -97,6 +97,25 @@ export interface LibraryItem {
   last_backup: string | null;
   snapshot_count: number;
   backed_up: boolean;
+  export_count?: number;       // song renders linked to this project
+  latest_export?: { path: string; name: string; mtime: number; uploaded: boolean } | null;
+}
+export interface ExportUpload { title: string; url: string | null; uploaded_at: string; path?: string }
+export interface ExportRow {
+  path: string;
+  project_id: string;
+  name: string;
+  size: number | null;
+  mtime: number | null;
+  match: "folder" | "name" | "manual";
+  exists: boolean;
+  upload: ExportUpload | null;   // on SoundCloud (via Uploader), if it was uploaded
+}
+export interface ProjectExports {
+  project_id: string;
+  exports: ExportRow[];
+  uploads_elsewhere: ExportUpload[];  // uploads Uploader linked to this project whose file moved
+  uploader_installed: boolean;
 }
 export interface AttentionItem {
   project_name: string;
@@ -125,6 +144,7 @@ export interface Overview {
 export type Tier = "free" | "pro" | "studio";
 export interface Entitlement {
   tier: Tier;
+  beta?: boolean;   // free beta: everything unlocked, plan box hidden
   features: {
     scheduled: boolean;
     restore: boolean;

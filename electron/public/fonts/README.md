@@ -1,14 +1,9 @@
-# Display font drop-zone — "Slothy Jelly"
+# Fonts
 
-The app's `@font-face` (in `src/theme.css`) and the `--display` / `.display` styles
-expect the wordmark typeface here:
+Headings use **Caveat Brush** (SIL Open Font Licence), bundled from the
+`@fontsource/caveat-brush` package and imported in `src/main.tsx`. Nothing needs
+to go in this folder.
 
-- `slothy-jelly.woff2`  (preferred)
-- `slothy-jelly.ttf`    (fallback)
-
-Until a file is present, anything using `--display` falls back to **Inter** — no
-error, the wordmark just isn't hand-lettered yet.
-
-⚠️ **Licence:** Slothy Jelly (by Scratch Design) is **free for personal use only**.
-Buy a commercial/web licence (MyFonts / Font Bundles / Creative Market) before
-shipping it in the product. Do **not** commit the font until the licence allows it.
+The logo images are hand-lettered in "Slothy Jelly", which is free for personal
+use only, so the app does not ship that font. If a commercial licence is ever
+bought, drop the file here and point `--display` in `src/theme.css` at it.

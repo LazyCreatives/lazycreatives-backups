@@ -50,6 +50,7 @@
   font-size: 11px; color: var(--text-dim); margin-top: 1px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   direction: rtl; text-align: left;   /* keep the filename end visible when truncated */
+  unicode-bidi: plaintext;            /* ...without the rtl trick moving "/" to the wrong end */
 }
 
 .miss-badge {
