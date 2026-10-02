@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { Project, CrateGroup, GroupBy, CrateSort } from "../types";
-import { GENRE_COLOR, SLOTH_BLUE, dawDisplay, parseStamp } from "../types";
+import { SLOTH_BLUE, dawDisplay, genreOf, parseStamp } from "../types";
+import { genreColor } from "../../../look";
 
 const DAY = 86400000;
 const daysSince = (s: string, now: number) => {
@@ -38,7 +39,7 @@ export function groupCrates(
     const { key, label } = bucket(p, by, now);
     let g = map.get(key);
     if (!g) {
-      const accent = by === "genre" ? (GENRE_COLOR[p.genre] ?? SLOTH_BLUE) : SLOTH_BLUE;
+      const accent = by === "genre" ? genreColor(genreOf(p)) : SLOTH_BLUE;
       g = { key, label, accent, projects: [], count: 0 };
       map.set(key, g);
     }

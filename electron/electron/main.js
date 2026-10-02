@@ -4,6 +4,7 @@ const fs = require("fs");
 const { startSidecar, stopSidecar, killGroup } = require("./sidecar");
 const { createTray } = require("./tray");
 const { isOpenAtLogin, setOpenAtLogin, initOpenAtLogin } = require("./startup");
+const { startUpdater } = require("./updater");
 
 const isDev = !!process.env.ABLEBACKUP_DEV;
 let win = null;
@@ -164,6 +165,13 @@ app.whenReady().then(async () => {
       onQuit: () => { isQuitting = true; app.quit(); },
     });
     initOpenAtLogin();
+    startUpdater({
+      appName: "LazyCreatives Backups",
+      owner: "LazyCreatives", repo: "lazycreatives-backups",
+      downloadPage: "https://lazycreatives.github.io/#download",
+      getWindow: () => win,
+      onMenuItem: (item) => { if (tray) tray.setUpdateItem(item); },
+    });
     console.log("[main] app ready"); // the installers check waits for this line
   } catch (err) {
     // A dead-silent launch (sidecar spawn failed / health timed out) is the worst

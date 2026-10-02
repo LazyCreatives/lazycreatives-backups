@@ -9,6 +9,15 @@ import { CountUp } from "../components/CountUp";
 import { makeApi } from "../api";
 import type { Snapshot } from "../types";
 import { fmtDate } from "../format";
+import { Cover } from "../components/Cover";
+import { Icon } from "../components/Icon";
+import { coverColor, useLook } from "../look";
+import type { BackupItem } from "../useProgress";
+import { useGenres } from "../useGenres";
+
+const STATE_TEXT: Record<BackupItem["state"], string> = {
+  working: "Backing up…", done: "Safe", skipped: "Already safe", error: "Failed",
+};
 
 const api = makeApi();
 
@@ -33,14 +42,17 @@ export function Backup({ progress: p, jobId }: { progress: BackupProgress; jobId
   const subtitle = p.preparing ? "Preparing…"
     : p.active && p.current ? `Backing up ${p.current}…`
     : p.active ? "Working…"
-    : p.cancelled ? "Cancelled."
-    : p.done ? "Complete." : "No backup running.";
+    : p.cancelled ? "Stopped before the end."
+    : p.done ? "Every project below is in your backup." : "No backup running.";
   const doneCount = p.completed + p.skipped + p.errors;
+  const [look] = useLook();
+  const genreOf = useGenres();
+  const nowName = p.current ?? p.items[p.items.length - 1]?.name ?? "Your projects";
 
   return (
     <>
       <PageHeader
-        title="Backup progress"
+        title={p.done ? (p.cancelled ? "Backup stopped" : "Backup finished") : "Backing up"}
         subtitle={subtitle}
         actions={p.active && jobId ? (
           <Button variant="danger" onClick={cancel} disabled={cancelling}>
@@ -67,39 +79,72 @@ export function Backup({ progress: p, jobId }: { progress: BackupProgress; jobId
       ) : (
         <>
           {p.done && !p.cancelled && (
-            <div className="card celebrate" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 16 }}>
+            <div className="card celebrate run-done">
               <VerifiedSeal size={54} />
               <div>
-                <div style={{ fontWeight: 700, fontSize: 16, color: "var(--accent-2)" }}>Backed up &amp; verified</div>
-                <div className="sub" style={{ margin: "4px 0 0" }}>
-                  <CountUp value={p.completed} format={(n) => `${Math.round(n)}`} /> project{p.completed === 1 ? "" : "s"} protected
-                  {p.skipped > 0 ? ` · ${p.skipped} unchanged` : ""}
-                  {p.errors > 0 ? ` · ${p.errors} error(s)` : ""}
+                <div className="run-done__title">Backed up and checked</div>
+                <div className="faint">
+                  {p.completed > 0
+                    ? <><CountUp value={p.completed} format={(n) => `${Math.round(n)}`} /> project{p.completed === 1 ? "" : "s"} backed up{p.skipped > 0 ? `, ${p.skipped} already safe with no changes` : ""}</>
+                    : p.skipped > 0 ? `All ${p.skipped} already safe, nothing had changed` : "Nothing was backed up"}
+                  {p.errors > 0 ? ` · ${p.errors} couldn't be backed up` : ""}
                 </div>
                 {p.mirrorFailed > 0 && (
                   <div style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--warn)" }}>
-                    ⚠ Offsite/cloud mirror failed for {p.mirrorFailed} copy — primary backup is safe; check that destination.
+                    Copying to your second backup place failed for {p.mirrorFailed} {p.mirrorFailed === 1 ? "project" : "projects"}. The main backup is safe; check that place in Settings.
                   </div>
                 )}
               </div>
             </div>
           )}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 9 }}>
-              <span className="mono">{p.preparing ? "Preparing…" : `${doneCount} / ${p.total}`}</span>
-              <span className="sub" style={{ margin: 0, display: "flex", gap: 12 }}>
-                {p.skipped > 0 && <span>↷ {p.skipped} unchanged</span>}
-                {p.errors > 0 && <span style={{ color: "var(--danger)" }}>{p.errors} error(s)</span>}
-                {p.done && <span>done</span>}
-              </span>
+
+          {!p.done && <div className={`run run--${look}`}>
+            <div className="run__now">
+              {look === "sleeve" && <Cover name={nowName} genre={genreOf(nowName)} size={132} className="run__cover" />}
+              {look === "crate" && <span className="stripe" style={{ background: coverColor(genreOf(nowName), nowName) }} />}
+              {look === "crate" && <Cover name={nowName} genre={genreOf(nowName)} size={56} label={false} />}
+              <div className="run__text">
+                <span className="eyebrow">{p.preparing ? "Getting ready" : "Now backing up"}</span>
+                <span className={look === "sleeve" ? "run__name display" : "run__title"}>{p.preparing ? "Finding your projects…" : nowName}</span>
+                <span className="faint mono">{p.preparing ? "" : `${doneCount} of ${p.total}`}{p.skipped > 0 ? ` · ${p.skipped} unchanged` : ""}{p.errors > 0 ? ` · ${p.errors} failed` : ""}</span>
+              </div>
             </div>
             <ProgressBar value={p.preparing ? 1 : doneCount} max={p.preparing ? 1 : p.total} active={p.active} />
-          </div>
-          <div className="card" style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5, lineHeight: 1.7, maxHeight: 360, overflow: "auto" }}>
-            {p.log.length === 0
-              ? <span className="sub">Waiting for the first project…</span>
-              : p.log.map((line, i) => <div key={i} className="logline">{line}</div>)}
-          </div>
+          </div>}
+
+          {p.items.length > 0 && look === "crate" && (
+            <div className="table table--crate">
+              {[...p.items].reverse().map((it, i) => (
+                <div key={`${it.name}-${i}`} className="row cols run-cols">
+                  <span className="stripe" style={{ background: coverColor(genreOf(it.name), it.name) }} />
+                  <Cover name={it.name} genre={genreOf(it.name)} size={32} label={false} />
+                  <span className="lib-name">{it.name}</span>
+                  <span className={`run-state run-state--${it.state}`}><span className="dot" />{STATE_TEXT[it.state]}</span>
+                  <span className="faint col-trunc">{it.detail ?? ""}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {p.items.length > 0 && look === "sleeve" && (
+            <div className="run-wall">
+              {p.items.map((it, i) => (
+                <div key={`${it.name}-${i}`} className={`run-tile run-tile--${it.state}`} title={`${it.name}: ${STATE_TEXT[it.state]}${it.detail ? `, ${it.detail}` : ""}`}>
+                  <Cover name={it.name} genre={genreOf(it.name)} label={false} />
+                  <span className="run-tile__mark" aria-hidden>
+                    {it.state === "done" ? <Icon name="check" size={14} /> : it.state === "error" ? <Icon name="alert" size={14} /> : it.state === "skipped" ? <Icon name="check" size={14} /> : null}
+                  </span>
+                  <span className="run-tile__name">{it.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <details className="run-log">
+            <summary>Show the full log</summary>
+            <div className="mono">
+              {p.log.map((line, i) => <div key={i} className="logline">{line}</div>)}
+            </div>
+          </details>
         </>
       )}
     </>

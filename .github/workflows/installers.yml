@@ -24,7 +24,10 @@ jobs:
             sidecar: ablebackup-sidecar.exe
             rclone: windows-amd64
             bundled: release/win-unpacked/resources/rclone/rclone.exe
-            artifact: electron/release/*.exe
+            artifact: |
+              electron/release/*.exe
+              electron/release/*.exe.blockmap
+              electron/release/latest.yml
           - os: macos-latest          # Apple Silicon (arm64)
             name: macos-arm64
             builder: --mac dir --arm64   # dmg is made after ad-hoc signing below
@@ -38,7 +41,9 @@ jobs:
             sidecar: ablebackup-sidecar
             rclone: linux-amd64
             bundled: release/linux-unpacked/resources/rclone/rclone
-            artifact: electron/release/*.AppImage
+            artifact: |
+              electron/release/*.AppImage
+              electron/release/latest-linux.yml
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -136,7 +141,8 @@ jobs:
           if-no-files-found: error
 
   # On a v* tag: attach all three installers to a GitHub Release under fixed names,
-  # so the website can link to releases/latest/download/<name> and never go stale.
+  # so the website can link to releases/latest/download/<name> and never go stale,
+  # plus the update files the installed apps check for new versions.
   release:
     # Only the public repo publishes; Releases on the private -dev repo aren't downloadable.
     if: startsWith(github.ref, 'refs/tags/v') && !endsWith(github.repository, '-dev')
@@ -153,12 +159,19 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Rename to stable asset names
+      # electron-builder already names the installers with the stable download names
+      # (artifactName in package.json). latest*.yml + .blockmap are what the in-app
+      # updater reads on Windows and Linux, so they must ship beside the installers.
+      - name: Collect release files
         run: |
           mkdir out
-          cp artifacts/lazycreatives-backups-windows/*.exe      out/LazyCreatives-Backups-Windows-Setup.exe
-          cp artifacts/lazycreatives-backups-macos-arm64/*.dmg  out/LazyCreatives-Backups-macOS-arm64.dmg
-          cp artifacts/lazycreatives-backups-linux/*.AppImage   out/LazyCreatives-Backups-Linux-x86_64.AppImage
+          find artifacts -type f -exec cp {} out/ \;
+          for f in LazyCreatives-Backups-Windows-Setup.exe LazyCreatives-Backups-macOS-arm64.dmg \
+                   LazyCreatives-Backups-Linux-x86_64.AppImage latest.yml latest-linux.yml; do
+            test -f "out/$f" || { echo "missing $f"; exit 1; }
+          done
+          grep -q "url: LazyCreatives-Backups-Windows-Setup.exe" out/latest.yml
+          grep -q "url: LazyCreatives-Backups-Linux-x86_64.AppImage" out/latest-linux.yml
           ls -l out
       - name: Publish release
         env:

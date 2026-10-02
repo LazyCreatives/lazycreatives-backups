@@ -5,50 +5,37 @@
 
 .lib-scan {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 10px 14px; margin-bottom: 14px;
+  padding: 0 0 14px; margin-bottom: 14px; border-bottom: 1px solid var(--border);
 }
-.lib-scan__count { margin: 0 0 0 auto; }
 
-.lib-row { padding: 11px 14px; }
-/* play · dot · name · status · last backup · size · DAW · main button · menu */
-.lib-cols { --cols: 28px 9px minmax(0, 1fr) 150px 118px 64px 44px 84px 32px; }
-.lib-cols.cols-head { padding-left: 14px; padding-right: 14px; }
-/* no project has a song yet: drop the play column so the dot starts the row */
-.lib-cols--noplay { --cols: 9px minmax(0, 1fr) 150px 118px 64px 44px 84px 32px; }
-.lib-cols--noplay > :first-child { display: none; }
-@media (max-width: 1040px) {
-  .lib-cols { --cols: 28px 9px minmax(0, 1fr) 150px 118px 44px 84px 32px; }
-  .lib-cols--noplay { --cols: 9px minmax(0, 1fr) 150px 118px 44px 84px 32px; }
-  .lib-cols > :nth-child(6) { display: none; }  /* size column goes first when narrow */
+.lib-row { padding-right: 14px; }
+/* stripe · play · cover · name · latest song · BPM · backup · last backup · main button · menu */
+.lib-cols { --cols: 4px 28px 36px minmax(0, 1fr) minmax(120px, 190px) 44px 128px 118px 72px 32px; }
+.lib-cols--nosongs { --cols: 4px 28px 36px minmax(0, 1fr) 150px 44px 128px 118px 72px 32px; }
+.lib-cols.cols-head { padding-right: 14px; }
+@media (max-width: 1100px) {
+  .lib-cols, .lib-cols--nosongs { --cols: 4px 28px 36px minmax(0, 1fr) 0 44px 128px 118px 72px 32px; }
+  .lib-cols > :nth-child(5) { visibility: hidden; }
 }
+.lib-sub { color: var(--text-faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-state { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); min-width: 0; }
 .lib-row[role="button"] { cursor: pointer; }
-.lib-dot {
-  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
-  background: var(--text-faint);
-}
-.lib-dot--ok { background: var(--accent-2); box-shadow: 0 0 0 3px var(--ok-soft); }
-.lib-dot--warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
 .lib-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.lib-status { margin: 0; font-size: 12px; color: var(--text-faint); white-space: nowrap; }
+.lib-status { margin: 0; font-size: 13px; color: var(--text-faint); white-space: nowrap; }
 .lib-status--warn { color: var(--warn); }
 .lib-status--ok { color: var(--text-dim); }
-.lib-row .daw-badge { justify-self: center; }
+.lib-status.col-num { font-size: 12.5px; color: var(--text-dim); }
 
-/* "···" menu */
+/* "more" menu */
 .lib-menu { position: relative; flex-shrink: 0; }
-.lib-menu__btn {
-  border: 1px solid transparent; background: transparent; color: var(--text-dim); cursor: pointer;
-  width: 32px; height: 30px; border-radius: 8px; font: inherit; font-size: 16px; letter-spacing: 1px; line-height: 1;
-}
-.lib-menu__btn:hover, .lib-menu--open .lib-menu__btn { background: var(--surface-2); border-color: var(--border-strong); color: var(--text); }
 .lib-menu__list {
   position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 190px;
-  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 10px;
-  box-shadow: var(--shadow); padding: 5px; display: grid; gap: 2px;
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop); padding: 4px; display: grid; gap: 2px;
 }
 .lib-menu__item {
   border: none; background: transparent; color: var(--text); cursor: pointer; text-align: left;
-  padding: 8px 10px; border-radius: 7px; font: inherit; font-size: 13px; white-space: nowrap;
+  padding: 8px 10px; border-radius: var(--radius); font: inherit; font-size: 13px; white-space: nowrap;
 }
 .lib-menu__item:hover:not(:disabled) { background: var(--surface-3); }
 .lib-menu__item:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -56,14 +43,23 @@
 /* project page */
 .lib-back {
   display: inline-flex; align-items: center; gap: 6px; margin-bottom: 14px;
-  border: none; background: transparent; color: var(--accent); cursor: pointer; font: inherit; font-weight: 600; padding: 0;
+  border: none; background: transparent; color: var(--text-dim); cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; padding: 0;
 }
-.lib-back:hover { text-decoration: underline; }
+.lib-back:hover { color: var(--text); }
 .lib-notice { font-size: 12.5px; color: var(--text-dim); margin: 0; }
 /* an open menu must paint above the rows below it */
 .lib-row:has(.lib-menu--open) { position: relative; z-index: 30; }
 
 /* "Songs from this project": play · song · exported · size · SoundCloud · actions */
-.song-cols { --cols: 30px minmax(0, 1fr) 150px 64px 118px 236px; }
-.song-cols.cols-head { padding-left: 15px; padding-right: 15px; }
+.song-cols { --cols: 28px minmax(0, 1fr) 104px 60px 124px 64px; }
+.linkpill { border: 0; cursor: pointer; padding: 0; font: inherit; font-size: 12.5px; }
+.linkpill:hover { color: var(--text); }
+.linkpill svg { vertical-align: -1px; }
 .song-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+/* a project's backups: one row each, the open one highlighted */
+.snap-cols { --cols: 8px minmax(0, 1fr) 64px 80px 150px; }
+.snaprow { width: 100%; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.note-box { margin-bottom: 12px; padding: 11px 13px; border: 1px solid var(--border); border-radius: var(--radius-lg); font-size: 12.5px; }
+.ok-text { color: var(--accent-2); }
+.miss-cols--short { --cols: minmax(0, 1fr) 112px; }

@@ -1,7 +1,7 @@
 {
   "name": "lazycreatives-backups",
   "productName": "LazyCreatives Backups",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "LazyCreatives Backups — verified, deduplicated backups for Ableton & FL Studio projects",
   "main": "electron/main.js",
   "scripts": {
@@ -48,7 +48,8 @@
       "gatekeeperAssess": false
     },
     "dmg": {
-      "title": "LazyCreatives Backups"
+      "title": "LazyCreatives Backups",
+      "artifactName": "LazyCreatives-Backups-macOS-arm64.${ext}"
     },
     "win": {
       "target": [
@@ -58,15 +59,25 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": false
+      "perMachine": false,
+      "artifactName": "LazyCreatives-Backups-Windows-Setup.${ext}"
     },
     "linux": {
       "target": [
         "AppImage"
       ],
       "category": "Audio",
-      "icon": "build/icon.png"
-    }
+      "icon": "build/icon.png",
+      "artifactName": "LazyCreatives-Backups-Linux-x86_64.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "LazyCreatives",
+        "repo": "lazycreatives-backups",
+        "releaseType": "release"
+      }
+    ]
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -85,8 +96,10 @@
     "wait-on": "^8.0.0"
   },
   "dependencies": {
-    "@fontsource/caveat-brush": "^5.3.0",
-    "@fontsource/inter": "^5.3.0",
+    "@fontsource/bebas-neue": "^5.3.0",
+    "@fontsource/geist-mono": "^5.3.0",
+    "@fontsource/geist-sans": "^5.3.0",
+    "electron-updater": "^6.8.9",
     "motion": "^12.40.0"
   }
 }

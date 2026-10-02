@@ -105,9 +105,22 @@ The `build.mac` block already sets `hardenedRuntime: true`; add an
 `entitlements.mac.plist` if a dependency needs JIT/network exceptions. Windows
 signing uses a separate cert (or Azure Trusted Signing) via `CSC_LINK` too.
 
-## Auto-update (later)
-Add **electron-updater** pointed at GitHub Releases (you already host there).
-Gate updates by the license's `valid_until` for the Updates Pass (see
+## Auto-update
+`electron/electron/updater.js` checks the public repo's latest GitHub Release on
+launch (after 15 s) and every 6 hours, packaged builds only
+(`LAZYCREATIVES_NO_UPDATES=1` turns it off).
+- **Windows / Linux AppImage:** electron-updater downloads in the background, then
+  asks "Restart now / Later"; "Later" installs on the next quit. It reads
+  `latest.yml` / `latest-linux.yml` (+ the `.exe.blockmap`), which the installers
+  workflow publishes beside the installers. `artifactName` in package.json gives the
+  installers their stable download names so those files point at the right asset.
+- **macOS:** Squirrel.Mac only installs updates into a Developer ID signed app, so
+  the Mac build just compares the latest release tag with its own version and offers
+  a button to the download page. Once builds are signed and notarized, add the `zip`
+  mac target (it produces `latest-mac.yml`) and drop the Mac branch in updater.js.
+- The tray menu also gains "Restart to update…" / "Download version…".
+
+Later: gate updates by the license's `valid_until` for the Updates Pass (see
 `brand/business/paywall-eng-scope.md` §5).
 
 ## Checklist
@@ -115,4 +128,4 @@ Gate updates by the license's `valid_until` for the Updates Pass (see
 - [ ] `npm run dist` produces a `.dmg` that launches and reaches the dashboard.
 - [ ] Verify a real backup works from the packaged app (paths/permissions differ).
 - [ ] Apple Developer enrolled → signed + notarized build.
-- [ ] electron-updater + a Releases-based update feed.
+- [x] electron-updater + a Releases-based update feed (Mac: notify only until signed).

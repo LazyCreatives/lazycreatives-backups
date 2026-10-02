@@ -2,8 +2,7 @@ import { useState } from "react";
 import { makeApi } from "../api";
 import type { Config } from "../types";
 import { Button } from "../components/Button";
-import { BrandMark } from "../components/BrandMark";
-import { Waveform } from "../components/Waveform";
+import { LcBrand } from "../components/LcBrand";
 
 const api = makeApi();
 
@@ -35,14 +34,9 @@ export function Setup({ onDone }: { onDone: (c: Config) => void }) {
   return (
     <div className="splash">
       <div className="wizard">
-        <div className="wizard__wave"><Waveform bars={64} /></div>
         <div className="wizard__head">
-          <div style={{ width: 104, flexShrink: 0 }}><BrandMark /></div>
-          <div style={{ flex: 1 }}>
-            <strong className="display">Backups</strong>
-            <div className="sub" style={{ margin: 0, fontSize: 12 }}>Verified backups you own</div>
-          </div>
-          <span className="sub" style={{ margin: 0 }}>Step {step + 1} of 3</span>
+          <div style={{ flex: 1 }}><LcBrand app="Backups" tag="Lazy Creatives" /></div>
+          <span className="faint num" style={{ fontSize: 12 }}>Step {step + 1} of 3</span>
         </div>
         <div className="wizard__dots">
           {[0, 1, 2].map((i) => <span key={i} className={`wizard__dot${i <= step ? " wizard__dot--on" : ""}`} />)}

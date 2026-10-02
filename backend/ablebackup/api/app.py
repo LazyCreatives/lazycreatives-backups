@@ -13,7 +13,7 @@ from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from ablebackup import entitlement, exports
+from ablebackup import entitlement, exports, waveform
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
 from ablebackup.api.schemas import (
@@ -388,6 +388,14 @@ def create_app(token: str, db_path: Path) -> FastAPI:
             raise HTTPException(status_code=404, detail="not a linked export")
         media = mimetypes.guess_type(path)[0] or "application/octet-stream"
         return FileResponse(path, media_type=media)
+
+    @app.get("/api/exports/peaks", dependencies=[Depends(require_token)])
+    def exports_peaks(path: str):
+        """The outline of a linked export's sound, for drawing its waveform. `peaks` is
+        null for formats read by the app itself (MP3 and the like)."""
+        if not app.state.catalog.is_export(path) or not os.path.isfile(path):
+            raise HTTPException(status_code=404, detail="not a linked export")
+        return {"peaks": waveform.peaks(path)}
 
     @app.get("/api/project/missing", dependencies=[Depends(require_token)])
     def project_missing(path: str, find: bool = False):

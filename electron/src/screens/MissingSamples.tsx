@@ -61,7 +61,7 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
       const after = await load(true);
       onChanged?.();
       setNote(after.missing_count === 0
-        ? "✓ Every sample found and folded into a verified backup."
+        ? "Every sample found and saved in a checked backup."
         : okMsg.replace("{n}", String(after.missing_count)));
     } catch (e: any) {
       setErr(e.message || "That didn't work — check a backup destination is set in Settings.");
@@ -88,10 +88,9 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
   const lost = (miss ?? []).length - recoverable;
 
   return (
-    <div className="card miss">
+    <div className="miss">
       <div className="miss-head">
-        <div>
-          <div className="miss-title">⚠ Missing samples</div>
+        <div style={{ minWidth: 0 }}>
           <div className="miss-sum">
             {loading || miss === null
               ? "Reading the project…"
@@ -108,56 +107,58 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
         </div>
         {!!miss?.length && (
           <div className="miss-actions">
-            <button className="btn-blue" onClick={fixNow} disabled={working}>
-              {busy === "fix" ? "Fixing…" : "Fix now"}
-            </button>
-            <Button size="sm" variant="ghost" onClick={lookInFolder} disabled={working}>
+            <Button variant="ghost" onClick={lookInFolder} disabled={working}>
               {busy === "folder" ? "Searching…" : "Look in a folder…"}
+            </Button>
+            <Button onClick={fixNow} disabled={working}>
+              {busy === "fix" ? "Fixing…" : "Fix now"}
             </Button>
           </div>
         )}
       </div>
 
       <p className="miss-trust">
-        These are the files <strong>{item.name}</strong> points to but aren’t on disk.
-        {item.backed_up
-          ? " Your last backup still holds a verified copy of everything that was found — nothing is lost."
-          : " Fix now finds what it can and folds it into a verified backup."}
-        {" "}<strong>Fix now</strong> searches your sample libraries (Settings) and source folders;
-        for anything it can’t find, <strong>Point to file…</strong> lets you hand it the exact one.
+        Files <strong>{item.name}</strong> uses that aren’t where it expects them.
+        {item.backed_up ? " Your last backup still holds a checked copy of everything else." : ""}
+        {" "}<strong>Fix now</strong> searches your sample folders from Settings and your project folders.
+        For anything it can’t find, <strong>Point to file</strong> lets you choose the exact one.
       </p>
 
       {note && <div className="miss-note ok">{note}</div>}
       {err && <div className="miss-note err">{err}</div>}
 
       {!!miss?.length && (
-        <ul className="miss-list">
+        <div className="table miss-list">
+          <div className="row cols cols-head miss-cols"><span /><span>Sample</span><span>Where it stands</span><span /></div>
           {miss.map((m) => {
             const onRow = busy === m.expected_path;
             const handPicked = pointed[m.expected_path];
             return (
-              <li key={m.expected_path} className="miss-row">
+              <div key={m.expected_path} className="row cols miss-cols">
+                <span className={`dot ${handPicked || m.recoverable ? "dot--ok" : probed ? "dot--warn" : ""}`} />
                 <div className="miss-file">
                   <div className="miss-name" title={m.name}>{m.name}</div>
                   <div className="miss-path mono" title={m.expected_path}>{m.expected_path}</div>
                 </div>
-                <span className={`miss-badge ${handPicked ? "pointed" : !probed ? "checking" : m.recoverable ? "found" : "lost"}`}>
-                  {handPicked ? `→ ${handPicked.split("/").pop()}`
-                    : !probed ? "checking…"
-                    : m.recoverable ? "🔍 in your library"
-                    : "✗ not found anywhere"}
+                <span className={`miss-badge col-trunc ${handPicked ? "pointed" : !probed ? "checking" : m.recoverable ? "found" : "lost"}`}>
+                  {handPicked ? `Using ${handPicked.split("/").pop()}`
+                    : !probed ? "Checking…"
+                    : m.recoverable ? "Found in your samples"
+                    : "Not found anywhere"}
                 </span>
-                <Button size="sm" variant="ghost" onClick={() => pointToFile(m)} disabled={working}
-                  title="Pick the exact replacement file for this sample">
-                  {onRow ? "Linking…" : "Point to file…"}
-                </Button>
-              </li>
+                <span className="col-act">
+                  <Button size="sm" variant="ghost" onClick={() => pointToFile(m)} disabled={working}
+                    title="Pick the exact replacement file for this sample">
+                    {onRow ? "Linking…" : "Point to file"}
+                  </Button>
+                </span>
+              </div>
             );
           })}
-        </ul>
+        </div>
       )}
       {present > 0 && !loading && (
-        <div className="miss-foot mono">{present} sample{present === 1 ? "" : "s"} present and accounted for.</div>
+        <div className="miss-foot">{present} other sample{present === 1 ? " is" : "s are"} where the project expects.</div>
       )}
     </div>
   );

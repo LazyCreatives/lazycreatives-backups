@@ -6,11 +6,12 @@ import { Sources } from "./screens/Sources";
 import { BackupFlow } from "./screens/BackupFlow";
 import { Library } from "./screens/Library";
 import { Dig } from "./screens/Dig";
-import { BrandMark } from "./components/BrandMark";
+import { LcBrand } from "./components/LcBrand";
 import { FirstBackupModal } from "./components/FirstBackupModal";
 import { makeApi } from "./api";
 import { useLiveProgress } from "./useProgress";
 import type { Config, ProjectSummary } from "./types";
+import { PlayerBar } from "./components/Player";
 
 const api = makeApi();
 
@@ -19,6 +20,7 @@ export type FlowStep = "scan" | "review" | "progress";
 
 export interface PendingBackup {
   als_paths: string[];
+  names?: string[];   // project names, for the covers on the review screen
   count: number;
   size: number;
   findMissing: boolean;
@@ -86,8 +88,7 @@ export default function App() {
   if (cfg === null) return (
     <div className="splash">
       <div style={{ display: "grid", placeItems: "center", gap: 14 }}>
-        <div style={{ width: 156 }}><BrandMark active /></div>
-        <span className="sub" style={{ margin: 0 }}>Starting…</span>
+        <LcBrand app="Backups" tag="Starting…" busy />
       </div>
     </div>
   );
@@ -147,6 +148,7 @@ export default function App() {
           </div>
         </div>
       </div>
+      <PlayerBar />
       {showFirstBackup && (
         <FirstBackupModal
           completed={live.backup.completed}

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { makeApi } from "../api";
 import type { ExportRow, LibraryItem, ProjectExports as Data } from "../types";
 import { Button } from "../components/Button";
-import { PlayButton } from "../components/Player";
+import { Icon } from "../components/Icon";
+import { PlayButton, SongWave } from "../components/Player";
 import { fmtSize } from "../format";
 
 const api = makeApi();
@@ -24,6 +25,7 @@ const folderName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 // newest first, with a play button, its SoundCloud link when Uploader has posted it,
 // and the controls to fix a wrong or missed match.
 export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChanged?: () => void }) {
+  const songMeta = (title: string) => ({ title, project: item.name, genre: item.genre });
   const [data, setData] = useState<Data | null>(null);
   const [folders, setFolders] = useState<{ folders: string[]; found_folders?: string[]; ignored?: string[]; uploader_folders: string[] } | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -89,10 +91,7 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
   const lookIn = [...(folders?.folders ?? []), ...(folders?.found_folders ?? []), ...(folders?.uploader_folders ?? [])];
 
   return (
-    <div className="card" style={{ padding: "14px 16px" }}>
-      <div className="sub" style={{ margin: "0 0 10px", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-        Songs from this project
-      </div>
+    <div>
 
       {err && <div className="sub" style={{ color: "var(--danger)", margin: "0 0 8px" }}>{err}</div>}
 
@@ -110,37 +109,36 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
       )}
 
       {(rows.length > 0 || (data?.uploads_elsewhere ?? []).length > 0) && (
-        <div className="cols cols-head song-cols" aria-hidden>
-          <span /><span>Song</span><span className="col-num">Exported</span><span className="col-num">Size</span><span /><span />
+        <div className="table">
+        <div className="row cols cols-head song-cols" aria-hidden>
+          <span /><span>Song</span><span className="col-num">Exported</span><span className="col-num">Size</span><span>SoundCloud</span><span />
         </div>
-      )}
       {rows.map((e) => (
         <div key={e.path} className="row cols song-cols">
-          {e.exists ? <PlayButton path={e.path} title={e.name} /> : <span />}
-          <div>
-            <div className="col-trunc" title={e.path}>{e.name}</div>
-            <div className="sub col-trunc" style={{ margin: 0, fontSize: 11.5 }}>
-              {e.exists ? HOW[e.match] : "File has been moved or deleted"}
-            </div>
+          {e.exists ? <PlayButton path={e.path} title={e.name} meta={songMeta(e.name)} /> : <span />}
+          <div style={{ minWidth: 0 }}>
+            <div className="col-trunc" title={`${e.path}\n${HOW[e.match]}`}>{e.name}</div>
+            {e.exists
+              ? <SongWave path={e.path} meta={songMeta(e.name)} height={20} />
+              : <div className="sub col-trunc" style={{ margin: 0, fontSize: 11.5 }}>File has been moved or deleted</div>}
           </div>
           <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{e.exists ? fmtWhen(e.mtime) : "—"}</div>
           <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{e.exists ? fmtSize(e.size ?? 0) : "—"}</div>
           <div className="col-end">
             {e.upload?.url && (
-              <button type="button" className="pill pill--ok" style={{ border: 0, cursor: "pointer" }}
+              <button type="button" className="pill pill--ok linkpill"
                 title={`Uploaded as "${e.upload.title}"`} onClick={() => bridge()?.openExternal?.(e.upload!.url)}>
-                On SoundCloud ↗
+                On SoundCloud <Icon name="external" size={12} />
               </button>
             )}
           </div>
           <div className="song-actions">
-            <Button variant="ghost" size="sm" onClick={() => bridge()?.revealPath?.(e.path)}
-              style={{ visibility: e.exists ? "visible" : "hidden" }}>Show file</Button>
-            <Button variant="ghost" size="sm" disabled={busy}
-              title="Remove this song from the project. It won't be matched again."
-              onClick={() => run(() => api.unlinkExport(e.path, item.project_id))}>
-              Not from this project
-            </Button>
+            <button className="iconbtn" title="Show the file" aria-label={`Show ${e.name}`}
+              onClick={() => bridge()?.revealPath?.(e.path)} style={{ visibility: e.exists ? "visible" : "hidden" }}><Icon name="folder" /></button>
+            <button className="iconbtn" disabled={busy}
+              title="Not from this project: remove it here and don't match it again"
+              aria-label={`${e.name} is not from this project`}
+              onClick={() => run(() => api.unlinkExport(e.path, item.project_id))}><Icon name="close" /></button>
           </div>
         </div>
       ))}
@@ -156,15 +154,17 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
           <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>—</div>
           <div className="col-end">
             {u.url && (
-              <button type="button" className="pill pill--ok" style={{ border: 0, cursor: "pointer" }}
-                onClick={() => bridge()?.openExternal?.(u.url)}>On SoundCloud ↗</button>
+              <button type="button" className="pill pill--ok linkpill"
+                onClick={() => bridge()?.openExternal?.(u.url)}>On SoundCloud <Icon name="external" size={12} /></button>
             )}
           </div>
           <div className="song-actions" />
         </div>
       ))}
+        </div>
+      )}
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
         <Button variant="ghost" size="sm" disabled={busy} onClick={addSong}>Add a song…</Button>
         <Button variant="ghost" size="sm" disabled={busy} onClick={addFolder}>Add an exports folder…</Button>
         <Button variant="ghost" size="sm" disabled={busy || !!checking} onClick={() => run(() => api.refreshExports())}
@@ -172,7 +172,7 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
       </div>
 
       {folders && (
-        <div className="sub" style={{ margin: "10px 0 0", fontSize: 11.5 }}>
+        <div className="faint" style={{ margin: "12px 0 0", fontSize: 12.5 }}>
           Looking in: the project folder
           {folders.folders.map((f) => (
             <span key={f}>

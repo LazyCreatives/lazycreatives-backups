@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { makeApi } from "../api";
-import type { Config } from "../types";
+import type { Config, Overview } from "../types";
 import { Button } from "../components/Button";
 import { PageHeader } from "../components/PageHeader";
 import { Info } from "../components/Info";
 import { PlanCard } from "../components/PlanCard";
 import { ProBadge } from "../components/ProBadge";
+import { Icon, type IconName } from "../components/Icon";
+import { Cover } from "../components/Cover";
+import { genreColor, useLook } from "../look";
 import { useEntitlement } from "../entitlement";
-import { fmtInterval, fmtClock } from "../format";
+import { fmtInterval, fmtClock, fmtSize } from "../format";
 import { osWords } from "../platform";
 
 const api = makeApi();
@@ -21,6 +24,7 @@ const PRESETS = [
 ];
 
 export function Sources() {
+  const [look, setLook] = useLook();
   const [cfg, setCfg] = useState<Config>({ sources: [], dest: "", interval_minutes: 0, libraries: [] });
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -32,7 +36,9 @@ export function Sources() {
   const [connecting, setConnecting] = useState<string | null>(null);  // provider key in progress
   const [connectMsg, setConnectMsg] = useState<string | null>(null);
   const [connectErr, setConnectErr] = useState<string | null>(null);
-  const [openAtLogin, setOpenAtLogin] = useState<boolean | null>(null);  // null = unknown (dev page)
+  const [openAtLogin, setOpenAtLogin] = useState<boolean | null>(null);
+  const [ov, setOv] = useState<Overview | null>(null);
+  useEffect(() => { api.overview().then(setOv).catch(() => {}); }, [cfg.dest]);  // null = unknown (dev page)
   const { allows, beta } = useEntitlement();
   const words = osWords();
   const canSchedule = allows("scheduled");
@@ -110,7 +116,7 @@ export function Sources() {
         const s = await api.cloudConnectStatus(id);
         if (s.status === "connected") {
           setConnecting(null);
-          setConnectMsg(`Connected ✓ — every backup will also copy to ${s.remote}:`);
+          setConnectMsg(`Connected. Every backup will also copy to ${s.remote}.`);
           addRemote(s.remote);
           api.rclone().then(setRclone).catch(() => {});
         } else if (s.status === "failed") {
@@ -147,7 +153,7 @@ export function Sources() {
     return (
       <>
         <PageHeader title="Settings" subtitle="Where to find your projects, and where to keep the backups." />
-        <div className="card" style={{ borderColor: "var(--danger)" }}>
+        <div className="card">
           <strong style={{ color: "var(--danger)" }}>Couldn't reach the backup service.</strong>
           <p className="sub" style={{ margin: "8px 0 14px" }}>Settings weren't loaded — saving is disabled so your stored config isn't overwritten.</p>
           <Button variant="ghost" onClick={load}>Retry</Button>
@@ -157,125 +163,115 @@ export function Sources() {
   }
 
   return (
-    <>
+    <div className="settings">
       <PageHeader
         title="Settings"
         subtitle="Where to find your projects, and where to keep the backups."
-        actions={<Button onClick={save} disabled={!loaded}>{saved ? "Saved ✓" : "Save settings"}</Button>}
+        actions={<>
+          {saved && <span className="pill pill--ok">Saved</span>}
+          <Button onClick={save} disabled={!loaded}>Save settings</Button>
+        </>}
       />
 
-      {saveError && <div className="card" style={{ borderColor: "var(--danger)", color: "var(--danger)", marginBottom: 16 }}>{saveError}</div>}
+      {saveError && <div className="banner banner--warn"><Icon name="alert" className="banner__icon" />{saveError}</div>}
 
       {!beta && <PlanCard />}
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-          <h2 style={{ margin: 0 }}>Source folders</h2>
-          <Button variant="ghost" onClick={addSource} disabled={!loaded}>+ Add folder</Button>
-        </div>
-        {cfg.sources.length === 0 && <p className="sub" style={{ margin: 0 }}>{loaded ? "No folders yet." : "Loading…"}</p>}
-        {cfg.sources.map((s) => (
-          <div key={s} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", gap: 12 }}>
-            <span style={{ color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s}</span>
-            <button className="linkbtn" onClick={() => removeSource(s)} style={{ color: "var(--danger)", flexShrink: 0 }}>remove</button>
-          </div>
-        ))}
-      </div>
-
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-          <h2 style={{ margin: 0, display: "flex", alignItems: "center" }}>Sample libraries
-            <Info text="When a project is missing samples, the finder searches these folders (plus your source folders) for a file of the same name and relinks it. Point it at wherever your samples live — Splice, a packs drive, an old project archive. Splice's default folder is found automatically." /></h2>
-          <Button variant="ghost" onClick={addLibrary} disabled={!loaded}>+ Add a sample folder</Button>
-        </div>
-        <p className="sub" style={{ margin: "4px 0 10px", fontSize: 12.5 }}>
-          Where your samples live, so missing ones can be found and relinked. Your <code>~/Splice</code> folder is searched automatically — add others here.
-        </p>
-        {libraries.length === 0
-          ? <p className="sub" style={{ margin: 0 }}>{loaded ? "No extra folders — Splice is still searched automatically." : "Loading…"}</p>
-          : libraries.map((l) => (
-            <div key={l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", gap: 12 }}>
-              <span style={{ color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🎚 {l}</span>
-              <button className="linkbtn" onClick={() => removeLibrary(l)} style={{ color: "var(--danger)", flexShrink: 0 }}>remove</button>
-            </div>
+      <SetGroup n="01" title="How it looks" />
+      <SetRow title="Look" help="How the app is laid out. Switch any time; nothing else changes.">
+        <div className="lookpick" role="group" aria-label="Look">
+          {([["crate", "Crate", "Rows like a DJ library, with waveforms and genre stripes"],
+             ["sleeve", "Sleeve", "Cover art first, like an album shelf"]] as const).map(([k, name, what]) => (
+            <button key={k} type="button" className="lookpick__opt" aria-pressed={look === k} onClick={() => setLook(k)}>
+              <LookThumb kind={k} />
+              <span><strong style={{ fontWeight: 600 }}>{name}</strong><br /><small>{what}</small></span>
+            </button>
           ))}
-      </div>
+        </div>
+      </SetRow>
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <h2 style={{ display: "flex", alignItems: "center" }}>Backup destination
-          <Info text="A folder on your own NAS or drive where backups are kept. No cloud, no subscription — you own every copy." /></h2>
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <input readOnly value={cfg.dest} placeholder="No destination set"
-            style={{ flex: 1, background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text)", padding: "10px 12px", borderRadius: 8 }} />
-          <Button variant="ghost" onClick={pickDest} disabled={!loaded}>Choose…</Button>
-        </div>
-        <div className="sub" style={{ margin: "8px 0 0", fontSize: 12 }}>
-          <span style={{ color: cfg.dest ? "var(--accent-2)" : "var(--text-dim)" }}>●</span>{" "}
-          {cfg.dest ? "Destination set" : "Pick a mounted NAS folder, external drive, or any folder"}
-        </div>
-      </div>
+      <SetGroup n="02" title="Your music" />
+      <SetRow title="Project folders" help="Backups looks in these folders for your projects.">
+        <FolderTable paths={cfg.sources} loaded={loaded} empty="No folders yet." onRemove={removeSource} />
+        <Button variant="ghost" size="sm" onClick={addSource} disabled={!loaded}><Icon name="plus" size={14} />Add folder</Button>
+      </SetRow>
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-          <h2 style={{ margin: 0, display: "flex", alignItems: "center" }}>Cloud &amp; offsite backup
-            {!canCloud && <ProBadge label="STUDIO" />}
-            <Info text="Also copy every backup to a second place — a cloud-synced folder (Dropbox, Google Drive, iCloud, OneDrive) or another drive. If your NAS dies or the studio floods, the work survives. That's the offsite '1' in 3-2-1." /></h2>
-          {canCloud && <Button variant="ghost" onClick={addMirror} disabled={!loaded}>+ Add destination</Button>}
+      <SetRow title="Sample folders"
+        help={<>Where your samples live, so missing ones can be found and relinked. Your <code>~/Splice</code> folder is always searched.</>}
+        info="When a project is missing samples, the finder searches these folders (plus your project folders) for a file of the same name and relinks it. Point it at wherever your samples live: Splice, a packs drive, an old project archive.">
+        <FolderTable paths={libraries} loaded={loaded} empty="No extra folders. Splice is still searched." onRemove={removeLibrary} />
+        <Button variant="ghost" size="sm" onClick={addLibrary} disabled={!loaded}><Icon name="plus" size={14} />Add a sample folder</Button>
+      </SetRow>
+
+      <SetGroup n="03" title="Where backups go" />
+      <SetRow title="Backup drive" help="The folder on your own drive or NAS where backups are kept. You own every copy.">
+        <div className="drive">
+          <Icon name="disc" size={22} className="drive__icon" />
+          <div className="drive__main">
+            <span className="mono col-trunc drive__path" title={cfg.dest}>{cfg.dest || "No folder chosen yet"}</span>
+            {ov && ov.nas.total_bytes > 0 ? (
+              <>
+                <div className="drive__bar" aria-hidden>
+                  <span className="drive__other" style={{ width: `${pct(ov.nas.total_bytes - ov.nas.free_bytes - ov.actual_size, ov.nas.total_bytes)}%` }} />
+                  <span className="drive__ours" style={{ width: `${pct(ov.actual_size, ov.nas.total_bytes)}%` }} />
+                </div>
+                <span className="faint drive__nums">
+                  <span className="drive__key" />Backups {fmtSize(ov.actual_size)} · {fmtSize(ov.nas.free_bytes)} free of {fmtSize(ov.nas.total_bytes)}
+                </span>
+              </>
+            ) : (
+              <span className="faint drive__nums">{cfg.dest ? (ov && !ov.nas.reachable ? "Can't reach this folder right now" : "Folder set") : "Pick a NAS folder, external drive, or any folder"}</span>
+            )}
+          </div>
+          <Button variant="ghost" onClick={pickDest} disabled={!loaded}>{cfg.dest ? "Change…" : "Choose…"}</Button>
         </div>
+      </SetRow>
+
+      <SetRow title={<>Second copy{!canCloud && <ProBadge label="STUDIO" />}</>}
+        help="Every backup is also copied here, such as a Dropbox, Google Drive or iCloud folder, so the work survives if the drive dies."
+        info="Also copy every backup to a second place: a cloud-synced folder (Dropbox, Google Drive, iCloud, OneDrive) or another drive. That's the offsite copy in the 3-2-1 rule.">
         {canCloud ? (
           <>
-            <p className="sub" style={{ margin: "4px 0 10px", fontSize: 12.5 }}>
-              Every backup is also copied to each of these. Point one at a Dropbox / Google Drive / iCloud folder for true offsite protection — it stays your own cloud account.
-            </p>
-            {mirrors.length === 0 && <p className="sub" style={{ margin: 0 }}>No offsite destinations yet.</p>}
-            {mirrors.map((m) => (
-              <div key={m} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", gap: 12 }}>
-                <span style={{ color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>☁ {m}</span>
-                <button className="linkbtn" onClick={() => removeMirror(m)} style={{ color: "var(--danger)", flexShrink: 0 }}>remove</button>
-              </div>
-            ))}
-            <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
-              <div className="sub" style={{ margin: "0 0 7px", fontSize: 12 }}>Connect a cloud account — sign in once, backups copy automatically</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {providers.map((p) => (
-                  <Button key={p.key} variant="ghost" onClick={() => connectCloud(p.key, p.label)}
-                    disabled={!rclone.available || connecting !== null}>
-                    {connecting === p.key ? `Waiting for ${p.label} sign-in…` : `Connect ${p.label}`}
-                  </Button>
-                ))}
-              </div>
-              {connectMsg && <div className="sub" style={{ color: "var(--accent-2)", marginTop: 7, fontSize: 12 }}>{connectMsg}</div>}
-              {connectErr && <div className="sub" style={{ color: "var(--danger)", marginTop: 7, fontSize: 12 }}>{connectErr}</div>}
+            <FolderTable paths={mirrors} loaded={loaded} empty="No second copy yet." onRemove={removeMirror} icon="link" />
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Button variant="ghost" size="sm" onClick={addMirror} disabled={!loaded}><Icon name="plus" size={14} />Add a folder</Button>
+              {providers.map((p) => (
+                <Button key={p.key} variant="ghost" size="sm" onClick={() => connectCloud(p.key, p.label)}
+                  disabled={!rclone.available || connecting !== null}>
+                  {connecting === p.key ? `Waiting for ${p.label} sign-in…` : `Connect ${p.label}`}
+                </Button>
+              ))}
             </div>
+            {connectMsg && <div className="sub" style={{ color: "var(--accent-2)", margin: 0, fontSize: 12.5 }}>{connectMsg}</div>}
+            {connectErr && <div className="sub" style={{ color: "var(--danger)", margin: 0, fontSize: 12.5 }}>{connectErr}</div>}
             {rclone.available && rclone.remotes.length > 0 && (
-              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
-                <div className="sub" style={{ margin: "0 0 7px", fontSize: 12 }}>Cloud remotes (rclone) — S3, Backblaze B2, Drive, Dropbox…</div>
+              <div>
+                <div className="faint" style={{ margin: "0 0 7px", fontSize: 12.5 }}>Cloud accounts already set up on this {words.computer}</div>
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                   {rclone.remotes.map((r) => (
-                    <button key={r} className="snapchip" onClick={() => addRemote(r)}
-                      disabled={mirrors.includes(`${r}:LazyCreatives-Backups`)}>+ {r}:</button>
+                    <button key={r} className="chip" onClick={() => addRemote(r)}
+                      disabled={mirrors.includes(`${r}:LazyCreatives-Backups`)}>+ {r}</button>
                   ))}
                 </div>
               </div>
             )}
             {!rclone.available && (
-              <div className="sub" style={{ marginTop: 10, fontSize: 11.5 }}>
-                Tip: install <strong style={{ color: "var(--text-dim)" }}>rclone</strong> to back up straight to S3, Backblaze B2, Google Drive, Dropbox &amp; 70+ more — no sync app needed.
+              <div className="faint" style={{ fontSize: 12.5 }}>
+                The cloud sign-in buttons need the free <strong style={{ color: "var(--text-dim)" }}>rclone</strong> tool. Adding a synced folder works without it.
               </div>
             )}
           </>
         ) : (
-          <div className="locked-note" style={{ marginTop: 6 }}>
-            🔒 Mirror every backup to your cloud (Dropbox, Drive, iCloud…) or a second drive for offsite <strong style={{ color: "var(--text)" }}>3-2-1</strong> protection — a <strong style={{ color: "var(--text)" }}>Studio</strong> feature.
+          <div className="locked-note">
+            <Icon name="lock" size={14} /> Copy every backup to your cloud or a second drive. A <strong style={{ color: "var(--text)" }}>Studio</strong> feature.
           </div>
         )}
-      </div>
+      </SetRow>
 
-      <div className="card">
-        <h2 style={{ display: "flex", alignItems: "center" }}>Automatic backup
-          {!canSchedule && <ProBadge />}
-          <Info text={`Leave the app running (it lives in your ${words.tray}) and it backs up on this schedule on its own — set it and forget it.`} /></h2>
-        <div className={`seg${canSchedule ? "" : " locked"}`} role="group" style={{ marginTop: 10, flexWrap: "wrap" }}>
+      <SetGroup n="04" title="When it runs" />
+      <SetRow title={<>Automatic backup{!canSchedule && <ProBadge />}</>}
+        help={`Leave the app running (it lives in your ${words.tray}) and it backs up on its own.`}>
+        <div className={`seg${canSchedule ? "" : " locked"}`} role="group" style={{ flexWrap: "wrap", alignSelf: "flex-start" }}>
           {PRESETS.map((p) => (
             <button key={p.min} disabled={!loaded || !canSchedule}
               className={`seg__opt${cfg.interval_minutes === p.min ? " seg__opt--on" : ""}`}
@@ -283,34 +279,93 @@ export function Sources() {
           ))}
         </div>
         {canSchedule ? (
-          <div className="sub" style={{ margin: "11px 0 0", fontSize: 12.5 }}>
-            {cfg.interval_minutes > 0 ? (
-              <span style={{ color: "var(--accent-2)" }}>
-                ✓ On — backs up {fmtInterval(cfg.interval_minutes)}
-                {nextRun ? ` · next ${fmtClock(nextRun)}` : ""}. Keep the app running ({words.tray}).
-              </span>
-            ) : "Off — you'll back up manually whenever you like."}
-          </div>
+          cfg.interval_minutes > 0
+            ? <span className="pill pill--ok">On, backs up {fmtInterval(cfg.interval_minutes)}{nextRun ? `, next ${fmtClock(nextRun)}` : ""}</span>
+            : <span className="pill pill--skipped">Off, you back up when you choose</span>
         ) : (
-          <div className="locked-note">🔒 Automatic backups are a <strong style={{ color: "var(--text)" }}>Pro</strong> feature. Back up manually any time — or unlock Pro above.</div>
+          <div className="locked-note"><Icon name="lock" size={14} /> Automatic backups are a <strong style={{ color: "var(--text)" }}>Pro</strong> feature.</div>
         )}
-      </div>
+      </SetRow>
 
       {openAtLogin !== null && (
-        <div className="card" style={{ marginTop: 16 }}>
-          <h2 style={{ display: "flex", alignItems: "center" }}>Start with your {words.computer}
-            <Info text={`Opens the app when you log in, so automatic backups keep running without you remembering to open it. You can also change this in your ${words.computer}'s own settings.`} /></h2>
-          <div className="seg" role="group" style={{ marginTop: 10 }}>
+        <SetRow title={`Start with your ${words.computer}`}
+          help="Opens Backups when you log in, so automatic backups keep running.">
+          <div className="seg" role="group" style={{ alignSelf: "flex-start" }}>
             <button className={`seg__opt${openAtLogin ? " seg__opt--on" : ""}`} onClick={() => toggleOpenAtLogin(true)}>On</button>
             <button className={`seg__opt${!openAtLogin ? " seg__opt--on" : ""}`} onClick={() => toggleOpenAtLogin(false)}>Off</button>
           </div>
-          <div className="sub" style={{ margin: "11px 0 0", fontSize: 12.5 }}>
-            {openAtLogin
-              ? <span style={{ color: "var(--accent-2)" }}>✓ On — the app opens when you log in.</span>
-              : `Off — open the app yourself when you want it.${cfg.interval_minutes > 0 ? " Automatic backups only run while it's open." : ""}`}
-          </div>
-        </div>
+          {!openAtLogin && cfg.interval_minutes > 0 &&
+            <span className="faint" style={{ fontSize: 12.5 }}>Automatic backups only run while the app is open.</span>}
+        </SetRow>
       )}
-    </>
+    </div>
+  );
+}
+
+// A heading over a few settings rows. Crate: a numbered strip like a DJ app's
+// preferences. Sleeve: a big poster-style title.
+function SetGroup({ n, title }: { n: string; title: string }) {
+  return (
+    <h2 className="set-group">
+      <span className="set-group__n mono">{n}</span>
+      <span className="set-group__title">{title}</span>
+    </h2>
+  );
+}
+
+const pct = (v: number, of: number) => Math.max(0, Math.min(100, of > 0 ? (v / of) * 100 : 0));
+
+// One settings section: its name and a short line on the left, its controls on the right.
+function SetRow({ title, help, info, children }: { title: ReactNode; help?: ReactNode; info?: string; children: ReactNode }) {
+  return (
+    <section className="set-row">
+      <div className="set-row__label">
+        <h2>{title}{info && <Info text={info} />}</h2>
+        {help && <p>{help}</p>}
+      </div>
+      <div className="set-row__body">{children}</div>
+    </section>
+  );
+}
+
+// Folders as one fixed-column list, the same in every section.
+function FolderTable({ paths, loaded, empty, onRemove, icon = "folder" }: {
+  paths: string[]; loaded: boolean; empty: string; onRemove: (p: string) => void; icon?: IconName;
+}) {
+  if (paths.length === 0) return <p className="faint" style={{ margin: 0, fontSize: 13 }}>{loaded ? empty : "Loading…"}</p>;
+  return (
+    <div className="table folder-cols">
+      {paths.map((p) => (
+        <div key={p} className="row cols">
+          <Icon name={icon} size={15} className="faint" />
+          <span className="mono col-trunc" style={{ fontSize: 12.5, color: "var(--text-dim)" }} title={p}>{p}</span>
+          <span className="col-act"><Button variant="quiet" size="sm" onClick={() => onRemove(p)}>Remove</Button></span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// A tiny drawing of each look for the switch.
+function LookThumb({ kind }: { kind: "crate" | "sleeve" }) {
+  const demo = [["Grime riddim 140", "Grime"], ["DNB roller", "DnB"], ["Garage sunday", "UK garage"], ["Lo-fi rain", "Lo-fi"]];
+  if (kind === "sleeve") {
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
+        {demo.map(([n, g]) => <Cover key={n} name={n} genre={g} label={false} className="lookpick__cover" />)}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "grid", gap: 3 }}>
+      {demo.slice(0, 3).map(([n, g], i) => (
+        <div key={n} style={{ display: "grid", gridTemplateColumns: "3px 14px 1fr", gap: 6, alignItems: "center",
+          height: 16, background: i % 2 ? "#111316" : "transparent" }}>
+          <span style={{ background: genreColor(g), alignSelf: "stretch" }} />
+          <Cover name={n} genre={g} size={14} label={false} />
+          <span style={{ height: 4, borderRadius: 2, background: genreColor(g), opacity: 0.6, width: `${60 + i * 12}%` }} />
+        </div>
+      ))}
+    </div>
   );
 }

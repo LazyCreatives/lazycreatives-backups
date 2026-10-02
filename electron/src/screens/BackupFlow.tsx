@@ -7,9 +7,9 @@ import type { ScanProgress, BackupProgress } from "../useProgress";
 import type { ProjectSummary } from "../types";
 
 const STEPS: { id: FlowStep; label: string }[] = [
-  { id: "scan", label: "Scan" },
-  { id: "review", label: "Review" },
-  { id: "progress", label: "Run" },
+  { id: "scan", label: "Pick" },
+  { id: "review", label: "Check" },
+  { id: "progress", label: "Back up" },
 ];
 const order = (s: FlowStep) => STEPS.findIndex((x) => x.id === s);
 

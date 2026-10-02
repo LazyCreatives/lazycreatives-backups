@@ -6,11 +6,15 @@ function createTray({ onShow, onQuit }) {
   const icon = nativeImage.createFromPath(path.join(__dirname, "..", "build", "tray.png"));
   const tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
   tray.setToolTip("LazyCreatives Backups");
-  tray.setContextMenu(Menu.buildFromTemplate([
+  // updateItem: "Restart to update…" / "Download version…" once the updater finds one.
+  const build = (updateItem) => tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Show", click: onShow },
+    ...(updateItem ? [updateItem] : []),
     { type: "separator" },
     { label: "Quit", click: onQuit },
   ]));
+  build(null);
+  tray.setUpdateItem = build;
   tray.on("click", onShow);
   return tray;
 }

@@ -10,8 +10,11 @@ import { PageHeader } from "../components/PageHeader";
 import { ProgressBar } from "../components/ProgressBar";
 import { ProBadge } from "../components/ProBadge";
 import { useEntitlement } from "../entitlement";
-import { fmtSize } from "../format";
-import { DawBadge } from "../components/DawBadge";
+import { fmtSize, dawLabel } from "../format";
+import { Cover } from "../components/Cover";
+import { Icon } from "../components/Icon";
+import { coverColor, useLook } from "../look";
+import { useGenres } from "../useGenres";
 
 const api = makeApi();
 type SortKey = "name" | "recent" | "size" | "issues";
@@ -34,6 +37,8 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
   const [hideAutosaves, setHideAutosaves] = useState(true);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const known = useRef<Set<string> | null>(null);
+  const [look] = useLook();
+  const genreOf = useGenres(projects);
   const { allows } = useEntitlement();
   const canRelink = allows("auto_relink");
 
@@ -42,10 +47,12 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
   useEffect(() => {
     if (!projects) return;
     const current = projects.map((p) => p.als_path);
+    // Read `known` now: the updater may run after it is replaced below.
+    const before = known.current;
     setSelected((prev) => {
-      if (known.current === null) return new Set(current);
+      if (before === null) return new Set(current);
       const next = new Set<string>();
-      for (const a of current) if (!known.current.has(a) || prev.has(a)) next.add(a);
+      for (const a of current) if (!before.has(a) || prev.has(a)) next.add(a);
       return next;
     });
     known.current = new Set(current);
@@ -77,10 +84,15 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
     if (!groupByFolder) return [{ key: "__all__", dir: "", label: "", items: visible }];
     const map = new Map<string, ProjectSummary[]>();
     for (const p of visible) (map.get(p.project_dir) ?? map.set(p.project_dir, []).get(p.project_dir)!).push(p);
-    return Array.from(map.entries()).map(([dir, items]) => ({
-      key: dir, dir, items,
-      label: (dir.split(/[/\\]/).pop() || dir).replace(/ Project$/i, ""),
-    }));
+    const multi: { key: string; dir: string; label: string; items: ProjectSummary[] }[] = [];
+    const singles: ProjectSummary[] = [];
+    for (const [dir, items] of map.entries()) {
+      if (items.length > 1) multi.push({ key: dir, dir, items, label: (dir.split(/[/\\]/).pop() || dir).replace(/ Project$/i, "") });
+      else singles.push(...items);
+    }
+    // A folder holding one project needs no heading of its own: those are listed together.
+    if (singles.length) multi.push({ key: "__singles__", dir: "", label: multi.length ? "Other projects" : "", items: singles });
+    return multi;
   }, [visible, groupByFolder]);
 
   const hiddenCount = (projects?.length ?? 0) - visible.length;
@@ -107,6 +119,7 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
     const chosen = (projects ?? []).filter((p) => selected.has(p.als_path));
     return {
       als_paths: chosen.map((p) => p.als_path),
+      names: chosen.map((p) => p.name),
       count: chosen.length,
       size: chosen.reduce((a, p) => a + p.total_size, 0),
       findMissing,
@@ -119,8 +132,8 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
   return (
     <>
       <PageHeader
-        title="Scan & Back up"
-        subtitle="Find your projects, pick which to protect, then review and back them up."
+        title="Pick what to back up"
+        subtitle="Untick anything you don't want in this backup."
         actions={
           <>
             <Button variant="ghost" onClick={runScan} disabled={scanning}>
@@ -190,54 +203,84 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
 
           {/* groups */}
           {groups.map((g) => {
-            const open = !collapsed.has(g.key);
+            const open = !collapsed.has(g.key) || !g.label;
             const groupSel = g.items.filter((p) => selected.has(p.als_path)).length;
             const allSel = g.items.length > 0 && groupSel === g.items.length;
             const groupSize = g.items.reduce((a, p) => a + p.total_size, 0);
             return (
-              <div key={g.key} style={{ marginBottom: groupByFolder ? 6 : 0 }}>
-                {groupByFolder && (
-                  <div className="foldergroup__head">
-                    <input type="checkbox" checked={allSel} ref={(el) => { if (el) el.indeterminate = groupSel > 0 && !allSel; }}
-                      onChange={() => setMany(g.items, !allSel)} onClick={(e) => e.stopPropagation()} />
-                    <button className="foldergroup__title" onClick={() => toggleCollapse(g.key)}>
-                      {open ? "▾" : "▸"} 📁 {g.label}
-                      <span className="sub mono" style={{ margin: 0 }}>{g.items.length} · {fmtSize(groupSize)}</span>
+              <section key={g.key} className="pickgroup">
+                {groupByFolder && g.label && (
+                  <div className="pickgroup__head">
+                    <input type="checkbox" checked={allSel} aria-label={`Pick everything in ${g.label}`}
+                      ref={(el) => { if (el) el.indeterminate = groupSel > 0 && !allSel; }}
+                      onChange={() => setMany(g.items, !allSel)} />
+                    <button className="pickgroup__title" onClick={() => toggleCollapse(g.key)} aria-expanded={open}>
+                      <span className="pickgroup__caret">{open ? "▾" : "▸"}</span>
+                      {g.key !== "__singles__" && <Icon name="folder" size={14} />}<span className="col-trunc">{g.label}</span>
                     </button>
+                    <span className="faint mono">{g.items.length} · {fmtSize(groupSize)}</span>
                   </div>
                 )}
-                {open && g.items.map((p, i) => {
-                  const isSel = selected.has(p.als_path);
-                  const isOpen = expanded.has(p.als_path);
-                  return (
-                    <div key={p.als_path} className="row cols scan-cols scanrow--enter"
-                      style={{ "--i": Math.min(i, 14), alignItems: "flex-start", opacity: isSel ? 1 : 0.5, marginLeft: groupByFolder ? 18 : 0 } as CSSProperties}>
-                      <input type="checkbox" checked={isSel} onChange={() => toggle(p.als_path)} style={{ marginTop: 3 }} />
-                      <div>
-                        <strong style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <DawBadge daw={p.daw} /><span className="col-trunc">{p.name}</span>
-                        </strong>
-                        {!groupByFolder && <div className="sub" style={{ margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.project_dir}</div>}
-                        {p.relinked_count > 0 && <div style={{ marginTop: 5, color: "var(--accent-2)", fontSize: 12 }}>✓ {p.relinked_count} auto-found in your library</div>}
-                        {p.missing_count > 0 && (
-                          <div style={{ marginTop: 6 }}>
-                            <button className="linkbtn badge-warn" onClick={() => toggleExpand(p.als_path)}>
-                              ⚠ {p.missing_count} missing sample{p.missing_count === 1 ? "" : "s"} {isOpen ? "▲" : "▼"}
-                            </button>
-                            {isOpen && (
-                              <ul style={{ color: "var(--warn)", margin: "6px 0 0", paddingLeft: 18, fontSize: 12 }}>
-                                {p.missing.map((m) => <li key={m}>{m}</li>)}
-                              </ul>
-                            )}
+                {open && look === "sleeve" && (
+                  <div className="sleeves pick-sleeves">
+                    {g.items.map((p) => {
+                      const isSel = selected.has(p.als_path);
+                      return (
+                        <div key={p.als_path} className={`sleeve pick${isSel ? " pick--on" : ""}`} role="checkbox" aria-checked={isSel}
+                          tabIndex={0} onClick={() => toggle(p.als_path)}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(p.als_path); } }}>
+                          <div className="sleeve__art">
+                            <Cover name={p.name} genre={genreOf(p.name, p.als_path)} />
+                            <span className="pick__tick" aria-hidden>{isSel && <Icon name="check" size={14} />}</span>
+                            {p.missing_count > 0 && <span className="sleeve__badge pick__warn">{p.missing_count} missing</span>}
                           </div>
-                        )}
-                      </div>
-                      <span className="sub col-num" style={{ margin: 0, paddingTop: 2 }}>{p.present_count} sample{p.present_count === 1 ? "" : "s"}</span>
-                      <span className="sub col-num" style={{ margin: 0, paddingTop: 2 }}>{fmtSize(p.total_size)}</span>
-                    </div>
-                  );
-                })}
-              </div>
+                          <div className="sleeve__meta">
+                            <span className="sleeve__name">{p.name}</span>
+                            <span className="sleeve__sub">{dawLabel(p.daw)} · {p.present_count} sample{p.present_count === 1 ? "" : "s"} · {fmtSize(p.total_size)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {open && look === "crate" && (
+                  <div className="table table--crate">
+                    {g.items.map((p, i) => {
+                      const isSel = selected.has(p.als_path);
+                      const isOpen = expanded.has(p.als_path);
+                      return (
+                        <div key={p.als_path} className={`pickrow scanrow--enter${isSel ? "" : " pickrow--off"}`} style={{ "--i": Math.min(i, 14) } as CSSProperties}>
+                          <label className="row cols pick-cols">
+                            <span className="stripe" style={{ background: coverColor(genreOf(p.name, p.als_path), p.name) }} />
+                            <input type="checkbox" checked={isSel} onChange={() => toggle(p.als_path)} />
+                            <Cover name={p.name} genre={genreOf(p.name, p.als_path)} size={36} label={false} />
+                            <div style={{ minWidth: 0 }}>
+                              <div className="lib-name">{p.name}</div>
+                              <div className="lib-sub">{groupByFolder ? dawLabel(p.daw) : p.project_dir}</div>
+                            </div>
+                            <span className="col-num faint">{p.present_count} sample{p.present_count === 1 ? "" : "s"}</span>
+                            <span>
+                              {p.missing_count > 0
+                                ? <button type="button" className="fact-chip fact-chip--warn chipbtn" onClick={(e) => { e.preventDefault(); toggleExpand(p.als_path); }}>
+                                    {p.missing_count} missing {isOpen ? "▴" : "▾"}
+                                  </button>
+                                : p.relinked_count > 0
+                                ? <span className="fact-chip fact-chip--ok">{p.relinked_count} found</span>
+                                : <span className="faint">All there</span>}
+                            </span>
+                            <span className="col-num mono">{fmtSize(p.total_size)}</span>
+                          </label>
+                          {isOpen && (
+                            <ul className="pickrow__missing">
+                              {p.missing.map((m) => <li key={m} className="mono">{m}</li>)}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
             );
           })}
           {visible.length === 0 && <p className="sub">No projects match “{query}”.</p>}

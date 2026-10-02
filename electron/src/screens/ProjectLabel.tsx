@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { makeApi } from "../api";
 import type { LibraryItem, Snapshot, SnapshotDiff } from "../types";
 import { Button } from "../components/Button";
+import { Icon } from "../components/Icon";
 import { fmtSize, dawLabel } from "../format";
 import { parseStamp } from "./Crate/types";
+import { Cover } from "../components/Cover";
+import { PlayButton, SongWave } from "../components/Player";
+import { coverColor, useLook } from "../look";
 import "../label.css";
 
 const api = makeApi();
 
-// Label view (HANDOFF §6.7): the project rendered as a record, its vitals on the
-// center label, a 3-sentence honest overview, facts grid, and a change timeline
-// built by diffing each backup against the previous. Numbers are real, never vague.
+// Numbers on the project page are real, never vague.
 
 const fmtD = (ms: number) =>
   ms ? new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
@@ -35,8 +37,12 @@ function Delta({ added, changed, removed }: { added: number; changed: number; re
   );
 }
 
-export function ProjectLabel({ item, onOpenInDaw, onReveal }: {
-  item: LibraryItem; onOpenInDaw: () => void; onReveal: () => void;
+export interface ProjectTab { key: string; label: string; count?: number; content: ReactNode; }
+
+// The project page: a header with what it is and how it stands, tabs for its songs,
+// backups, missing samples and history, and a column of plain facts on the right.
+export function ProjectLabel({ item, onOpenInDaw, onReveal, tabs, actions }: {
+  item: LibraryItem; onOpenInDaw: () => void; onReveal: () => void; tabs: ProjectTab[]; actions?: ReactNode;
 }) {
   const [snaps, setSnaps] = useState<Snapshot[]>([]);
   const [diffs, setDiffs] = useState<Record<number, SnapshotDiff>>({});
@@ -78,7 +84,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal }: {
         evs.push({
           kind: "attention", when,
           what: `${s.missing.length} sample${s.missing.length === 1 ? "" : "s"} couldn't be found at backup time`,
-          delta: <>{s.missing.slice(0, 2).map((m) => m.split("/").pop()).join(", ")}{s.missing.length > 2 ? ` +${s.missing.length - 2} more` : ""} — the backup still notes them</>,
+          delta: <>{s.missing.slice(0, 2).map((m) => m.split("/").pop()).join(", ")}{s.missing.length > 2 ? ` and ${s.missing.length - 2} more` : ""}</>,
         });
       }
       const d = diffs[s.id];
@@ -86,7 +92,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal }: {
       evs.push({
         kind: s.verified ? "verified" : changed ? "change" : "verified",
         when,
-        what: `Backup #${num}${s.verified ? " — verified" : ""}`,
+        what: `Backup ${num}${s.verified ? ", checked" : ""}`,
         delta: changed
           ? <Delta added={d!.added.length} changed={d!.changed.length} removed={d!.removed.length} />
           : d?.available && !d.is_first
@@ -97,7 +103,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal }: {
     if (first) {
       evs.push({
         kind: "created", when: parseStamp(first.timestamp),
-        what: `First backed up — the record starts here`,
+        what: `First backed up`,
         delta: <>{first.file_count} file{first.file_count === 1 ? "" : "s"} · {fmtSize(first.total_size)}</>,
       });
     }
@@ -109,7 +115,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal }: {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([text], { type }));
     a.download = name; a.click(); URL.revokeObjectURL(a.href);
-    setToast("✓ label data exported");
+    setToast("Saved");
     setTimeout(() => setToast(null), 2600);
   }
   const labelData = () => ({
@@ -155,97 +161,15 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal }: {
     download(`${cat}-liner-notes.txt`, L.join("\n"), "text/plain");
   }
 
-  // overview: the three sentences you actually need (real numbers, never vague)
-  const months = created ? Math.max(0, Math.round((Date.now() - created) / 864e5 / 30.4)) : 0;
-  // only claim growth when the human-readable sizes actually differ
-  const grown = first && latest && snaps.length > 1 && fmtSize(first.total_size) !== fmtSize(latest.total_size);
-
-  return (
-    <>
-      <div className="label-top">
-        <section className="record-side glass">
-          <div className="lvinyl">
-            <div className="sheen" />
-            <div className="vlabel-disc">
-              {/* top half: brand + name; the hole sits dead centre; bottom half: catalogue + speed */}
-              <div className="vl-top">
-                <span className="lc mono">LAZY CREATIVES</span>
-                <h2 className={item.name.length > 18 ? "vl-name vl-name--long" : "vl-name"} title={item.name}>{item.name}</h2>
-              </div>
-              <span className="hole" />
-              <div className="vl-bottom">
-                <span className="cat mono">{cat} · {crate.toUpperCase()}</span>
-                <span className="rpm mono">33⅓ · est. {estYear}</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="info-side glass">
-          <div className="info-head">
-            <div style={{ minWidth: 0 }}>
-              <h1>{item.name}</h1>
-              <div className="lstate mono">
-                {warn > 0
-                  ? <><span className="at">⚠ {warn} sample{warn === 1 ? "" : "s"} need{warn === 1 ? "s" : ""} a look</span>{item.backed_up && <> · <span className="ok">backup verified &amp; safe</span></>}</>
-                  : item.backed_up
-                  ? <span className="ok">✓ backed up &amp; verified — it opens</span>
-                  : <span>not backed up yet</span>}
-              </div>
-            </div>
-            <div className="label-actions">
-              <Button size="sm" variant="ghost" onClick={onOpenInDaw}>▶ Open project</Button>
-              <Button size="sm" variant="ghost" onClick={onReveal}>Reveal</Button>
-              <Button size="sm" variant="ghost" onClick={exportLiner}>Liner notes .txt</Button>
-              <button className="btn-blue" onClick={exportLabel}>Export label data</button>
-            </div>
-          </div>
-
-          <div className="lsummary">
-            <strong>{item.name}</strong> is a {crate === "Untagged" ? "" : `${crate.toLowerCase()} `}project
-            {created ? <>, first on record {fmtD(created)}{months > 1 ? ` — about ${months} months in the making` : ""}</> : null}.{" "}
-            {grown
-              ? <>It's grown from {fmtSize(first!.total_size)} to {fmtSize(latest!.total_size)} across {item.snapshot_count} backups.{" "}</>
-              : item.backed_up
-              ? <>It holds {fmtSize(item.size)} across {item.snapshot_count} backup{item.snapshot_count === 1 ? "" : "s"}.{" "}</>
-              : <>It takes {fmtSize(item.size)} on disk and has no backups yet.{" "}</>}
-            {warn > 0
-              ? <>One thing to know: <strong>{warn} sample{warn === 1 ? "" : "s"}</strong> couldn't be found at the last scan{item.backed_up ? " — the backup still holds a verified copy" : ""}.</>
-              : item.backed_up
-              ? <>Everything on the drive matches the backup, byte for byte.</>
-              : <>Back it up once and it's protected.</>}
-            {lastVerifiedSnap && (
-              <span className="mono">✓ last verified {fmtDT(parseStamp(lastVerifiedSnap.timestamp))} · {latest?.file_count ?? 0} files{item.plugins?.length ? ` · ${item.plugins.length} plugin${item.plugins.length === 1 ? "" : "s"}` : ""}</span>
-            )}
-          </div>
-
-          <div className="facts">
-            {([
-              ["First on record", created ? fmtD(created) : "—", ""],
-              ["Crate", crate, ""],
-              ["Size on disk", fmtSize(item.size), ""],
-              ["Files", latest ? String(latest.file_count) : "—", ""],
-              ["Backups", String(item.snapshot_count), ""],
-              ["Last verified", lastVerifiedSnap ? fmtD(parseStamp(lastVerifiedSnap.timestamp)) : "never", lastVerifiedSnap ? "ok" : ""],
-              ["Missing", warn ? `${warn} sample${warn === 1 ? "" : "s"}` : "none", warn ? "at" : "ok"],
-              ["DAW", dawLabel(item.daw), ""],
-              ["Tracks · BPM", `${item.tracks ? item.tracks : "—"} · ${item.bpm ? Math.round(item.bpm) : "—"}`, ""],
-            ] as [string, string, string][]).map(([k, v, c]) => (
-              <div key={k} className="fact"><div className="k">{k}</div><div className={`v mono ${c}`}>{v}</div></div>
-            ))}
-          </div>
-          {!!item.plugins?.length && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
-              {item.plugins.map((pl) => <span key={pl} className="pill" style={{ fontSize: 11 }}>🔌 {pl}</span>)}
-            </div>
-          )}
-        </section>
-      </div>
-
-      {events.length > 0 && (
-        <section className="ltimeline glass">
-          <h2>What changed, and when</h2>
-          <p className="tsub">Every backup is compared to the last one — so the project's whole life is on the record.</p>
+  const [look] = useLook();
+  const [tab, setTab] = useState<string>("");
+  useEffect(() => setTab(""), [item.project_id]);
+  const allTabs: ProjectTab[] = [
+    ...tabs,
+    { key: "history", label: "History", count: events.length ? snaps.length : undefined, content: (
+      events.length > 0 ? (
+        <>
+          <p className="faint" style={{ margin: "0 0 14px", fontSize: 12.5 }}>Every backup is compared with the one before, so the project's whole life is on the record.</p>
           <ul className="tl">
             {events.map((e, i) => (
               <li key={i} className={e.kind}>
@@ -255,8 +179,143 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal }: {
               </li>
             ))}
           </ul>
-        </section>
+        </>
+      ) : <div className="empty"><div className="empty__title">No history yet</div>Back the project up and its story starts here.</div>
+    ) },
+  ];
+  const active = allTabs.find((t) => t.key === tab) ?? allTabs[0];
+  const meta = [crate !== "Untagged" ? crate : "", item.bpm ? `${Math.round(item.bpm)} BPM` : "",
+    item.tracks ? `${item.tracks} tracks` : "", dawLabel(item.daw)].filter(Boolean).join(" · ");
+  const facts: [string, ReactNode, string?][] = [
+    ["Made in", dawLabel(item.daw)],
+    ...(item.bpm || item.tracks ? [["Tempo · tracks",
+      [item.bpm ? `${Math.round(item.bpm)} BPM` : "", item.tracks ? `${item.tracks} tracks` : ""].filter(Boolean).join(" · ")] as [string, string]] : []),
+    ["Size on disk", `${fmtSize(item.size)}${latest ? ` · ${latest.file_count} files` : ""}`],
+    ["First on record", created ? fmtD(created) : "—"],
+    ["Backups", String(item.snapshot_count)],
+    ["Last checked", lastVerifiedSnap ? fmtDT(parseStamp(lastVerifiedSnap.timestamp)) : "Never", lastVerifiedSnap ? "" : "faint"],
+    ["Missing samples", warn ? `${warn}` : "None", warn ? "warn" : ""],
+    ["Crate", crate],
+    ["Catalogue no.", cat],
+  ];
+
+  const song = item.latest_export ?? null;
+  const songMeta = { title: song?.name ?? "", project: item.name, genre: item.genre };
+  const tint = coverColor(item.genre, item.name);
+  const statusText = warn > 0 ? <span className="warn-text">{warn} sample{warn === 1 ? "" : "s"} missing</span>
+    : item.backed_up ? <span className="ok-text"><span className="dot dot--ok" /> safe, opens</span>
+    : <span className="faint">not backed up yet</span>;
+  const statusChip = warn > 0 ? <span className="fact-chip fact-chip--warn">{warn} sample{warn === 1 ? "" : "s"} missing</span>
+    : item.backed_up ? <span className="fact-chip fact-chip--ok">● Safe, opens</span>
+    : <span className="fact-chip">Not backed up yet</span>;
+
+  return (
+    <>
+      {look === "sleeve" ? (
+        <header className="proj-hero" style={{ ["--tint" as string]: tint }}>
+          <Cover name={item.name} genre={item.genre} className="proj-hero__cover" />
+          <div className="proj-hero__text">
+            <div className="eyebrow">{[crate !== "Untagged" ? `${crate} project` : "", dawLabel(item.daw)].filter(Boolean).join(" · ")}</div>
+            <h1 className="proj-hero__name col-trunc" title={item.name}>{item.name}</h1>
+            <div className="proj-hero__meta">
+              {[item.bpm ? `${Math.round(item.bpm)} BPM` : "", item.tracks ? `${item.tracks} tracks` : "",
+                created ? `started ${fmtD(created)}` : "", `${item.snapshot_count} backup${item.snapshot_count === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}
+              {" · "}{statusText}
+            </div>
+            <div className="proj-hero__actions">
+              {song && <PlayButton path={song.path} title={song.name} meta={songMeta} size={48} className="playbtn--big" />}
+              <Button variant="primary" onClick={onOpenInDaw}>Open in {dawLabel(item.daw)}</Button>
+              <Button variant="ghost" onClick={onReveal}><Icon name="folder" size={15} />Show in folder</Button>
+              {actions}
+            </div>
+          </div>
+        </header>
+      ) : (
+        <>
+          <header className="deck-head">
+            <Cover name={item.name} genre={item.genre} size={124} />
+            <div style={{ minWidth: 0 }}>
+              <div className="eyebrow deck-head__eyebrow" style={{ color: tint }}>{[crate !== "Untagged" ? `${crate} project` : "", dawLabel(item.daw)].filter(Boolean).join(" · ")}</div>
+              <h1 className="col-trunc" title={item.name}>{item.name}</h1>
+              <div className="fact-chips">
+                {item.bpm ? <span className="fact-chip">{Math.round(item.bpm)} BPM</span> : null}
+                {item.tracks ? <span className="fact-chip">{item.tracks} tracks</span> : null}
+                <span className="fact-chip">{fmtSize(item.size)}</span>
+                <span className="fact-chip">{item.snapshot_count} backup{item.snapshot_count === 1 ? "" : "s"}</span>
+                {statusChip}
+              </div>
+            </div>
+            <div className="page-head__actions">
+              <Button variant="ghost" onClick={onReveal}><Icon name="folder" size={15} />Show in folder</Button>
+              <Button variant="ghost" onClick={onOpenInDaw}>Open in {dawLabel(item.daw)}</Button>
+              {actions}
+            </div>
+          </header>
+          <div className="deck">
+            {song ? (
+              <>
+                <PlayButton path={song.path} title={song.name} meta={songMeta} size={46} className="playbtn--big" />
+                <div style={{ minWidth: 0 }}>
+                  <div className="deck__title"><b className="col-trunc">{song.name}</b><span className="faint">latest song · exported {fmtDT(song.mtime * 1000)}</span></div>
+                  <SongWave path={song.path} meta={songMeta} height={52} />
+                </div>
+              </>
+            ) : (
+              <>
+                <span className="deck__empty-icon"><Icon name="music" size={18} /></span>
+                <div className="faint" style={{ fontSize: 13 }}>No song exported from this project yet. When you export one, its waveform shows up here and you can play it.</div>
+              </>
+            )}
+          </div>
+        </>
       )}
+
+      <div className="proj-grid">
+        <div style={{ minWidth: 0 }}>
+          <div className="tabs" role="tablist">
+            {allTabs.map((t) => (
+              <button key={t.key} role="tab" aria-selected={t === active}
+                className={`tab${t === active ? " tab--on" : ""}`} onClick={() => setTab(t.key)}>
+                {t.label}{t.count != null && <span className="tab__count">{t.count}</span>}
+              </button>
+            ))}
+          </div>
+          <div className="tabpanel" role="tabpanel">{active.content}</div>
+        </div>
+
+        <aside className="proj-aside">
+          {look === "crate" && <div className="lvinyl" aria-hidden>
+            <div className="vlabel-disc" style={{ background: tint }}>
+              <div className="vl-top">
+                <span className="lc mono">LAZY CREATIVES</span>
+                <h2 className={item.name.length > 18 ? "vl-name vl-name--long" : "vl-name"}>{item.name}</h2>
+              </div>
+              <span className="hole" />
+              <div className="vl-bottom">
+                <span className="cat mono">{cat}</span>
+                <span className="rpm mono">est. {estYear}</span>
+              </div>
+            </div>
+          </div>}
+          <dl className="dl">
+            {facts.map(([k, v, c]) => (
+              <div key={k}><dt>{k}</dt><dd className={c === "warn" ? "warn-text" : c === "faint" ? "faint" : ""}>{v}</dd></div>
+            ))}
+          </dl>
+          {!!item.plugins?.length && (
+            <div>
+              <div className="faint" style={{ fontSize: 12.5, marginBottom: 7 }}>Plugins</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {item.plugins.map((pl) => <span key={pl} className="tag">{pl}</span>)}
+              </div>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <Button variant="quiet" size="sm" onClick={exportLiner} title="A plain text page with the project's facts and history">Save liner notes</Button>
+            <Button variant="quiet" size="sm" onClick={exportLabel} title="The same facts as a data file">Save label data</Button>
+          </div>
+        </aside>
+      </div>
 
       <div className={`ltoast${toast ? " ltoast--show" : ""}`} role="status">{toast ?? ""}</div>
     </>

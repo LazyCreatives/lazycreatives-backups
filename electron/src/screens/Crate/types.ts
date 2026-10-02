@@ -1,4 +1,5 @@
 import type { ProjectRow, LibraryItem } from "../../types";
+import { coverColor } from "../../look";
 
 // Crate-digger data contract — a pure projection over the catalog (/api/projects).
 export type Daw = "ableton" | "flstudio" | "reaper" | "dawproject" | "audacity" | "unknown";
@@ -19,6 +20,8 @@ export interface Project {
   verified: boolean;        // proxy: has a backup (refine to snapshot.verified later)
   snapshots: number;
   missing: number;          // samples the last scan couldn't find (crate trust layer)
+  latest?: { path: string; name: string } | null;  // newest song exported from it, if any
+  exports?: number;
 }
 
 export interface CrateGroup {
@@ -29,31 +32,7 @@ export interface CrateGroup {
   count: number;
 }
 
-// Genre tints — keyed to EXACTLY the names genre.py emits — used ONLY as fills/tints
-// behind near-black text (the brand audit confirms near-black on these is AAA). One
-// distinct hue per genre, spread around the wheel so adjacent crates read apart.
-export const GENRE_COLOR: Record<string, string> = {
-  "Lo-fi": "#C9A98E",      // dusty / vintage tape
-  "Boom bap": "#E0A458",   // warm amber
-  "Hip hop": "#F5C451",    // gold
-  "Trap": "#A86CF0",       // purple
-  "Drill": "#7E8CC4",      // indigo steel
-  "Phonk": "#C56BE0",      // magenta
-  "House": "#86B3D3",      // Sloth Blue
-  "Tech house": "#5BB8D6", // cyan-blue
-  "Techno": "#9DB0C0",     // muted blue-grey
-  "Trance": "#8B7BF0",     // violet
-  "UK garage": "#46C7C7",  // teal
-  "Grime": "#C2CF4A",      // lime
-  "Dubstep": "#6BD66A",    // green
-  "DnB": "#F2706E",        // Clip Red
-  "Jungle": "#3FB86B",     // forest green
-  "Hardstyle": "#FF7A45",  // orange-red
-  "Hyperpop": "#F07AD0",   // hot pink
-  "Pop": "#F49AC2",        // bubblegum
-  "Ambient": "#5BD2B0",    // aqua
-  "Unknown": "#677C8B",    // slate grey
-};
+// Genre colours come from look.ts (genreColor), the same ones the rest of the app uses.
 export const SLOTH_BLUE = "#86B3D3";
 
 const DAW_LABEL: Record<Daw, string> = {
@@ -109,5 +88,15 @@ export function toProjectFromLibrary(it: LibraryItem): Project {
     verified: !!it.backed_up,
     snapshots: it.snapshot_count ?? 0,
     missing: it.missing_count ?? 0,
+    latest: it.latest_export ? { path: it.latest_export.path, name: it.latest_export.name } : null,
+    exports: it.export_count ?? 0,
   };
 }
+
+// A record's colour: the same one its drawn cover uses, so a project looks alike everywhere.
+export const genreOf = (p: Project): string | null => (p.genre && p.genre !== "Unknown" ? p.genre : null);
+export const tintOf = (p: Project): string => coverColor(genreOf(p), p.name);
+
+// What a crate is called on screen ("Unknown" crates hold projects with no genre/tempo yet).
+export const crateName = (label: string): string =>
+  label === "Unknown" ? "No genre yet" : label === "Unknown BPM" ? "No tempo yet" : label;

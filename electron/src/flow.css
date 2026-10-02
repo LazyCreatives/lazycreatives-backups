@@ -1,0 +1,112 @@
+/* The step-by-step backup: pick projects, check and start, watch it run. Both looks. */
+
+/* steps along the top: joined by a line, done steps in green */
+.flowbar__steps { gap: 0; }
+.flowstep + .flowstep::before { content: ""; width: 34px; height: 1px; background: var(--border-strong); margin: 0 12px; }
+.flowstep--done + .flowstep::before { background: var(--accent-2); }
+
+.notice { padding: 11px 14px; border: 1px solid; border-radius: 8px; margin-bottom: 16px; font-size: 13.5px; }
+.notice--warn { color: var(--warn); border-color: rgba(231, 176, 74, 0.45); background: rgba(231, 176, 74, 0.06); }
+.notice--danger { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
+.flow-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 18px; border-top: 1px solid var(--border); }
+
+/* ── pick: projects grouped by folder ── */
+.pickgroup { margin-bottom: 14px; }
+.pickgroup__head { display: flex; align-items: center; gap: 10px; padding: 6px 2px 8px; }
+.pickgroup__title {
+  display: inline-flex; align-items: center; gap: 7px; min-width: 0; flex: 1; text-align: left;
+  background: none; border: 0; padding: 0; color: var(--text); font: 600 13.5px var(--font); cursor: pointer;
+}
+.pickgroup__title svg { color: var(--text-faint); flex: none; }
+.pickgroup__caret { color: var(--text-faint); width: 10px; flex: none; }
+.pick-cols { --cols: 4px 16px 36px minmax(0, 1fr) 96px 130px 74px; cursor: pointer; }
+.pickrow + .pickrow > .row { border-top: 1px solid var(--border-strong); }
+.table--crate > .pickrow:nth-child(even) > .row { background: #111316; }
+.table--crate > .pickrow > .row:hover { background: #181B1F; }
+.pickrow--off > .row > :not(input) { opacity: 0.45; }
+.pickrow__missing { margin: 0; padding: 8px 14px 12px 76px; list-style: none; display: grid; gap: 3px; color: var(--warn); font-size: 12px; border-top: 1px dashed var(--border-strong); }
+.chipbtn { cursor: pointer; }
+.chipbtn:hover { background: rgba(231, 176, 74, 0.12); }
+
+/* Sleeve: covers you tap to pick, a tick in the corner */
+.pick-sleeves { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.pick { opacity: 0.5; }
+.pick--on { opacity: 1; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pick__tick {
+  position: absolute; top: 8px; left: 8px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  border: 1.5px solid rgba(255, 255, 255, 0.7); background: rgba(10, 11, 13, 0.55); color: var(--accent-ink);
+}
+.pick--on .pick__tick { background: var(--accent); border-color: var(--accent); }
+.pick__warn { color: var(--warn); }
+
+/* ── check and start: what's going in, then the options as rows ── */
+.receipt {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 26px; align-items: center;
+  padding: 18px 20px; margin-bottom: 8px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface);
+}
+.receipt__covers { display: flex; align-items: center; }
+.receipt__covers .cover { width: 64px; height: 64px; border-radius: 3px; box-shadow: -4px 0 10px rgba(0, 0, 0, 0.5); }
+.receipt__covers .cover + .cover { margin-left: -22px; }
+.receipt__more { margin-left: 10px; color: var(--text-faint); font-size: 13px; }
+.receipt__facts { display: flex; gap: 34px; align-items: flex-end; flex-wrap: wrap; min-width: 0; }
+.receipt__facts > div { display: grid; gap: 2px; min-width: 0; }
+.receipt__big { font-size: 40px; line-height: 0.95; }
+.receipt__dest { flex: 1; min-width: 200px !important; }
+.receipt--sleeve { grid-template-columns: minmax(0, 1fr); border: 0; background: none; padding: 0 0 8px; }
+.receipt--sleeve .receipt__covers { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
+.receipt--sleeve .receipt__covers .cover { width: 100%; height: auto; aspect-ratio: 1; margin: 0; border-radius: 4px; box-shadow: none; }
+.receipt--sleeve .receipt__more { margin: 0; display: grid; place-items: center; aspect-ratio: 1; border: 1px dashed var(--border-strong); border-radius: 4px; font-size: 18px; }
+.receipt--sleeve .receipt__big { font-size: 56px; }
+.set-rows > .set-row:last-child { border-bottom: 1px solid var(--border); }
+
+/* ── backing up ── */
+.run-done { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.run-done__title { font-weight: 700; font-size: 16px; color: var(--accent-2); margin-bottom: 2px; }
+.run { margin-bottom: 18px; }
+.run__now { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; min-width: 0; }
+.run__text { display: grid; gap: 3px; min-width: 0; }
+.run__text .eyebrow { margin: 0; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+.run__title { font-size: 18px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run__name { font-size: 52px; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run--crate { padding: 14px 18px 16px 0; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.run--crate .run__now .stripe { align-self: stretch; margin: -14px 0 0; }
+.run--crate .progress, .run--crate > :last-child { margin-left: 18px; }
+.run--sleeve .run__now { gap: 24px; align-items: flex-end; }
+.run__cover { border-radius: 6px; box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45); }
+.run-cols { --cols: 4px 32px minmax(0, 1fr) 140px minmax(0, 220px); }
+.run-state { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
+.run-state .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); }
+.run-state--done { color: var(--accent-2); }
+.run-state--done .dot { background: var(--accent-2); }
+.run-state--working { color: var(--accent); }
+.run-state--working .dot { background: var(--accent); animation: lcPulse 1s ease-in-out infinite alternate; }
+.run-state--error { color: var(--danger); }
+.run-state--error .dot { background: var(--danger); }
+.run-state--skipped { color: var(--text-faint); }
+@keyframes lcPulse { from { opacity: 0.35; } to { opacity: 1; } }
+
+/* Sleeve: a wall of covers that light up as each one is safe */
+.run-wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px; }
+.run-tile { position: relative; display: grid; gap: 6px; min-width: 0; }
+.run-tile .cover { width: 100%; height: auto; aspect-ratio: 1; border-radius: 4px; }
+.run-tile__name { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-tile__mark {
+  position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font: 700 13px var(--font); color: #0A0B0D;
+}
+.run-tile--done .run-tile__mark { background: var(--accent-2); }
+.run-tile--error .run-tile__mark { background: var(--danger); }
+.run-tile--skipped .run-tile__mark { background: rgba(10, 11, 13, 0.75); color: var(--accent-2); }
+.run-tile--working .cover { outline: 2px solid var(--accent); outline-offset: 2px; animation: lcPulse 1s ease-in-out infinite alternate; }
+
+.run-log { margin-top: 18px; color: var(--text-faint); font-size: 13px; }
+.run-log summary { cursor: pointer; }
+.run-log > div { margin-top: 8px; padding: 12px 14px; max-height: 300px; overflow: auto; font-size: 12px; line-height: 1.7; border: 1px solid var(--border); border-radius: 8px; }
+
+@media (max-width: 1040px) {
+  .pick-cols { --cols: 4px 16px 36px minmax(0, 1fr) 120px 74px; }
+  .pick-cols > :nth-child(5) { display: none; }
+  .receipt--sleeve .receipt__covers { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .run-cols { --cols: 4px 32px minmax(0, 1fr) 120px; }
+  .run-cols > :nth-child(5) { display: none; }
+}

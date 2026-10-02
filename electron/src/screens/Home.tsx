@@ -1,179 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { bubbleLabel } from "../bubbleLabel";
+import { useEffect, useRef, useState } from "react";
 import { makeApi } from "../api";
 import type { Overview, LibraryItem } from "../types";
 import type { BackupProgress } from "../useProgress";
-import { CountUp } from "../components/CountUp";
-import { WaveBackdrop, useSpecular, reduceMotion } from "../components/Glass";
-import { fmtSize, fmtDate, fmtInterval, fmtClock, shortPath } from "../format";
-import slothUrl from "../assets/lazy-creatives-sloth.png";
+import { fmtSize, fmtDate, fmtInterval, fmtClock, shortPath, dawLabel } from "../format";
+import { Icon } from "../components/Icon";
+import { Cover } from "../components/Cover";
+import { PlayButton, SongWave, type SongMeta } from "../components/Player";
+import { genreColor, useLook } from "../look";
 import "../home.css";
 
 const api = makeApi();
-
-/* ── project cloud: dependency-free circle packing over REAL library data ── */
-interface Bubble { name: string; mb: number; r: number; x: number; y: number;
-  warn: boolean; missing: number; verified: boolean; }
-
-function layoutBubbles(items: LibraryItem[], W: number, H: number): Bubble[] {
-  let seed = 42;
-  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-  const data: Bubble[] = items.map((it) => ({
-    name: it.name,
-    mb: Math.max(1, Math.round(it.size / 1e6)),
-    r: 0, x: 0, y: 0,
-    warn: it.missing_count > 0,
-    missing: it.missing_count,
-    verified: it.backed_up,
-  }));
-  // bubble AREA ∝ MB on disk. Density is auto-fit BOTH ways: scaled down past 42%
-  // (overlap impossible) and up below 24% (the cloud fills big panels instead of
-  // floating as specks); relative sizes stay truthful either way.
-  data.forEach((d) => { d.r = 5 + Math.sqrt(d.mb) * 0.78; });
-  const PAD = 9;
-  const area = data.reduce((s, d) => s + Math.PI * (d.r + PAD / 2) ** 2, 0);
-  const density = area / (W * H);
-  if (density > 0.42) { const k = Math.sqrt(0.42 / density); data.forEach((d) => { d.r *= k; }); }
-  else if (density > 0 && density < 0.32) {
-    const k = Math.sqrt(0.32 / density);
-    const rCap = H * 0.38;  // no single bubble dominates the panel
-    data.forEach((d) => { d.r = Math.min(d.r * k, rCap); });
-  }
-  data.forEach((d) => { d.x = d.r + rnd() * (W - 2 * d.r); d.y = d.r + rnd() * (H - 2 * d.r); });
-  const cx = W / 2, cy = H / 2;
-  for (let iter = 0; iter < 260; iter++) {
-    let moved = false;
-    // gentle gravity toward the centre (first 200 iters) so the cloud reads as ONE
-    // cluster, not scatter; the tail iterations are pure separation so nothing
-    // is left overlapping when the loop settles.
-    if (iter < 200) for (const d of data) { d.x += (cx - d.x) * 0.012; d.y += (cy - d.y) * 0.012; }
-    for (let i = 0; i < data.length; i++) for (let j = i + 1; j < data.length; j++) {
-      const a = data[i], b = data[j];
-      const dx = b.x - a.x, dy = b.y - a.y;
-      let d = Math.hypot(dx, dy);
-      const min = a.r + b.r + PAD;
-      if (d < min) {
-        moved = true;
-        let nx, ny;
-        if (d < 0.01) { const ang = rnd() * Math.PI * 2; nx = Math.cos(ang); ny = Math.sin(ang); d = 0.01; }
-        else { nx = dx / d; ny = dy / d; }
-        const push = (min - d) / 2 + 0.5;
-        a.x -= nx * push; a.y -= ny * push;
-        b.x += nx * push; b.y += ny * push;
-      }
-    }
-    for (const d of data) {
-      d.x = Math.min(W - d.r - 2, Math.max(d.r + 2, d.x));
-      d.y = Math.min(H - d.r - 2, Math.max(d.r + 2, d.y));
-    }
-    if (!moved && iter >= 200) break;  // only settle once gravity has finished
-  }
-  return data;
-}
-
-function ProjectCloud({ items, onPick, onToggleDrawer }: {
-  items: LibraryItem[]; onPick: (name: string) => void; onToggleDrawer: () => void;
-}) {
-  // measure the real container so the cloud lays out 1:1 at any window size
-  const [dims, setDims] = useState({ w: 1060, h: 320 });
-  const tipRef = useRef<HTMLDivElement | null>(null);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const gRefs = useRef<(SVGGElement | null)[]>([]);
-  useEffect(() => {
-    const el = wrapRef.current; if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const w = Math.max(520, Math.floor(entries[0].contentRect.width));
-      setDims((d) => (d.w === w ? d : { w, h: Math.round(Math.min(Math.max(280, w * 0.30), 460)) }));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  const bubbles = useMemo(() => layoutBubbles(items, dims.w, dims.h), [items, dims]);
-
-  // one rAF loop bobs every bubble (amplitude < half the packing gap)
-  useEffect(() => {
-    if (reduceMotion() || bubbles.length === 0) return;
-    let seed = 7;
-    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-    const motion = bubbles.map(() => ({ amp: 1 + rnd() * 1.5, sp: 3000 + rnd() * 4000, ph: rnd() * Math.PI * 2 }));
-    let raf = 0;
-    const tick = (t: number) => {
-      gRefs.current.forEach((g, i) => {
-        if (!g) return;
-        const b = bubbles[i], m = motion[i];
-        g.setAttribute("transform", `translate(${b.x},${b.y + Math.sin((t / m.sp) * 2 * Math.PI + m.ph) * m.amp})`);
-      });
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [bubbles]);
-
-  const showTip = (e: React.MouseEvent, b: Bubble) => {
-    const tip = tipRef.current, wrap = wrapRef.current; if (!tip || !wrap) return;
-    const cls = b.warn ? "warn" : b.verified ? "ok" : "idle";
-    tip.className = `cloud-tip cloud-tip--${cls}`;
-    tip.style.opacity = "1";
-    const size = b.mb >= 1000 ? (b.mb / 1000).toFixed(1) + " GB" : b.mb + " MB";
-    tip.innerHTML = `<div class="t-name"></div><div class="t-meta">${size} on disk · <span class="t-state">${
-      b.warn ? `⚠ ${b.missing} sample${b.missing > 1 ? "s" : ""} missing`
-      : b.verified ? "✓ verified — it opens" : "not backed up yet"}</span></div>`;
-    (tip.querySelector(".t-name") as HTMLElement).textContent = b.name;
-    // coords relative to the cloud wrapper (fixed positioning breaks inside
-    // backdrop-filtered ancestors); flip to the cursor's left near the right edge
-    const r = wrap.getBoundingClientRect();
-    const cx = e.clientX - r.left;
-    const fitsRight = cx + 16 + tip.offsetWidth <= r.width - 4;
-    tip.style.left = (fitsRight ? cx + 16 : cx - tip.offsetWidth - 16) + "px";
-    tip.style.top = e.clientY - r.top - 14 + "px";
-  };
-  const hideTip = () => { if (tipRef.current) tipRef.current.style.opacity = "0"; };
-
-  return (
-    <div className="cloud-wrap" ref={wrapRef}>
-      <svg className="cloud" viewBox={`0 0 ${dims.w} ${dims.h}`} style={{ height: dims.h }}
-        role="group" aria-label="Project cloud — one bubble per project, sized by folder size">
-        {/* glassy orb fills — off-centre highlight, same material language as the panels */}
-        <defs>
-          <radialGradient id="orbOk" cx="35%" cy="30%" r="75%">
-            <stop offset="0%" stopColor="rgba(74,222,128,0.50)" />
-            <stop offset="55%" stopColor="rgba(74,222,128,0.20)" />
-            <stop offset="100%" stopColor="rgba(74,222,128,0.10)" />
-          </radialGradient>
-          <radialGradient id="orbIdle" cx="35%" cy="30%" r="75%">
-            <stop offset="0%" stopColor="rgba(157,176,192,0.34)" />
-            <stop offset="55%" stopColor="rgba(134,179,211,0.12)" />
-            <stop offset="100%" stopColor="rgba(59,79,93,0.10)" />
-          </radialGradient>
-          <radialGradient id="orbWarn" cx="35%" cy="30%" r="75%">
-            <stop offset="0%" stopColor="rgba(245,196,81,0.55)" />
-            <stop offset="55%" stopColor="rgba(245,196,81,0.22)" />
-            <stop offset="100%" stopColor="rgba(245,196,81,0.12)" />
-          </radialGradient>
-        </defs>
-        {bubbles.map((b, i) => (
-          <g key={b.name + i} ref={(el) => { gRefs.current[i] = el; }}
-            className={`bubble${b.warn ? " bubble--warn" : b.verified ? "" : " bubble--idle"}`}
-            transform={`translate(${b.x},${b.y})`}
-            tabIndex={0} role="button"
-            aria-label={b.name + (b.warn ? `, needs a look, ${b.missing} missing` : b.verified ? ", verified" : ", not backed up")}
-            onMouseMove={(e) => showTip(e, b)}
-            onMouseLeave={hideTip}
-            onClick={() => (b.warn ? onToggleDrawer() : onPick(b.name))}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); b.warn ? onToggleDrawer() : onPick(b.name); }
-            }}>
-            <circle r={b.r} />
-            {bubbleLabel(b.name, b.r).map((line, li, all) => (
-              <text key={li} dy={`${0.35 + (li - (all.length - 1) / 2) * 1.2}em`}>{line}</text>
-            ))}
-          </g>
-        ))}
-      </svg>
-      <div className="cloud-tip" ref={tipRef} />
-    </div>
-  );
-}
 
 /* ── Home ── */
 export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, onOpenHistory, onOpenProject }: {
@@ -189,10 +25,8 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   const [err, setErr] = useState(false);
   const [kick, setKick] = useState(false);        // scanning before the backup starts
   const [doneFlash, setDoneFlash] = useState(false);
-  const [drawer, setDrawer] = useState(false);
   const [fixing, setFixing] = useState<Set<string>>(new Set());
-  const heroRef = useRef<HTMLElement | null>(null);
-  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [look] = useLook();
 
   const load = () => {
     api.overview().then(setOv).catch(() => setErr(true));
@@ -212,26 +46,11 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   useEffect(() => {
     if (prevActive.current && !backup.active && backup.done && !backup.cancelled) {
       setDoneFlash(true);
-      // success ✓ particles
-      if (!reduceMotion() && heroRef.current) {
-        for (let i = 0; i < 7; i++) {
-          const c = document.createElement("span");
-          c.className = "hero-pop"; c.textContent = "✓";
-          c.style.left = 30 + Math.random() * 55 + "%";
-          c.style.top = 35 + Math.random() * 40 + "%";
-          c.style.animationDelay = i * 0.12 + "s";
-          heroRef.current.appendChild(c);
-          setTimeout(() => c.remove(), 1800 + i * 120);
-        }
-      }
       const t = setTimeout(() => setDoneFlash(false), 5200);
       return () => clearTimeout(t);
     }
     prevActive.current = backup.active;
   }, [backup.active, backup.done, backup.cancelled]);
-
-  // pointer-tracked specular highlight on every glass panel
-  useSpecular(rootRef);
 
   // the ONE primary action: scan + back everything up, in place, with real progress
   async function backItUp() {
@@ -289,155 +108,291 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   const lookCount = warnItems.length
     + new Set(ov.attention.filter((a) => a.kind === "error" && !warnNames.has(a.project_name)).map((a) => a.project_name)).size;
   const savedPct = ov.logical_size > 0 ? Math.round((ov.saved_bytes / ov.logical_size) * 100) : 0;
-  const driveTotal = ov.actual_size + ov.nas.free_bytes;
-  const driveFrac = driveTotal > 0 ? ov.actual_size / driveTotal : 0;
-  const ringPct = backup.total > 0 ? backup.completed / backup.total : (working ? 0.06 : 0);
+  const okCount = items.filter((i) => i.backed_up && i.missing_count === 0).length;
+  const lookItems = items.filter((i) => i.missing_count > 0);
+  const newCount = items.filter((i) => !i.backed_up && i.missing_count === 0).length;
+  const failed = ov.attention.filter((a) => a.kind === "error" && !warnNames.has(a.project_name));
 
-  // §8 voice: chill tone, precise facts — numbers are real, never vague
-  // Don't claim "all good" when some projects are missing samples or the run had errors.
-  const doneClean = backup.errors === 0 && warnItems.length === 0;
+  // Plain facts, one headline. The numbers are real, never vague.
   const title = doneFlash
-    ? (backup.errors > 0 ? "Backed up, with errors." : doneClean ? "Backed up & verified." : "Backed up.")
-    : working ? "On it." : "Chilling.";
-  const sub = doneFlash
-    ? `${backup.completed} project${backup.completed === 1 ? "" : "s"}, ${backup.errors} error${backup.errors === 1 ? "" : "s"} — every file re-read and proven to open.${
-        warnItems.length > 0
-          ? ` ${warnItems.length} project${warnItems.length === 1 ? " is" : "s are"} missing samples and could use a look.`
-          : backup.errors === 0 ? " Go make something." : ""}`
-    : working
-    ? "Reading every file, hashing it, and proving the copy opens. You don't have to watch — but it is pretty satisfying."
+    ? (backup.errors > 0 ? `Backed up ${backup.completed}, ${backup.errors} failed.` : `Backed up and checked ${backup.completed} ${backup.completed === 1 ? "project" : "projects"}.`)
+    : working ? (kick && !backup.active ? "Looking for projects…" : `Backing up ${backup.completed} of ${backup.total || "…"}…`)
+    : items.length === 0 ? "Let's find your projects."
+    : `${verified} of ${items.length} projects are safe.`;
+  const sub = working
+    ? (backup.current ? `Now: ${backup.current}. Every file is read back and the copy is opened to prove it works.` : "Every file is read back and the copy is opened to prove it works.")
     : items.length === 0
-    ? "Nothing in the library yet. Hit the button and I'll go find your projects."
-    : `${verified} project${verified === 1 ? "" : "s"} tucked in, re-read and proven to open.${
-        lookCount > 0 ? ` ${lookCount} could use a look — otherwise, go make something.` : " Go make something."}`;
-  const status = doneFlash
-    ? `✓ snapshot verified · ${backup.completed} project${backup.completed === 1 ? "" : "s"} · just now`
-    : working
-    ? `⟳ ${kick && !backup.active ? "finding projects…" : `backing up ${backup.current || "…"} · ${backup.completed}/${backup.total} projects`}`
-    : ov.last_run
-    ? `✓ last run ${fmtDate(ov.last_run)}${lookCount > 0 ? ` · ${lookCount} could use a look` : ""}`
-    : "no runs yet";
+    ? "Press the button and Backups will look through your project folders."
+    : lookCount > 0
+    ? `Every backed-up project was re-opened and loads. ${lookCount} ${lookCount === 1 ? "needs" : "need"} a look below.`
+    : "Every backed-up project was re-opened and loads without errors.";
+  const eyebrow = ov.last_run
+    ? `Last backup ${fmtDate(ov.last_run)} · ${ov.schedule.enabled
+        ? `next ${ov.schedule.next_run ? fmtClock(ov.schedule.next_run) : fmtInterval(ov.schedule.interval_minutes)}`
+        : "next: when you say so"}`
+    : "No backups yet";
+  const pct = backup.total > 0 ? Math.round((backup.completed / backup.total) * 100) : 0;
+  const total = okCount + lookItems.length + newCount;
+  const spaceSaved = ov.pool_known ? fmtSize(ov.saved_bytes) + (savedPct > 0 ? ` · ${savedPct}%` : "") : "…";
+  const meta = (it: LibraryItem): SongMeta | undefined =>
+    it.latest_export ? { title: it.latest_export.name, project: it.name, genre: it.genre } : undefined;
+  const subLine = (it: LibraryItem) => [it.genre, it.bpm ? `${Math.round(it.bpm)} BPM` : "", dawLabel(it.daw)].filter(Boolean).join(" · ");
+  const recent = [...items].sort((a, b) => b.mtime - a.mtime).slice(0, 6);
+  const songs = items.filter((i) => i.latest_export).sort((a, b) => b.latest_export!.mtime - a.latest_export!.mtime).slice(0, 6);
+  const byName = new Map(items.map((i) => [i.name, i]));
 
-  return (
-    <div className="home" ref={rootRef}>
-      <WaveBackdrop energized={working} />
+  const head = (
+    <>
+      <div style={{ minWidth: 0 }}>
+        <div className="eyebrow">{eyebrow}</div>
+        <h1>{title}</h1>
+        <p className="sub">{sub}{" "}
+          {working && backup.active && <button className="linkbtn" onClick={onResumeProgress}>Show details</button>}
+        </p>
+      </div>
+      <div className="page-head__actions">
+        {look === "crate" && !ov.schedule.enabled && <button className="btn" onClick={onOpenSettings}>Set a schedule</button>}
+        <button className="btn btn--primary" onClick={backItUp} disabled={working || !ov.nas.reachable}
+          title={ov.nas.reachable ? "Find every project and back it up, checked" : "Choose where backups go in Settings first"}>
+          {working ? "Backing up…" : waiting > 0 ? `Back up ${waiting} ${waiting === 1 ? "project" : "projects"}` : "Back up now"}
+        </button>
+        {look === "sleeve" && !ov.schedule.enabled && <button className="btn" onClick={onOpenSettings}>Set a schedule</button>}
+      </div>
+    </>
+  );
+  const progress = working && (
+    <div className="progress" style={{ marginBottom: 22 }} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+      <div className="progress__fill" style={{ width: `${Math.max(3, pct)}%` }} />
+    </div>
+  );
+  const fixButtons = (it: LibraryItem, label: string) => {
+    const busy = fixing.has(it.project_id);
+    return (
+      <span className="col-act" onClick={(e) => e.stopPropagation()}>
+        <button className="btn btn--sm" onClick={() => fixOne(it)} disabled={busy}>{busy ? "Searching…" : label}</button>
+        <button className="iconbtn" onClick={() => lookInFolder(it)} disabled={busy}
+          title="Search a folder you choose" aria-label={`Search a folder for ${it.name}'s samples`}>
+          <Icon name="folder" />
+        </button>
+      </span>
+    );
+  };
+  const needsHead = (
+    <div className="section__head">
+      <h2>Needs a look</h2>
+      <button className="linkbtn" onClick={onOpenHistory}>Open the library</button>
+    </div>
+  );
+  const hasNeeds = lookItems.length > 0 || failed.length > 0;
 
-      {/* hero — the sloth is the status */}
-      <section ref={heroRef} className={`hero glass elev-1${working ? " hero--working" : ""}${doneFlash ? " hero--done" : ""}${doneFlash && !doneClean ? " hero--done-warn" : ""}`}>
-        <div className="sloth-stage"><img src={slothUrl} alt="" /></div>
-        <div className="hero-copy">
-          <h1 className="hero-title">{title}</h1>
-          <p className="hero-sub">{sub}</p>
-          <span className="hero-status mono">{status}{" "}
-            {working && backup.active && (
-              <button className="linkbtn" style={{ fontSize: 12.5 }} onClick={onResumeProgress}>watch the details →</button>
-            )}
-          </span>
-        </div>
-        <div className="hero-cta">
-          <div className="ringwrap">
-            <svg viewBox="0 0 148 148" aria-hidden="true">
-              <circle className="ring-bg" cx="74" cy="74" r="70" />
-              <circle className="ring-fg" cx="74" cy="74" r="70"
-                style={{ strokeDashoffset: doneFlash ? 0 : 440 - 440 * ringPct }} />
-            </svg>
-            <button className="bigbtn" onClick={backItUp} disabled={working || !ov.nas.reachable}
-              title={ov.nas.reachable ? "Scan + back up everything, verified" : "Connect a destination in Settings first"}>
-              {doneFlash ? "✓ done" : working ? "on it" : <>Back<br />it up</>}
-            </button>
-          </div>
-          <span className="schedule-hint">or <button onClick={onOpenSettings}>set a schedule</button> &amp; forget it</span>
-        </div>
-      </section>
+  const foot = (
+    <footer className="home-foot">
+      <span title={ov.nas.path} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+        <span className={`dot${ov.nas.reachable ? " dot--ok" : " dot--error"}`} />
+        {ov.nas.reachable ? "Backup drive connected" : "Backup drive not found"}
+        {ov.nas.path ? <span className="faint mono" style={{ fontSize: 12 }}>{shortPath(ov.nas.path)}</span> : null}
+      </span>
+      <span className="mono faint" style={{ fontSize: 12 }}>
+        {ov.pool_known ? `${fmtSize(ov.actual_size)} used · ${fmtSize(ov.nas.free_bytes)} free` : ""}
+      </span>
+      <span className="faint" style={{ fontSize: 12.5 }}>
+        {ov.schedule.enabled
+          ? `Automatic backup ${fmtInterval(ov.schedule.interval_minutes)}`
+          : <>Automatic backup off. <button className="linkbtn" onClick={onOpenSettings}>Set a schedule</button></>}
+      </span>
+    </footer>
+  );
 
-      {/* project cloud */}
-      {items.length > 0 && (
-        <section className="wall glass">
-          <div className="wall-head">
-            <h2>Your projects, floating happily</h2>
-            <div className="wall-legend">
-              <span><span className="swatch sw-ok" />verified — it opens</span>
-              {waiting > 0 && <span><span className="swatch sw-idle" />not backed up</span>}
-              {warnItems.length > 0 && <span><span className="swatch sw-warn" />needs a look</span>}
-              <span className="mono">{verified} verified · {waiting} waiting · sized by folder size on disk</span>
-              <button className="linkbtn" style={{ fontSize: 12.5 }} onClick={onOpenHistory}>browse the library →</button>
+  if (look === "sleeve") return (
+    <div className="home home--sleeve">
+      <header className="home-hero">
+        <div className="home-hero__text">{head}</div>
+        {items.length > 0 && (
+          <div className="home-hero__bar" aria-label="Where your projects stand">
+            <div className="statusbar statusbar--fat" aria-hidden="true">
+              {okCount > 0 && <span style={{ flex: okCount, background: "var(--accent-2)" }} />}
+              {lookItems.length > 0 && <span style={{ flex: lookItems.length, background: "var(--warn)" }} />}
+              {newCount > 0 && <span style={{ flex: newCount, background: "var(--idle)" }} />}
             </div>
+            <div className="home-hero__legend">
+              <button className="linkbtn" onClick={onOpenHistory}><b>{okCount}</b> safe</button>
+              <button className="linkbtn" onClick={onOpenHistory}><b>{lookCount}</b> need a look</button>
+              <button className="linkbtn" onClick={onOpenHistory}><b>{waiting}</b> not yet</button>
+            </div>
+            <div className="home-hero__saved">Space saved by sharing files <span className="mono">{spaceSaved}</span></div>
           </div>
-          <ProjectCloud items={items} onPick={onOpenProject} onToggleDrawer={() => setDrawer((d) => !d)} />
-          <div className={`attn-drawer${drawer ? " attn-drawer--open" : ""}`}>
-            {warnItems.map((it) => (
-              <div key={it.project_id} className="attn-item">
-                <div className="what">
-                  <strong>{it.name}</strong>{" "}
-                  <span>— {it.missing_count} sample{it.missing_count === 1 ? "" : "s"} missing</span>
+        )}
+      </header>
+      {progress}
+
+      {recent.length > 0 && (
+        <section className="section">
+          <div className="section__head">
+            <h2>Recently worked on</h2>
+            <button className="linkbtn" onClick={onOpenHistory}>Open the library</button>
+          </div>
+          <div className="recent-shelf">
+            {recent.map((it) => {
+              const m = meta(it);
+              return (
+                <div key={it.project_id} className="sleeve" role="button" tabIndex={0} onClick={() => onOpenProject(it.name)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenProject(it.name); } }}>
+                  <div className="sleeve__art">
+                    <Cover name={it.name} genre={it.genre} />
+                    {it.latest_export && m &&
+                      <PlayButton path={it.latest_export.path} title={it.latest_export.name} meta={m} size={34} className="sleeve__play" />}
+                  </div>
+                  <div className="sleeve__meta">
+                    <div className="sleeve__name" title={it.name}>{it.name}</div>
+                    <div className="sleeve__sub">{subLine(it) || "No genre yet"}</div>
+                  </div>
                 </div>
-                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                  <button className="fixbtn" onClick={() => fixOne(it)} disabled={fixing.has(it.project_id)}>
-                    {fixing.has(it.project_id) ? "Hunting…" : it.missing_count === 1 ? "Find it for me" : "Find them for me"}
-                  </button>
-                  <button className="fixbtn" onClick={() => lookInFolder(it)} disabled={fixing.has(it.project_id)}
-                    title="Pick a folder you think these samples are in, and search there">
-                    Look in a folder…
-                  </button>
-                  <button className="fixbtn" onClick={() => onOpenProject(it.name)}>Open →</button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
 
-      {/* stats */}
-      <div className="home-row">
-        <section className="home-panel glass elev-3 hpanel">
-          <h2>Space saved</h2>
-          <div className="squeeze">
-            <div className="tube-wrap">
-              <div className="tube">
-                <div className="stored" style={{ width: ov.pool_known && ov.logical_size > 0 ? `${Math.max(4, Math.round((ov.actual_size / ov.logical_size) * 100))}%` : "0%" }} />
+      {hasNeeds && (
+        <section className="section">
+          {needsHead}
+          <div className="needcards">
+            {lookItems.map((it) => (
+              <div key={it.project_id} className="needcard" role="button" tabIndex={0} onClick={() => onOpenProject(it.name)}
+                onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(it.name); }}>
+                <Cover name={it.name} genre={it.genre} label={false} />
+                <div className="needcard__body">
+                  <div className="sleeve__name" title={it.name}>{it.name}</div>
+                  <div className="warn-line"><span className="dot dot--warn" />{it.missing_count} {it.missing_count === 1 ? "sample" : "samples"} missing</div>
+                  {fixButtons(it, "Find them")}
+                </div>
               </div>
-              <div className="tube-labels mono">
-                <span><span className="swatch sw-stored" />{ov.pool_known ? `${fmtSize(ov.actual_size)} stored` : "…"}</span>
-                <span>{fmtSize(ov.logical_size)} if copied in full</span>
-              </div>
-            </div>
-            <div className="nums">
-              <div className="big">{ov.pool_known ? <CountUp value={ov.saved_bytes} format={fmtSize} /> : "…"}</div>
-              <div className="sm">saved{savedPct > 0 ? ` · ${savedPct}% smaller` : ""}</div>
-            </div>
+            ))}
+            {failed.map((a) => {
+              const it = byName.get(a.project_name);
+              return (
+                <div key={"f" + a.project_name} className="needcard" role="button" tabIndex={0} onClick={() => onOpenProject(a.project_name)}
+                  onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(a.project_name); }}>
+                  <Cover name={a.project_name} genre={it?.genre} label={false} />
+                  <div className="needcard__body">
+                    <div className="sleeve__name" title={a.project_name}>{a.project_name}</div>
+                    <div className="warn-line warn-line--error" title={a.reason}><span className="dot dot--error" />{a.reason}</div>
+                    <span className="col-act"><button className="btn btn--sm">Open</button></span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
-        <section className="home-panel glass elev-3 hpanel">
-          <h2>On your drive</h2>
-          <div className="drive">
-            <svg className="donut" viewBox="0 0 92 92" aria-hidden="true">
-              <circle className="track" cx="46" cy="46" r="36" />
-              {/* honest arc: true fraction, round cap — tiny usage reads as a dot, never inflated */}
-              <circle className="val" cx="46" cy="46" r="36" transform="rotate(-90 46 46)"
-                style={{ strokeDashoffset: 226 - 226 * Math.min(1, driveFrac) }} />
-            </svg>
-            <div className="txt">
-              <div className="big">{ov.pool_known ? fmtSize(ov.actual_size) : "…"}</div>
-              <div className="sm">of your drive · {fmtSize(ov.nas.free_bytes)} free</div>
-              <span className="mono" style={{ fontSize: 12 }}>
-                {driveFrac < 0.5 ? "plenty of room. keep making." : driveFrac < 0.85 ? "getting cosy in here." : "drive's filling up — worth a look."}
-              </span>
-            </div>
-          </div>
-        </section>
-      </div>
+      )}
 
-      <div className="home-statusbar">
-        <span title={ov.nas.path}>
-          <span className={`gdot${ov.nas.reachable ? "" : " gdot--off"}`} />
-          {ov.nas.reachable ? "NAS connected" : "NAS offline"}{ov.nas.path ? ` · ${shortPath(ov.nas.path)}` : ""}
-        </span>
-        <span className="mono" style={{ fontSize: 12.5 }}>
-          {ov.schedule.enabled
-            ? `Auto-backup ${fmtInterval(ov.schedule.interval_minutes)}${ov.schedule.next_run ? ` · next ${fmtClock(ov.schedule.next_run)}` : ""}`
-            : <>Auto-backup off — runs when you say so. <button onClick={onOpenSettings}>Set a schedule</button></>}
-        </span>
-      </div>
+      {foot}
+
+    </div>
+  );
+
+  // Crate: a ring of where things stand, the list of what needs a look, latest songs as waveforms
+  const R = 70, C = 2 * Math.PI * R;
+  const arcs = [
+    { n: okCount, color: "var(--accent-2)" },
+    { n: lookItems.length, color: "var(--warn)" },
+    { n: newCount, color: "var(--idle)" },
+  ];
+  let at = 0;
+  return (
+    <div className="home home--crate">
+      <header className="page-head">{head}</header>
+      {progress}
+
+      {items.length > 0 && (
+        <div className="home-deck">
+          <section className="ringcard" aria-label="Where your projects stand">
+            <svg viewBox="0 0 180 180" width="180" height="180" className="ring" aria-hidden="true">
+              <circle cx="90" cy="90" r={R} fill="none" stroke="var(--surface-3)" strokeWidth="16" />
+              {total > 0 && arcs.map((a, i) => {
+                if (!a.n) return null;
+                const len = (a.n / total) * C;
+                const gap = arcs.filter((x) => x.n).length > 1 ? 3 : 0;
+                const el = <circle key={i} cx="90" cy="90" r={R} fill="none" stroke={a.color} strokeWidth="16"
+                  strokeDasharray={`${Math.max(0, len - gap)} ${C}`} strokeDashoffset={-at} transform="rotate(-90 90 90)" />;
+                at += len;
+                return el;
+              })}
+              <text x="90" y="92" textAnchor="middle" className="ring__big">{verified}</text>
+              <text x="90" y="116" textAnchor="middle" className="ring__small">of {items.length} safe</text>
+            </svg>
+            <div className="ring__legend">
+              <button className="ring__row" onClick={onOpenHistory}><span className="dot dot--ok" />Backed up, opens<b>{okCount}</b></button>
+              <button className="ring__row" onClick={onOpenHistory}><span className="dot dot--warn" />Need a look<b>{lookCount}</b></button>
+              <button className="ring__row" onClick={onOpenHistory}><span className="dot" />Not backed up<b>{waiting}</b></button>
+              <div className="ring__row ring__row--quiet">Space saved by sharing files<b>{spaceSaved}</b></div>
+            </div>
+          </section>
+
+          <div className="home-deck__main">
+            <section className="section">
+              {needsHead}
+              {hasNeeds ? (
+                <div className="table table--crate">
+                  {lookItems.map((it) => (
+                    <div key={it.project_id} className="row cols needs-cols" role="button" tabIndex={0}
+                      onClick={() => onOpenProject(it.name)} onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(it.name); }}>
+                      <span className="stripe" style={{ background: genreColor(it.genre) }} />
+                      <Cover name={it.name} genre={it.genre} size={36} />
+                      <span style={{ minWidth: 0 }}>
+                        <div className="col-trunc" style={{ fontWeight: 500 }}>{it.name}</div>
+                        <div className="lib-sub">{subLine(it)}</div>
+                      </span>
+                      <span className="warn-line"><span className="dot dot--warn" />{it.missing_count} {it.missing_count === 1 ? "sample" : "samples"} missing</span>
+                      {fixButtons(it, "Find samples")}
+                    </div>
+                  ))}
+                  {failed.map((a) => {
+                    const it = byName.get(a.project_name);
+                    return (
+                      <div key={"f" + a.project_name} className="row cols needs-cols" role="button" tabIndex={0}
+                        onClick={() => onOpenProject(a.project_name)} onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(a.project_name); }}>
+                        <span className="stripe" style={{ background: "var(--danger)" }} />
+                        <Cover name={a.project_name} genre={it?.genre} size={36} />
+                        <span className="col-trunc" style={{ fontWeight: 500 }}>{a.project_name}</span>
+                        <span className="warn-line warn-line--error" title={a.reason}><span className="dot dot--error" />{a.reason}</span>
+                        <span className="col-act"><button className="btn btn--sm">Open</button></span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="allgood"><span className="dot dot--ok" />Nothing needs a look. Every backed-up project opens.</div>
+              )}
+            </section>
+
+            {songs.length > 0 && (
+              <section className="section">
+                <div className="section__head"><h2>Latest songs from your projects</h2></div>
+                <div className="songgrid">
+                  {songs.map((it) => {
+                    const m = meta(it)!;
+                    return (
+                      <div key={it.project_id} className="songcell">
+                        <PlayButton path={it.latest_export!.path} title={it.latest_export!.name} meta={m} size={30} />
+                        <div style={{ minWidth: 0 }}>
+                          <div className="songcell__top">
+                            <button className="linkbtn col-trunc" onClick={() => onOpenProject(it.name)}>{it.name}</button>
+                            <span className="mono faint">{it.bpm ? `${Math.round(it.bpm)} BPM` : ""}</span>
+                          </div>
+                          <SongWave path={it.latest_export!.path} meta={m} height={22} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+          </div>
+        </div>
+      )}
+
+      {foot}
     </div>
   );
 }

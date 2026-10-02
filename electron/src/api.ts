@@ -112,6 +112,10 @@ export function makeApi() {
     async unlinkExport(path: string, projectId: string): Promise<{ ok: boolean }> {
       return req("POST", "/api/exports/unlink", { path, project_id: projectId });
     },
+    // the outline of a song, for drawing its waveform (null: decode it here)
+    async exportPeaks(path: string): Promise<{ peaks: number[] | null }> {
+      return req("GET", `/api/exports/peaks?path=${encodeURIComponent(path)}`);
+    },
     // <audio> can't send headers, so the token rides in the query (sidecar only
     // serves files already linked as exports).
     exportAudioUrl(path: string): string {

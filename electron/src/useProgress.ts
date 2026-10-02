@@ -23,7 +23,9 @@ export interface BackupProgress {
   cancelled: boolean;
   mirrorFailed: number;
   log: string[];
+  items: BackupItem[];   // one per project this run has reached, in order
 }
+export interface BackupItem { name: string; state: "working" | "done" | "skipped" | "error"; detail?: string }
 export interface LiveProgress {
   scan: ScanProgress;
   backup: BackupProgress;
@@ -32,8 +34,18 @@ export interface LiveProgress {
 export function initialProgress(): LiveProgress {
   return {
     scan: { active: false, phase: null, done: 0, total: 0, current: null, dirs: 0, found: 0, startedAt: null },
-    backup: { active: false, preparing: false, total: 0, completed: 0, skipped: 0, errors: 0, current: null, done: false, cancelled: false, mirrorFailed: 0, log: [] },
+    backup: { active: false, preparing: false, total: 0, completed: 0, skipped: 0, errors: 0, current: null, done: false, cancelled: false, mirrorFailed: 0, log: [], items: [] },
   };
+}
+
+// Replace the newest entry for this project (it was "working"), or add it.
+function setItem(items: BackupItem[], it: BackupItem): BackupItem[] {
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].name === it.name && items[i].state === "working") {
+      const next = items.slice(); next[i] = it; return next;
+    }
+  }
+  return [...items, it];
 }
 
 export function reduceProgress(s: LiveProgress, ev: ProgressEvent): LiveProgress {
@@ -48,26 +60,31 @@ export function reduceProgress(s: LiveProgress, ev: ProgressEvent): LiveProgress
     case "scan_done":
       return { ...s, scan: { active: false, phase: null, done: 0, total: 0, current: null, dirs: 0, found: 0, startedAt: null } };
     case "backup_preparing":
-      return { ...s, backup: { active: true, preparing: true, total: 0, completed: 0, skipped: 0, errors: 0, current: null, done: false, cancelled: false, mirrorFailed: 0, log: ["Preparing… resolving projects"] } };
+      return { ...s, backup: { active: true, preparing: true, total: 0, completed: 0, skipped: 0, errors: 0, current: null, done: false, cancelled: false, mirrorFailed: 0, log: ["Preparing… resolving projects"], items: [] } };
     case "backup_start":
       return {
         ...s,
-        backup: { ...s.backup, active: true, preparing: false, total: ev.project_count, completed: 0, skipped: 0, errors: 0, current: null, done: false, cancelled: false, mirrorFailed: 0, log: [`Backing up ${ev.project_count} project(s)…`] },
+        backup: { ...s.backup, active: true, preparing: false, total: ev.project_count, completed: 0, skipped: 0, errors: 0, current: null, done: false, cancelled: false, mirrorFailed: 0, log: [`Backing up ${ev.project_count} project(s)…`], items: [] },
       };
     case "project_start":
-      return { ...s, backup: { ...s.backup, current: ev.project_name, log: [...s.backup.log, `→ ${ev.project_name}`] } };
+      return { ...s, backup: { ...s.backup, current: ev.project_name, log: [...s.backup.log, `→ ${ev.project_name}`],
+        items: setItem(s.backup.items, { name: ev.project_name, state: "working" }) } };
     case "project_done":
       return {
         ...s,
         backup: {
           ...s.backup, completed: s.backup.completed + 1, current: null,
           log: [...s.backup.log, `✓ ${ev.project_name} — ${ev.file_count} sample(s)${ev.missing_count ? `, ${ev.missing_count} missing` : ""}`],
+          items: setItem(s.backup.items, { name: ev.project_name, state: "done",
+            detail: `${ev.file_count} sample${ev.file_count === 1 ? "" : "s"}${ev.missing_count ? `, ${ev.missing_count} missing` : ""}` }),
         },
       };
     case "project_skipped":
-      return { ...s, backup: { ...s.backup, skipped: s.backup.skipped + 1, current: null, log: [...s.backup.log, `↷ ${ev.project_name} — unchanged, skipped`] } };
+      return { ...s, backup: { ...s.backup, skipped: s.backup.skipped + 1, current: null, log: [...s.backup.log, `↷ ${ev.project_name} — unchanged, skipped`],
+        items: setItem(s.backup.items, { name: ev.project_name, state: "skipped", detail: "Nothing changed since the last backup" }) } };
     case "project_error":
-      return { ...s, backup: { ...s.backup, errors: s.backup.errors + 1, current: null, log: [...s.backup.log, `✗ ${ev.project_name}: ${ev.error}`] } };
+      return { ...s, backup: { ...s.backup, errors: s.backup.errors + 1, current: null, log: [...s.backup.log, `✗ ${ev.project_name}: ${ev.error}`],
+        items: setItem(s.backup.items, { name: ev.project_name, state: "error", detail: ev.error }) } };
     case "backup_done": {
       const mf = ev.mirror_failed || 0;
       const log = [...s.backup.log, ev.cancelled

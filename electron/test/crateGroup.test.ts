@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { groupCrates } from "../src/screens/Crate/hooks/useCrates";
 import { sortDigList } from "../src/screens/Crate/hooks/useDigList";
-import { parseStamp, toProject, GENRE_COLOR, type Project } from "../src/screens/Crate/types";
+import { parseStamp, toProject, type Project } from "../src/screens/Crate/types";
+import { genreColor } from "../src/look";
 
 const NOW = new Date(2026, 5, 9, 20, 0, 0).getTime(); // 2026-06-09 20:00
 
@@ -36,7 +37,7 @@ describe("groupCrates", () => {
     const g = groupCrates(FIX, "genre", "count", "", NOW);
     expect(g[0].label).toBe("House");
     expect(g[0].count).toBe(2);
-    expect(g[0].accent).toBe(GENRE_COLOR.House);
+    expect(g[0].accent).toBe(genreColor("House"));
     expect(new Set(g.map((c) => c.label))).toEqual(new Set(["House", "Techno", "Hip-Hop", "Unknown"]));
     expect(g[g.length - 1].label).toBe("Unknown");  // unknown genre always sits last
   });

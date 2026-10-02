@@ -63,12 +63,6 @@ export function CrateView({ onOpenProject }: { onOpenProject?: (name: string) =>
 
   return (
     <div className="crate-view">
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
-        <label className="toolchk">
-          <input type="checkbox" checked={manualReduce} onChange={(e) => setManualReduce(e.target.checked)} /> Reduce motion
-        </label>
-      </div>
-
       <AnimatePresence mode="wait" initial={false}>
         {level === "shelf" ? (
           <motion.div key="shelf" exit={{ opacity: 0 }} transition={{ duration: reduce ? 0.12 : DUR.base }}>
@@ -77,6 +71,7 @@ export function CrateView({ onOpenProject }: { onOpenProject?: (name: string) =>
               crateSort={crateSort} setCrateSort={setCrateSort}
               search={search} setSearch={setSearch}
               onDigAll={() => open("__all__")}
+              reduceMotion={manualReduce} setReduceMotion={setManualReduce}
             />
             {loading
               ? <div className="crate-empty">Loading your collection…</div>

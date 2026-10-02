@@ -44,3 +44,18 @@ describe("reduceProgress", () => {
     expect(s.scan.active).toBe(false);
   });
 });
+
+describe("backup items", () => {
+  it("keeps one row per project with its outcome", () => {
+    let s = initialProgress();
+    s = reduceProgress(s, { type: "backup_start", project_count: 3, timestamp: "t" });
+    s = reduceProgress(s, { type: "project_start", index: 0, project_name: "A", total: 3 });
+    expect(s.backup.items).toEqual([{ name: "A", state: "working" }]);
+    s = reduceProgress(s, { type: "project_done", index: 0, project_name: "A", file_count: 1, missing_count: 2 });
+    s = reduceProgress(s, { type: "project_skipped", index: 1, project_name: "B" });
+    s = reduceProgress(s, { type: "project_start", index: 2, project_name: "C", total: 3 });
+    s = reduceProgress(s, { type: "project_error", index: 2, project_name: "C", error: "disk full" });
+    expect(s.backup.items.map((i) => [i.name, i.state])).toEqual([["A", "done"], ["B", "skipped"], ["C", "error"]]);
+    expect(s.backup.items[0].detail).toBe("1 sample, 2 missing");
+  });
+});

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { makeApi } from "../api";
 import type { Snapshot, VerifyResult, SnapshotFile, SnapshotFilesResult, SnapshotDiff } from "../types";
 import { Button } from "../components/Button";
-import { VerifiedSeal } from "../components/VerifiedSeal";
+import { Icon } from "../components/Icon";
 import { fmtSize, fmtDate, shortPath, sourceLabel } from "../format";
 import { runRelinkBackup, pointSampleToFile } from "../relink";
 import "../missing.css";
@@ -13,15 +13,15 @@ function reveal(p?: string) { if (p) (window as any).ablebackup?.revealPath?.(p)
 function openInDaw(p?: string) { if (p) (window as any).ablebackup?.openProject?.(p); }
 const PROJECT_EXT = /\.(als|flp|rpp|dawproject|aup3|aup)$/i;
 
-function FileGroup({ label, icon, files, snapDir, open, toggle, showSource }: {
-  label: string; icon: string; files: SnapshotFile[]; snapDir?: string;
+function FileGroup({ label, files, snapDir, open, toggle, showSource }: {
+  label: string; files: SnapshotFile[]; snapDir?: string;
   open: boolean; toggle: () => void; showSource?: boolean;
 }) {
   if (files.length === 0) return null;
   return (
     <div style={{ marginBottom: 4 }}>
       <button className="filegroup__head" onClick={toggle}>
-        <span>{open ? "▾" : "▸"} {icon} {label}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Icon name={open ? "chevronDown" : "chevronRight"} size={14} />{label}</span>
         <span className="sub mono" style={{ margin: 0 }}>{files.length}</span>
       </button>
       {open && files.map((f) => {
@@ -30,8 +30,8 @@ function FileGroup({ label, icon, files, snapDir, open, toggle, showSource }: {
           <div key={f.logical_path} className="filerow" title={snapDir ? "Reveal in the backup" : undefined}
             onClick={() => reveal(snapDir ? `${snapDir}/${f.logical_path}` : undefined)}>
             <span className="filerow__name">{name}</span>
-            {f.relinked && <span className="pill pill--ok filerow__tag">auto-found</span>}
-            {showSource && <span className="filerow__src">← {sourceLabel(f.source_path)}</span>}
+            {f.relinked && <span className="tag filerow__tag">found for you</span>}
+            {showSource && <span className="filerow__src">from {sourceLabel(f.source_path)}</span>}
             <span className="filerow__size mono">{fmtSize(f.size)}</span>
           </div>
         );
@@ -87,7 +87,7 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
     setFixing(tag); setFixMsg(null);
     try {
       await run();
-      setFixMsg({ ok: "✓ Relinked and backed up. A fresh verified backup now holds it." });
+      setFixMsg({ ok: "Relinked and backed up. A fresh checked backup now holds it." });
       loadSnaps(true);
       onFixed?.();
     } catch (e: any) {
@@ -190,67 +190,71 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
   }
   return (
     <>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+      <div className="table snap-cols" style={{ marginBottom: 22 }}>
+        <div className="row cols cols-head"><span /><span>Backup</span><span className="col-num">Files</span><span className="col-num">Size</span><span>Checked</span></div>
         {[...snaps].reverse().map((s) => (
-          <button key={s.id} onClick={() => setSelId(s.id)}
-            className={`snapchip${selId === s.id ? " snapchip--on" : ""}`}>
-            {fmtDate(s.timestamp)}{s.verified ? " ✓" : ""}
+          <button key={s.id} onClick={() => setSelId(s.id)} aria-pressed={selId === s.id}
+            className={`row cols snaprow${selId === s.id ? " row--selected" : ""}`}>
+            <span className={`dot${s.verified ? " dot--ok" : ""}`} />
+            <span className="col-trunc">{fmtDate(s.timestamp)}{s.label ? ` · ${s.label}` : ""}</span>
+            <span className="col-num">{s.file_count}</span>
+            <span className="col-num">{fmtSize(s.total_size)}</span>
+            <span className={s.verified ? "" : "faint"}>{s.verified ? "Opens, files match" : "Not checked"}</span>
           </button>
         ))}
       </div>
 
       {sel && (
-        <div className="card">
+        <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
             <div style={{ minWidth: 0 }}>
-              <strong style={{ fontSize: 15 }}>{fmtDate(sel.timestamp)}{sel.label ? ` · ${sel.label}` : ""}</strong>
+              <h2 style={{ margin: 0 }}>{fmtDate(sel.timestamp)}{sel.label ? ` · ${sel.label}` : ""}</h2>
               <div className="sub" style={{ margin: "5px 0 0", fontSize: 12.5 }}>
                 {sel.file_count} file{sel.file_count === 1 ? "" : "s"} · {fmtSize(sel.total_size)}
                 {groups.gathered.length > 0 && (
-                  <> · <span style={{ color: "var(--accent)" }}>{groups.gathered.length} gathered from {locations} location{locations === 1 ? "" : "s"}</span></>
+                  <> · {groups.gathered.length} gathered from {locations} location{locations === 1 ? "" : "s"}</>
                 )}
               </div>
             </div>
             <div style={{ display: "flex", gap: 7, alignItems: "center", flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
-              {!!sel.verified && <span className="pill pill--ok">verified ✓</span>}
-              {files?.portable && <span className="pill">portable</span>}
-              <Button size="sm" variant="ghost" onClick={() => verify(sel.id)} disabled={verifying.has(sel.id)}>{verifying.has(sel.id) ? "Verifying…" : "Verify"}</Button>
+              {files?.portable && <span className="tag" title="Every sample is inside the backup, so it opens on any computer">Self-contained</span>}
+              <Button size="sm" variant="ghost" onClick={() => verify(sel.id)} disabled={verifying.has(sel.id)}>{verifying.has(sel.id) ? "Checking…" : "Check again"}</Button>
               <Button size="sm" variant="ghost" onClick={() => restore(sel.id)} disabled={restoring.has(sel.id)}>{restoring.has(sel.id) ? "Restoring…" : "Restore"}</Button>
               <Button size="sm" variant="ghost" onClick={() => share(sel.id)} disabled={sharing.has(sel.id)}>{sharing.has(sel.id) ? "Zipping…" : "Share"}</Button>
               {(() => {
                 // the snapshot's own project file (root-level, project extension)
                 const proj = files?.files.find((f) => !f.logical_path.includes("/") && PROJECT_EXT.test(f.logical_path));
                 return sel.dir && proj
-                  ? <Button size="sm" onClick={() => openInDaw(`${sel.dir}/${proj.logical_path}`)}
-                      title="Open this backed-up version in its DAW">▶ Open</Button>
+                  ? <Button size="sm" variant="ghost" onClick={() => openInDaw(`${sel.dir}/${proj.logical_path}`)}
+                      title="Open this backed-up version in its DAW">Open this version</Button>
                   : null;
               })()}
-              {sel.dir && <Button size="sm" variant="ghost" onClick={() => reveal(sel.dir)}>Reveal</Button>}
+              {sel.dir && <button className="iconbtn" title="Show in folder" aria-label="Show this backup in its folder" onClick={() => reveal(sel.dir)}><Icon name="folder" /></button>}
             </div>
           </div>
 
           {rest && (
-            <div className="card" style={{ marginBottom: 12, background: "var(--surface-2)", padding: 11, fontSize: 12.5 }}>
+            <div className="note-box">
               {rest.error ? <span style={{ color: "var(--danger)" }}>Restore failed: {rest.error}</span>
                 : rest.note ? <span style={{ color: "var(--text-dim)" }}>{rest.note}</span>
-                : <span><span style={{ color: "var(--accent-2)", fontWeight: 600 }}>✓ Restored</span> to {shortPath(rest.path || "", 4)}
+                : <span><span style={{ color: "var(--accent-2)", fontWeight: 500 }}>Restored</span> to {shortPath(rest.path || "", 4)}
                   {rest.path && <Button variant="ghost" size="sm" style={{ marginLeft: 10 }} onClick={() => reveal(rest.path)}>Reveal</Button>}</span>}
             </div>
           )}
           {shr && (
-            <div className="card" style={{ marginBottom: 12, background: "var(--surface-2)", padding: 11, fontSize: 12.5 }}>
+            <div className="note-box">
               {shr.error ? <span style={{ color: "var(--danger)" }}>Share failed: {shr.error}</span>
                 : shr.note ? <span style={{ color: "var(--text-dim)" }}>{shr.note}</span>
-                : <span><span style={{ color: "var(--accent-2)", fontWeight: 600 }}>✓ Zipped</span> to {shortPath(shr.path || "", 4)} — ready to send.
+                : <span><span style={{ color: "var(--accent-2)", fontWeight: 500 }}>Zipped</span> to {shortPath(shr.path || "", 4)}, ready to send.
                   {shr.path && <Button variant="ghost" size="sm" style={{ marginLeft: 10 }} onClick={() => reveal(shr.path)}>Reveal</Button>}</span>}
             </div>
           )}
           {r && !r.error && (
-            <div className="card" style={{ marginBottom: 12, background: "var(--surface-2)", padding: 11, display: "flex", alignItems: "center", gap: 12 }}>
-              {r.ok ? <VerifiedSeal size={40} /> : <span style={{ fontSize: 22 }}>⚠</span>}
+            <div className="note-box" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <Icon name={r.ok ? "check" : "alert"} size={18} className={r.ok ? "ok-text" : "warn-text"} />
               <div style={{ fontSize: 12.5 }}>
-                <div style={{ color: r.ok ? "var(--accent-2)" : "var(--danger)", fontWeight: 700 }}>
-                  {r.ok ? "Verified" : "Problems found"}
+                <div style={{ color: r.ok ? "var(--accent-2)" : "var(--danger)", fontWeight: 500 }}>
+                  {r.ok ? "Checked: every file is there and matches" : "Problems found"}
                 </div>
                 <div className="sub" style={{ margin: 0 }}>
                   {r.present}/{r.checked} files present, contents match
@@ -261,19 +265,19 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
           )}
 
           {diff && diff.available && (
-            <div className="card" style={{ marginBottom: 12, background: "var(--surface-2)", padding: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: diff.is_first ? 0 : 7 }}>
+            <div className="note-box">
+              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: diff.is_first ? 0 : 7 }}>
                 {diff.is_first ? "First backup of this project" : `Changes since ${fmtDate(diff.prev_timestamp || "")}`}
               </div>
               {!diff.is_first && (
                 diff.added.length + diff.changed.length + diff.removed.length === 0 ? (
-                  <div className="sub" style={{ margin: 0, fontSize: 12 }}>Identical to the previous backup — nothing changed.</div>
+                  <div className="sub" style={{ margin: 0, fontSize: 12 }}>Nothing changed since the backup before.</div>
                 ) : (
                   <>
                     <div style={{ display: "flex", gap: 16, fontSize: 12.5, flexWrap: "wrap" }}>
-                      <span style={{ color: "var(--accent-2)" }}>＋ {diff.added.length} added</span>
-                      <span style={{ color: "var(--warn)" }}>✎ {diff.changed.length} changed</span>
-                      <span style={{ color: "var(--danger)" }}>－ {diff.removed.length} removed</span>
+                      <span style={{ color: "var(--accent-2)" }}>{diff.added.length} added</span>
+                      <span style={{ color: "var(--warn)" }}>{diff.changed.length} changed</span>
+                      <span style={{ color: "var(--danger)" }}>{diff.removed.length} removed</span>
                       <span className="sub" style={{ margin: 0 }}>{diff.unchanged} unchanged</span>
                     </div>
                     <button className="linkbtn" style={{ marginTop: 8, fontSize: 12 }} onClick={() => setShowDiff((s) => !s)}>
@@ -298,23 +302,23 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
           )}
           {!loadingFiles && files?.manifest_present && (
             <div className="filebrowser">
-              <FileGroup label="Project" icon="🎛️" files={groups.project} snapDir={sel.dir}
+              <FileGroup label="Project" files={groups.project} snapDir={sel.dir}
                 open={open.project} toggle={() => setOpen((g) => ({ ...g, project: !g.project }))} />
-              <FileGroup label="Gathered samples" icon="📥" files={groups.gathered} snapDir={sel.dir} showSource
+              <FileGroup label="Gathered samples" files={groups.gathered} snapDir={sel.dir} showSource
                 open={open.gathered} toggle={() => setOpen((g) => ({ ...g, gathered: !g.gathered }))} />
-              <FileGroup label="In-project samples" icon="📁" files={groups.internal} snapDir={sel.dir}
+              <FileGroup label="In-project samples" files={groups.internal} snapDir={sel.dir}
                 open={open.internal} toggle={() => setOpen((g) => ({ ...g, internal: !g.internal }))} />
             </div>
           )}
 
           {sel.missing && sel.missing.length > 0 && (
-            <div className="miss" style={{ marginTop: 12, border: "1px solid var(--warn-soft)", borderRadius: 10, padding: "12px 14px" }}>
+            <div className="miss" style={{ marginTop: 20 }}>
               <div className="miss-head">
                 <div>
-                  <div className="miss-title">⚠ {sel.missing.length} sample{sel.missing.length === 1 ? "" : "s"} couldn’t be found</div>
+                  <div className="miss-title">{sel.missing.length} sample{sel.missing.length === 1 ? "" : "s"} couldn’t be found</div>
                   <div className="miss-sum">
                     These were missing when this backup ran. Point each one at the right file, or
-                    search a folder — it relinks and makes a fresh verified backup.
+                    search a folder. It relinks them and makes a fresh checked backup.
                   </div>
                 </div>
                 {projectPath && (
@@ -326,9 +330,9 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
                 )}
               </div>
               {fixMsg && <div className={`miss-note ${fixMsg.err ? "err" : "ok"}`}>{fixMsg.err || fixMsg.ok}</div>}
-              <ul className="miss-list" style={{ marginTop: 12 }}>
+              <div className="table miss-list" style={{ marginTop: 12 }}>
                 {sel.missing.map((m) => (
-                  <li key={m} className="miss-row">
+                  <div key={m} className="row cols miss-cols miss-cols--short">
                     <div className="miss-file">
                       <div className="miss-name" title={m}>{m.split("/").pop()}</div>
                       <div className="miss-path mono" title={m}>{m}</div>
@@ -336,12 +340,12 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
                     {projectPath
                       ? <Button size="sm" variant="ghost" onClick={() => pointToFile(m)} disabled={fixing !== null}
                           title="Pick the exact replacement file for this sample">
-                          {fixing === m ? "Linking…" : "Point to file…"}
+                          {fixing === m ? "Linking…" : "Point to file"}
                         </Button>
-                      : <span className="miss-badge lost">missing</span>}
-                  </li>
+                      : <span className="miss-badge lost">Missing</span>}
+                  </div>
                 ))}
-              </ul>
+              </div>
             </div>
           )}
         </div>
