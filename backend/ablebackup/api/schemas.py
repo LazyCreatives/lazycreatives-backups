@@ -44,6 +44,8 @@ class ExportLinkRequest(BaseModel):
 
 class ExportFoldersRequest(BaseModel):
     folders: list[str] = Field(default_factory=list, max_length=_LIST)
+    # Folders Backups found on its own that the user said not to look in. None = unchanged.
+    ignored: list[str] | None = Field(default=None, max_length=_LIST)
 
 
 class BackupRequest(BaseModel):

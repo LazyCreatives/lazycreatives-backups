@@ -13,8 +13,12 @@
 /* play · dot · name · status · last backup · size · DAW · main button · menu */
 .lib-cols { --cols: 28px 9px minmax(0, 1fr) 150px 118px 64px 44px 84px 32px; }
 .lib-cols.cols-head { padding-left: 14px; padding-right: 14px; }
+/* no project has a song yet: drop the play column so the dot starts the row */
+.lib-cols--noplay { --cols: 9px minmax(0, 1fr) 150px 118px 64px 44px 84px 32px; }
+.lib-cols--noplay > :first-child { display: none; }
 @media (max-width: 1040px) {
   .lib-cols { --cols: 28px 9px minmax(0, 1fr) 150px 118px 44px 84px 32px; }
+  .lib-cols--noplay { --cols: 9px minmax(0, 1fr) 150px 118px 44px 84px 32px; }
   .lib-cols > :nth-child(6) { display: none; }  /* size column goes first when narrow */
 }
 .lib-row[role="button"] { cursor: pointer; }

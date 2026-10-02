@@ -167,11 +167,16 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal }: {
           <div className="lvinyl">
             <div className="sheen" />
             <div className="vlabel-disc">
-              <span className="lc mono">LAZY CREATIVES</span>
-              <h2>{item.name}</h2>
-              <span className="cat mono">{cat} · {crate.toUpperCase()}</span>
+              {/* top half: brand + name; the hole sits dead centre; bottom half: catalogue + speed */}
+              <div className="vl-top">
+                <span className="lc mono">LAZY CREATIVES</span>
+                <h2 className={item.name.length > 18 ? "vl-name vl-name--long" : "vl-name"} title={item.name}>{item.name}</h2>
+              </div>
               <span className="hole" />
-              <span className="rpm mono">33⅓ · est. {estYear}</span>
+              <div className="vl-bottom">
+                <span className="cat mono">{cat} · {crate.toUpperCase()}</span>
+                <span className="rpm mono">33⅓ · est. {estYear}</span>
+              </div>
             </div>
           </div>
         </section>

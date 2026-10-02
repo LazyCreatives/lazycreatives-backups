@@ -11,3 +11,6 @@ os.environ.setdefault("ABLEBACKUP_DEV", "1")
 # Never read a real Uploader install on the machine running the tests; tests that
 # need one point this at a fixture catalog.
 os.environ.setdefault("ABLEBACKUP_UPLOADER_DB", os.path.join(os.sep, "nonexistent", "uploader.db"))
+# Don't go looking for exports folders around the shared temp directory (other tests'
+# folders live there); the tests for that turn it back on.
+os.environ.setdefault("ABLEBACKUP_FIND_EXPORT_FOLDERS", "0")

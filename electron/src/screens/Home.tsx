@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { bubbleLabel } from "../bubbleLabel";
 import { makeApi } from "../api";
 import type { Overview, LibraryItem } from "../types";
 import type { BackupProgress } from "../useProgress";
@@ -163,11 +164,9 @@ function ProjectCloud({ items, onPick, onToggleDrawer }: {
               if (e.key === "Enter" || e.key === " ") { e.preventDefault(); b.warn ? onToggleDrawer() : onPick(b.name); }
             }}>
             <circle r={b.r} />
-            {b.r > 26 && (
-              <text dy="0.35em">
-                {b.name.length > Math.floor(b.r / 4.2) ? b.name.slice(0, Math.floor(b.r / 4.2)) + "…" : b.name}
-              </text>
-            )}
+            {bubbleLabel(b.name, b.r).map((line, li, all) => (
+              <text key={li} dy={`${0.35 + (li - (all.length - 1) / 2) * 1.2}em`}>{line}</text>
+            ))}
           </g>
         ))}
       </svg>
@@ -284,6 +283,11 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   const verified = items.filter((i) => i.backed_up).length;
   const waiting = items.length - verified;
   const warnItems = items.filter((i) => i.missing_count > 0);
+  // One "needs a look" number everywhere: projects missing samples (backed up or not)
+  // plus any whose last backup failed.
+  const warnNames = new Set(warnItems.map((i) => i.name));
+  const lookCount = warnItems.length
+    + new Set(ov.attention.filter((a) => a.kind === "error" && !warnNames.has(a.project_name)).map((a) => a.project_name)).size;
   const savedPct = ov.logical_size > 0 ? Math.round((ov.saved_bytes / ov.logical_size) * 100) : 0;
   const driveTotal = ov.actual_size + ov.nas.free_bytes;
   const driveFrac = driveTotal > 0 ? ov.actual_size / driveTotal : 0;
@@ -305,13 +309,13 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
     : items.length === 0
     ? "Nothing in the library yet. Hit the button and I'll go find your projects."
     : `${verified} project${verified === 1 ? "" : "s"} tucked in, re-read and proven to open.${
-        warnItems.length > 0 ? ` ${warnItems.length} could use a look — otherwise, go make something.` : " Go make something."}`;
+        lookCount > 0 ? ` ${lookCount} could use a look — otherwise, go make something.` : " Go make something."}`;
   const status = doneFlash
     ? `✓ snapshot verified · ${backup.completed} project${backup.completed === 1 ? "" : "s"} · just now`
     : working
     ? `⟳ ${kick && !backup.active ? "finding projects…" : `backing up ${backup.current || "…"} · ${backup.completed}/${backup.total} projects`}`
     : ov.last_run
-    ? `✓ last run ${fmtDate(ov.last_run)}${ov.attention.length > 0 ? ` · ${ov.attention.length} need${ov.attention.length === 1 ? "s" : ""} attention` : ""}`
+    ? `✓ last run ${fmtDate(ov.last_run)}${lookCount > 0 ? ` · ${lookCount} could use a look` : ""}`
     : "no runs yet";
 
   return (
@@ -388,10 +392,13 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
         <section className="home-panel glass elev-3 hpanel">
           <h2>Space saved</h2>
           <div className="squeeze">
-            <div className="tube">
-              <span className="ghostlabel mono">{fmtSize(ov.logical_size)} if copied in full</span>
-              <div className="stored mono" style={{ width: ov.pool_known && ov.logical_size > 0 ? `${Math.max(8, Math.round((ov.actual_size / ov.logical_size) * 100))}%` : "0%" }}>
-                {ov.pool_known ? `${fmtSize(ov.actual_size)} stored` : "…"}
+            <div className="tube-wrap">
+              <div className="tube">
+                <div className="stored" style={{ width: ov.pool_known && ov.logical_size > 0 ? `${Math.max(4, Math.round((ov.actual_size / ov.logical_size) * 100))}%` : "0%" }} />
+              </div>
+              <div className="tube-labels mono">
+                <span><span className="swatch sw-stored" />{ov.pool_known ? `${fmtSize(ov.actual_size)} stored` : "…"}</span>
+                <span>{fmtSize(ov.logical_size)} if copied in full</span>
               </div>
             </div>
             <div className="nums">

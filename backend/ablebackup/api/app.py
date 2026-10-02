@@ -44,6 +44,12 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         hub.bind_loop(asyncio.get_running_loop())
         saved = catalog.get_setting("config") or {}
         scheduler.set_interval(saved.get("interval_minutes", 0))
+        # Re-link song exports to projects in the background on every start, so songs
+        # saved since the last scan (or a library from before this feature) show up
+        # without needing a new scan.
+        # A daemon thread, so quitting the app never waits for it to finish.
+        threading.Thread(target=exports.refresh, args=(catalog,), daemon=True,
+                         name="exports-refresh").start()
         yield
         scheduler.shutdown()
         catalog.close()
@@ -324,18 +330,32 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     def exports_folders():
         """Where songs get exported: the user's own list, plus Uploader's watch
         folders (read-only, shown so people see why a song was found)."""
-        return {"folders": [str(p) for p in exports.export_folders(app.state.catalog)],
+        cat = app.state.catalog
+        return {"folders": [str(p) for p in exports.export_folders(cat)],
+                "found_folders": [str(p) for p in exports.found_folders(cat)],
+                "ignored": list(cat.get_setting("ignored_export_folders") or []),
                 "uploader_folders": [str(p) for p in exports.uploader_sources()]}
 
     @app.put("/api/exports/folders", dependencies=[Depends(require_token)])
     def exports_set_folders(req: ExportFoldersRequest):
         folders = list(dict.fromkeys(f for f in req.folders if f.strip()))
         app.state.catalog.set_setting("export_folders", folders)
-        return {"folders": folders, "linked": exports.refresh(app.state.catalog)}
+        if req.ignored is not None:
+            app.state.catalog.set_setting(
+                "ignored_export_folders", list(dict.fromkeys(f for f in req.ignored if f.strip())))
+        # Re-check in the background; answer within a few seconds either way and let
+        # the screen follow /api/exports/status if it's still going.
+        return {"folders": folders, **exports.refresh_in_background(app.state.catalog, wait=8)}
 
     @app.post("/api/exports/refresh", dependencies=[Depends(require_token)])
     def exports_refresh():
-        return {"linked": exports.refresh(app.state.catalog)}
+        return exports.refresh_in_background(app.state.catalog, wait=8)
+
+    @app.get("/api/exports/status", dependencies=[Depends(require_token)])
+    def exports_status():
+        """How the song re-check is going: running, folders_done / folders_total,
+        the folder it's in, and how many songs were linked last time."""
+        return exports.progress()
 
     @app.post("/api/exports/link", dependencies=[Depends(require_token)])
     def exports_link(req: ExportLinkRequest):

@@ -4,6 +4,8 @@ import os
 import sqlite3
 from pathlib import Path
 
+import time
+
 from fastapi.testclient import TestClient
 
 from ablebackup import exports
@@ -206,5 +208,141 @@ def test_api_export_folders(tmp_path):
     shared = tmp_path / "Exports"
     _touch(shared / "Song master.wav")
     r = c.put("/api/exports/folders", json={"folders": [str(shared), str(shared), " "]}).json()
-    assert r == {"folders": [str(shared)], "linked": 1}
+    assert r == {"folders": [str(shared)], "linked": 1, "running": False}
     assert c.get("/api/exports/folders").json()["folders"] == [str(shared)]
+
+
+def test_numbered_projects_keep_their_own_songs(tmp_path):
+    """"Freaky", "Freaky 2", "Freaky 3": the number is part of the title, not a version."""
+    cat = Catalog(tmp_path / "c.db")
+    for pid, name in (("f1", "Freaky"), ("f2", "Freaky 2"), ("f3", "Freaky 3")):
+        _project(cat, pid, name, tmp_path / "Projects" / f"{name} Project")
+    shared = tmp_path / "Exports"
+    _touch(shared / "Freaky 3 master.aif")
+    _touch(shared / "Freaky 2 v4.mp3")
+    _touch(shared / "Freaky final.wav")
+    cat.set_setting("export_folders", [str(shared)])
+    exports.refresh(cat)
+    names = lambda pid: [e["name"] for e in cat.exports_for(pid)]
+    assert names("f3") == ["Freaky 3 master"]
+    assert names("f2") == ["Freaky 2 v4"]
+    assert names("f1") == ["Freaky final"]
+
+
+def test_song_named_after_the_project_folder(tmp_path):
+    cat = Catalog(tmp_path / "c.db")
+    _project(cat, "p1", "freaky v7 FINAL ARRANGEMENT", tmp_path / "Late Night Project")
+    shared = tmp_path / "Exports"
+    _touch(shared / "Late Night.wav")
+    cat.set_setting("export_folders", [str(shared)])
+    exports.refresh(cat)
+    assert [e["name"] for e in cat.exports_for("p1")] == ["Late Night"]
+
+
+def test_exports_folder_found_without_being_told(tmp_path, monkeypatch):
+    """Robert's case: one "NEW EXPORTS AIFS:MP3S" folder beside his projects, never
+    added in Backups. It is found and its songs linked; ignoring it stops that."""
+    monkeypatch.setenv("ABLEBACKUP_FIND_EXPORT_FOLDERS", "1")
+    cat = Catalog(tmp_path / "c.db")
+    music = tmp_path / "home" / "Music"
+    _project(cat, "p1", "Sunset", music / "Ableton" / "Sunset Project")
+    cat.set_setting("config", {"sources": [str(music / "Ableton")]})
+    shared = music / "NEW EXPORTS AIFS:MP3S"
+    _touch(shared / "Sunset master.aif")
+    _touch(music / "Exports but empty" / "readme.txt")      # no audio: not an exports folder
+    exports.refresh(cat)
+    assert exports.found_folders(cat) == [shared.resolve()]
+    assert [e["name"] for e in cat.exports_for("p1")] == ["Sunset master"]
+
+    cat.set_setting("ignored_export_folders", [str(shared)])
+    exports.refresh(cat)
+    assert exports.found_folders(cat) == []
+    assert cat.exports_for("p1") == []
+
+    cat.set_setting("ignored_export_folders", [])
+    cat.set_setting("find_export_folders", False)
+    exports.refresh(cat)
+    assert cat.exports_for("p1") == []
+
+
+def test_exports_relinked_when_the_app_starts(tmp_path):
+    """A library scanned before songs were linked gets them on the next start."""
+    db = tmp_path / "c.db"
+    cat = Catalog(db)
+    _project(cat, "p1", "Sunset", tmp_path / "Sunset Project")
+    _touch(tmp_path / "Sunset Project" / "Sunset.wav")
+    cat.close()
+    with TestClient(create_app(token="", db_path=db)) as c:
+        for _ in range(100):  # the start-up refresh runs in the background
+            if c.app.state.catalog.exports_for("p1"):
+                break
+            time.sleep(0.05)
+        assert [e["name"] for e in c.app.state.catalog.exports_for("p1")] == ["Sunset"]
+        r = c.get("/api/exports/folders").json()
+        assert set(r) == {"folders", "found_folders", "ignored", "uploader_folders"}
+
+
+def test_a_folder_that_never_answers_is_skipped_not_waited_on(tmp_path, monkeypatch):
+    """A sleeping network share can make a folder check hang for minutes; the re-check
+    gives up on that drive after a few seconds and keeps its earlier links."""
+    cat = Catalog(tmp_path / "c.db")
+    _project(cat, "p1", "Sunset", tmp_path / "Sunset Project")
+    _touch(tmp_path / "Sunset Project" / "Sunset.wav")
+    _project(cat, "nas", "Night Drive", tmp_path / "nas" / "Night Drive Project")
+    cat.replace_auto_exports([{"path": "/Volumes/NAS/Night Drive.wav", "project_id": "nas",
+                               "name": "Night Drive", "size": 1, "mtime": 1.0, "match": "name"}])
+    real_isdir = os.path.isdir
+    def slow_isdir(p):
+        if "nas" in str(p):
+            time.sleep(30)
+        return real_isdir(p)
+    monkeypatch.setattr(exports.os.path, "isdir", slow_isdir)
+    monkeypatch.setattr(exports._Reach.__init__, "__defaults__", (0.2,))
+    t0 = time.monotonic()
+    exports.refresh(cat)
+    assert time.monotonic() - t0 < 5
+    assert [e["name"] for e in cat.exports_for("p1")] == ["Sunset"]
+    assert [e["name"] for e in cat.exports_for("nas")] == ["Night Drive"]  # kept, not wiped
+    assert exports.progress()["running"] is False
+
+
+def test_recheck_stops_at_its_time_limit(tmp_path):
+    cat = Catalog(tmp_path / "c.db")
+    _project(cat, "p1", "Sunset", tmp_path / "Sunset Project")
+    _touch(tmp_path / "Sunset Project" / "Sunset.wav")
+    exports.refresh(cat, limit=-1)          # already out of time: finds nothing, breaks nothing
+    assert exports.progress()["timed_out"] is True
+    exports.refresh(cat)
+    assert [e["name"] for e in cat.exports_for("p1")] == ["Sunset"]
+
+
+def test_api_recheck_status(tmp_path):
+    c = TestClient(create_app(token="", db_path=tmp_path / "c.db"))
+    _project(c.app.state.catalog, "p1", "Song", tmp_path / "proj")
+    _touch(tmp_path / "proj" / "Song.wav")
+    assert c.post("/api/exports/refresh").json() == {"linked": 1, "running": False}
+    st = c.get("/api/exports/status").json()
+    assert st["running"] is False and st["linked"] == 1 and st["folders_done"] == st["folders_total"]
+
+
+def test_a_stuck_disk_cannot_hang_the_recheck(tmp_path, monkeypatch):
+    """If listing a folder blocks (macOS waiting on a permission prompt nobody
+    answers), the re-check still returns, and the next one isn't locked out."""
+    cat = Catalog(tmp_path / "c.db")
+    _project(cat, "p1", "Sunset", tmp_path / "Sunset Project")
+    _touch(tmp_path / "Sunset Project" / "Sunset.wav")
+    real = exports._audio_files
+    stuck = {"on": True}
+    def blocking(*a, **k):
+        while stuck["on"]:
+            time.sleep(0.05)
+        return real(*a, **k)
+    monkeypatch.setattr(exports, "_audio_files", blocking)
+    t0 = time.monotonic()
+    assert exports.refresh(cat, limit=0.3) == 0
+    assert time.monotonic() - t0 < 8 and exports.progress()["timed_out"] is True
+    monkeypatch.setattr(exports, "_audio_files", real)
+    assert exports.refresh(cat) == 1          # not locked out by the stuck one
+    stuck["on"] = False                        # the abandoned worker finishes late...
+    time.sleep(0.3)
+    assert [e["name"] for e in cat.exports_for("p1")] == ["Sunset"]  # ...and changes nothing

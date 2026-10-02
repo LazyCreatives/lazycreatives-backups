@@ -186,6 +186,9 @@ export function Library({ scan, openProject, onOpenHandled }: {
 
   const attentionCount = items.filter((i) => i.missing_count > 0).length;
   const shown = filter === "attention" ? items.filter((i) => i.missing_count > 0) : items;
+  // The play column only appears once some project has a song to play, so rows
+  // don't open with an empty gap. Decided for the whole list so every group lines up.
+  const colsClass = items.some((i) => i.latest_export) ? "lib-cols" : "lib-cols lib-cols--noplay";
   const byOwner = useMemo(() => {
     const m: Record<string, LibraryItem[]> = {};
     for (const it of shown) (m[it.owner || "system"] ||= []).push(it);
@@ -350,7 +353,7 @@ export function Library({ scan, openProject, onOpenHandled }: {
                 </div>
               )}
               {!isCollapsed && (
-                <div className="cols cols-head lib-cols" aria-hidden>
+                <div className={`cols cols-head ${colsClass}`} aria-hidden>
                   <span /><span /><span>Project</span><span>Status</span><span className="col-num">Last backup</span><span className="col-num">Size</span><span /><span /><span />
                 </div>
               )}
@@ -360,7 +363,7 @@ export function Library({ scan, openProject, onOpenHandled }: {
                 const dawName = it.daw === "flstudio" ? "FL Studio" : it.daw === "ableton" ? "Ableton Live" : "its DAW";
                 const openIt = () => setExpanded(it.project_id);
                 return (
-                  <div key={it.project_id} data-pid={it.project_id} className="row cols lib-row lib-cols" role="button" tabIndex={0}
+                  <div key={it.project_id} data-pid={it.project_id} className={`row cols lib-row ${colsClass}`} role="button" tabIndex={0}
                     onClick={openIt}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openIt(); } }}>
                     {it.latest_export

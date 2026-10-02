@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { makeApi } from "../api";
 import type { ExportRow, LibraryItem, ProjectExports as Data } from "../types";
 import { Button } from "../components/Button";
@@ -25,19 +25,46 @@ const folderName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 // and the controls to fix a wrong or missed match.
 export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChanged?: () => void }) {
   const [data, setData] = useState<Data | null>(null);
-  const [folders, setFolders] = useState<{ folders: string[]; uploader_folders: string[] } | null>(null);
+  const [folders, setFolders] = useState<{ folders: string[]; found_folders?: string[]; ignored?: string[]; uploader_folders: string[] } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // While Backups is still looking through folders for songs: "folder 3 of 12".
+  const [checking, setChecking] = useState<{ done: number; total: number } | null>(null);
 
   function load() {
     api.projectExports(item.project_id).then(setData).catch((e) => setErr(String(e.message ?? e)));
     api.exportFolders().then(setFolders).catch(() => {});
+    api.exportsStatus().then((st) => { if (st.running) follow(); }).catch(() => {});
   }
   useEffect(load, [item.project_id]);
 
+  // Poll the re-check until it ends, then show what it found.
+  const following = useRef(false);
+  function follow() {
+    if (following.current) return;
+    following.current = true;
+    const tick = () => api.exportsStatus().then((st) => {
+      if (st.running) {
+        setChecking({ done: st.folders_done, total: st.folders_total });
+        setTimeout(tick, 1200);
+      } else {
+        following.current = false;
+        setChecking(null);
+        api.projectExports(item.project_id).then(setData).catch(() => {});
+        api.exportFolders().then(setFolders).catch(() => {});
+        onChanged?.();
+      }
+    }).catch(() => { following.current = false; setChecking(null); });
+    tick();
+  }
+
   async function run(fn: () => Promise<unknown>) {
     setBusy(true); setErr(null);
-    try { await fn(); load(); onChanged?.(); }
+    try {
+      const r: any = await fn();
+      if (r && r.running) follow();
+      load(); onChanged?.();
+    }
     catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setBusy(false); }
   }
@@ -53,9 +80,13 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
   function removeFolder(p: string) {
     run(() => api.setExportFolders((folders?.folders ?? []).filter((f) => f !== p)));
   }
+  // A folder Backups found by itself: remember not to look there again.
+  function ignoreFound(p: string) {
+    run(() => api.setExportFolders(folders?.folders ?? [], [...(folders?.ignored ?? []), p]));
+  }
 
   const rows = data?.exports ?? [];
-  const lookIn = [...(folders?.folders ?? []), ...(folders?.uploader_folders ?? [])];
+  const lookIn = [...(folders?.folders ?? []), ...(folders?.found_folders ?? []), ...(folders?.uploader_folders ?? [])];
 
   return (
     <div className="card" style={{ padding: "14px 16px" }}>
@@ -65,7 +96,13 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
 
       {err && <div className="sub" style={{ color: "var(--danger)", margin: "0 0 8px" }}>{err}</div>}
 
-      {data && rows.length === 0 && (
+      {checking && (
+        <div className="sub" role="status" style={{ margin: "0 0 10px" }}>
+          Checking your folders for songs{checking.total > 0 ? ` (${Math.min(checking.done + 1, checking.total)} of ${checking.total})` : ""}…
+        </div>
+      )}
+
+      {data && rows.length === 0 && !checking && (
         <div className="sub" style={{ margin: "0 0 10px" }}>
           No exported songs found for this project yet.
           {lookIn.length === 0 && " Tell Backups where you save your exports and it will find them."}
@@ -130,6 +167,8 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
         <Button variant="ghost" size="sm" disabled={busy} onClick={addSong}>Add a song…</Button>
         <Button variant="ghost" size="sm" disabled={busy} onClick={addFolder}>Add an exports folder…</Button>
+        <Button variant="ghost" size="sm" disabled={busy || !!checking} onClick={() => run(() => api.refreshExports())}
+          title="Look through the folders again for songs saved since">Look again</Button>
       </div>
 
       {folders && (
@@ -140,6 +179,14 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
               {", "}<span title={f}>{folderName(f)}</span>
               <button type="button" aria-label={`Stop looking in ${folderName(f)}`} title="Stop looking here"
                 onClick={() => removeFolder(f)} disabled={busy}
+                style={{ background: "none", border: 0, color: "inherit", cursor: "pointer", padding: "0 2px" }}>×</button>
+            </span>
+          ))}
+          {(folders.found_folders ?? []).map((f) => (
+            <span key={`f-${f}`}>
+              {", "}<span title={`${f} (found automatically)`}>{folderName(f)}</span>
+              <button type="button" aria-label={`Stop looking in ${folderName(f)}`} title="Stop looking here"
+                onClick={() => ignoreFound(f)} disabled={busy}
                 style={{ background: "none", border: 0, color: "inherit", cursor: "pointer", padding: "0 2px" }}>×</button>
             </span>
           ))}

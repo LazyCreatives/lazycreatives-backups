@@ -329,12 +329,15 @@ class Catalog:
                 "SELECT project_id, name, dir, daw, mtime FROM discovered").fetchall()
         return [dict(r) for r in rows]
 
-    def replace_auto_exports(self, rows: list[dict]) -> int:
+    def replace_auto_exports(self, rows: list[dict], keep_existing: bool = False) -> int:
         """Swap in a fresh set of automatic matches. Manual links and dismissed
-        ("not from this project") rows are kept and take precedence."""
+        ("not from this project") rows are kept and take precedence. With
+        ``keep_existing`` (part of the disk couldn't be checked) earlier automatic
+        matches are kept too and the new ones added."""
         with self._lock:
-            self.conn.execute(
-                "DELETE FROM exports WHERE match IN ('folder', 'name') AND hidden = 0")
+            if not keep_existing:
+                self.conn.execute(
+                    "DELETE FROM exports WHERE match IN ('folder', 'name') AND hidden = 0")
             self.conn.executemany(
                 "INSERT OR IGNORE INTO exports (path, project_id, name, size, mtime, match) "
                 "VALUES (:path, :project_id, :name, :size, :mtime, :match)", rows)

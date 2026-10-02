@@ -96,13 +96,16 @@ export function makeApi() {
     async projectExports(projectId: string): Promise<ProjectExports> {
       return req("GET", `/api/exports?project_id=${encodeURIComponent(projectId)}`);
     },
-    async exportFolders(): Promise<{ folders: string[]; uploader_folders: string[] }> {
+    async exportFolders(): Promise<{ folders: string[]; found_folders?: string[]; ignored?: string[]; uploader_folders: string[] }> {
       return req("GET", "/api/exports/folders");
     },
-    async setExportFolders(folders: string[]): Promise<{ folders: string[]; linked: number }> {
-      return req("PUT", "/api/exports/folders", { folders });
+    async setExportFolders(folders: string[], ignored?: string[]): Promise<{ folders: string[]; linked: number | null; running: boolean }> {
+      return req("PUT", "/api/exports/folders", ignored ? { folders, ignored } : { folders });
     },
-    async refreshExports(): Promise<{ linked: number }> { return req("POST", "/api/exports/refresh"); },
+    async refreshExports(): Promise<{ linked: number | null; running: boolean }> { return req("POST", "/api/exports/refresh"); },
+    async exportsStatus(): Promise<{ running: boolean; folders_done: number; folders_total: number; current: string; linked: number | null; timed_out: boolean }> {
+      return req("GET", "/api/exports/status");
+    },
     async linkExport(path: string, projectId: string): Promise<{ ok: boolean }> {
       return req("POST", "/api/exports/link", { path, project_id: projectId });
     },
