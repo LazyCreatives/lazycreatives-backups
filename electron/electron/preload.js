@@ -17,4 +17,13 @@ contextBridge.exposeInMainWorld("ablebackup", {
   platform: process.platform,
   getOpenAtLogin: () => ipcRenderer.invoke("get-open-at-login"),
   setOpenAtLogin: (enabled) => ipcRenderer.invoke("set-open-at-login", enabled),
+  // "Check for updates" in Settings (see updater.js).
+  updateStatus: () => ipcRenderer.invoke("update-status"),
+  checkForUpdates: () => ipcRenderer.invoke("update-check"),
+  applyUpdate: () => ipcRenderer.invoke("update-apply"),
+  onUpdateStatus: (cb) => {
+    const h = (_e, s) => cb(s);
+    ipcRenderer.on("update-status", h);
+    return () => ipcRenderer.removeListener("update-status", h);
+  },
 });

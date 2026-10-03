@@ -33,6 +33,14 @@ def default_libraries() -> list[Path]:
     return out
 
 
+def daw_data_folders() -> list[Path]:
+    """Folders the DAWs themselves search for samples, when they exist: FL Studio's
+    user data folder (Documents/Image-Line holds its packs, recordings, sliced audio
+    and the samples it saves with projects)."""
+    fl = Path.home() / "Documents" / "Image-Line"
+    return [fl] if fl.is_dir() else []
+
+
 def build_index(roots: list[Path]) -> dict[str, list[Path]]:
     """Map lowercased filename -> all paths with that name, for audio files under
     roots. Returns every candidate (not first-wins) so the caller can verify which

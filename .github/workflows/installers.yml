@@ -173,11 +173,26 @@ jobs:
           grep -q "url: LazyCreatives-Backups-Windows-Setup.exe" out/latest.yml
           grep -q "url: LazyCreatives-Backups-Linux-x86_64.AppImage" out/latest-linux.yml
           ls -l out
+      # The release page shows this version's "What's new" from CHANGELOG.md, then
+      # the first-launch note. The website reads the same text from the latest release.
+      - name: Write release notes
+        run: |
+          {
+            if python3 .github/scripts/release_notes.py "$GITHUB_REF_NAME" --check >&2; then
+              echo "## What's new"; echo
+              python3 .github/scripts/release_notes.py "$GITHUB_REF_NAME"; echo
+            else
+              echo "::warning::CHANGELOG.md has no notes for $GITHUB_REF_NAME" >&2
+            fi
+            echo "---"; echo
+            echo "Unsigned beta build. See docs/PACKAGING.md for first-launch steps on each OS."
+          } > notes.md
+          cat notes.md
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" out/* \
             --title "LazyCreatives Backups $GITHUB_REF_NAME (beta)" \
-            --notes "Unsigned beta build. See docs/PACKAGING.md for first-launch steps on each OS." \
+            --notes-file notes.md \
             --verify-tag

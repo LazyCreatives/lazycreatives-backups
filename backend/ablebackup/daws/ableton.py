@@ -10,7 +10,7 @@ from ablebackup.als_parser import _fileref_to_model, parse_als, parse_als_with_m
 from ablebackup.daws.base import COMMON_SKIP, walk_for_extensions
 from ablebackup.locator import default_libraries as _splice_libraries
 from ablebackup.models import FileRef
-from ablebackup.resolver import _candidates, _is_inside
+from ablebackup.resolver import _is_inside, first_existing
 
 SKIP_DIRS = COMMON_SKIP
 
@@ -66,7 +66,7 @@ class AbletonAdapter:
             if fr is None:
                 continue
             model = _fileref_to_model(fr)
-            chosen = next((c for c in _candidates(model, project_dir) if c.is_file()), None)
+            chosen, _ = first_existing(model, project_dir)
             if chosen is None or _is_inside(chosen, project_dir):
                 continue  # missing or already inside the project — leave it
             _set_value(fr, "RelativePath", placement.get(str(chosen)) or f"_External/{chosen.name}")

@@ -1,3 +1,5 @@
+import os
+import re
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -5,14 +7,99 @@ from ablebackup.models import FileRef, ResolvedRef
 
 Locator = Optional[Callable[[str], Optional[Path]]]
 
+_SEP = re.compile(r"[\\/]+")
 
-def _candidates(ref: FileRef, project_dir: Path) -> list[Path]:
+
+def basename(p: str) -> str:
+    """The file name of a stored path, whichever OS wrote it. Path(p).name keeps the
+    whole string for a Windows path read on a Mac ("C:\\x\\kick.wav")."""
+    parts = [s for s in _SEP.split(p or "") if s]
+    return parts[-1] if parts else ""
+
+
+def is_unc(p: str) -> bool:
+    """A network-share path: \\\\PC-NAME\\Share\\..."""
+    return p.startswith("\\\\") or p.startswith("//")
+
+
+def _direct_candidates(ref: FileRef, project_dir: Path) -> list[Path]:
     out: list[Path] = []
     if ref.absolute_path:
         out.append(Path(ref.absolute_path))
     if ref.relative_path:
         out.append(project_dir / Path(ref.relative_path.replace("\\", "/")))
     return out
+
+
+def _rerooted(stored: str) -> Optional[Path]:
+    """The same file under THIS computer's home folder.
+
+    A path saved as \\\\BLUB_PC\\Users\\blub\\Samples\\kick.wav (the PC's own folders
+    reached as a network share), C:\\Users\\olduser\\Samples\\kick.wav (another PC or
+    user name) or /Users/me/Samples/kick.wav (a Mac) is usually the very same file
+    at <home>/Samples/kick.wav here. The whole path below the user folder has to
+    match, so this is a much stronger match than a file name alone."""
+    parts = [s for s in _SEP.split(stored or "") if s]
+    for i, seg in enumerate(parts[:-2]):
+        if seg.lower() in ("users", "home", "documents and settings"):
+            tail = parts[i + 2:]
+            cand = Path.home().joinpath(*tail)
+            return None if str(cand) == stored else cand
+    return None
+
+
+def _candidates(ref: FileRef, project_dir: Path) -> list[Path]:
+    """Where to look for a referenced file: the paths the project stores, then the
+    same file under this computer's home folder (see _rerooted)."""
+    out = _direct_candidates(ref, project_dir)
+    for stored in (ref.absolute_path, ref.relative_path):
+        alt = _rerooted(stored) if stored else None
+        if alt is not None and alt not in out:
+            out.append(alt)
+    return out
+
+
+def first_existing(ref: FileRef, project_dir: Path,
+                   unreachable: Optional[set[str]] = None) -> tuple[Optional[Path], bool]:
+    """The file a reference points at on this computer, and whether it was found
+    somewhere other than the stored path (under the home folder). Shared by the
+    resolver and the portable-copy rewriters so both always pick the same file."""
+    unreachable = set() if unreachable is None else unreachable
+    direct = _direct_candidates(ref, project_dir)
+    for cand in _candidates(ref, project_dir):
+        # Only real files are backable. A reference can resolve to a directory
+        # (e.g. an Ableton built-in device bundle like Simpler inside the .app);
+        # those are not user samples and must not be hashed/copied as files.
+        if not (_reachable(cand, unreachable) and cand.is_file()):
+            continue
+        if cand in direct:
+            return cand, False
+        # Found under this computer's home folder, not at the stored path. A
+        # recorded size must still agree (Ableton), or it's not the same file.
+        if ref.size and _safe_size(cand) != ref.size:
+            continue
+        return cand, True
+    return None, False
+
+
+def _share_root(p: str) -> Optional[str]:
+    parts = [s for s in _SEP.split(p) if s]
+    return "\\\\" + "\\".join(parts[:2]) if len(parts) >= 2 else None
+
+
+def _reachable(path: Path, unreachable: set[str]) -> bool:
+    """False for a network-share path whose computer or share is gone. Each lookup of
+    an offline share can stall for many seconds, so one failure skips the rest."""
+    s = str(path)
+    if not is_unc(s):
+        return True
+    root = _share_root(s)
+    if root is None or root in unreachable:
+        return False
+    if os.name == "nt" and not os.path.isdir(root):
+        unreachable.add(root)
+        return False
+    return True
 
 
 def _is_inside(path: Path, project_dir: Path) -> bool:
@@ -70,7 +157,7 @@ def _match_located(ref: FileRef, locate: Locator) -> Optional[Path]:
     if locate is None:
         return None
     ref_path = ref.relative_path or ref.absolute_path or ref.name or ""
-    name = Path(ref_path).name
+    name = basename(ref_path)
     if not name:
         return None
     cands = [c for c in locate(name) if c.is_file()]
@@ -87,6 +174,11 @@ def _match_located(ref: FileRef, locate: Locator) -> Optional[Path]:
     cands.sort(key=lambda c: _path_tail_score(ref_path, c), reverse=True)
     best_score = _path_tail_score(ref_path, cands[0])
     if best_score >= 2 and all(_path_tail_score(ref_path, c) < best_score for c in cands[1:]):
+        return cands[0]
+    # FL Studio finds a moved sample by its file name in its search folders and
+    # plays it. When exactly one file of that name is in the searched folders, it is
+    # the file the DAW plays, so back that one up. Two or more is a guess: skip.
+    if ref.name_match and len(cands) == 1:
         return cands[0]
     return None
 
@@ -116,6 +208,7 @@ def resolve_refs(refs: list[FileRef], project_dir: Path,
     # project_dir is constant for the whole project — resolve it once instead of in
     # _is_inside per ref (realpath is a syscall-heavy walk).
     project_real = project_dir.resolve()
+    unreachable: set[str] = set()   # network shares already found offline
     for ref in refs:
         chosen: Path | None = None
         relinked = False
@@ -124,15 +217,8 @@ def resolve_refs(refs: list[FileRef], project_dir: Path,
         if ov and Path(ov).is_file():
             chosen = Path(ov)
             relinked = True
-        for cand in _candidates(ref, project_dir):
-            if chosen is not None:
-                break
-            # Only real files are backable. A reference can resolve to a directory
-            # (e.g. an Ableton built-in device bundle like Simpler inside the .app);
-            # those are not user samples and must not be hashed/copied as files.
-            if cand.is_file():
-                chosen = cand
-                break
+        if chosen is None:
+            chosen, relinked = first_existing(ref, project_dir, unreachable)
         if chosen is None and locate is not None:
             # Not where the project points — try to find it in the user's libraries
             # (Splice, etc.), but only accept a file that actually matches (size +

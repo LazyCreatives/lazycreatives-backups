@@ -9,6 +9,7 @@ import { ProBadge } from "../components/ProBadge";
 import { Icon, type IconName } from "../components/Icon";
 import { Cover } from "../components/Cover";
 import { genreColor, useLook } from "../look";
+import { UpdateCheck } from "../components/UpdateCheck";
 import { useEntitlement } from "../entitlement";
 import { fmtInterval, fmtClock, fmtSize } from "../format";
 import { osWords } from "../platform";
@@ -298,6 +299,11 @@ export function Sources() {
             <span className="faint" style={{ fontSize: 12.5 }}>Automatic backups only run while the app is open.</span>}
         </SetRow>
       )}
+
+      <SetGroup n="05" title="About" />
+      <SetRow title="Updates" help="The app checks for a new version on its own. Press the button to check right now.">
+        <UpdateCheck />
+      </SetRow>
     </div>
   );
 }

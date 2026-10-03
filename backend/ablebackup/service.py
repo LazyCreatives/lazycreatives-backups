@@ -16,7 +16,7 @@ from ablebackup.backup_engine import backup_project
 from ablebackup.catalog import Catalog
 from ablebackup.daws.registry import DAW_REGISTRY, adapter_for_id
 from ablebackup.hashing import hash_file
-from ablebackup.locator import default_libraries, make_locator
+from ablebackup.locator import daw_data_folders, default_libraries, make_locator
 from ablebackup.models import ProjectScan
 from ablebackup.scanner import scan_one, scan_projects
 from ablebackup.verifier import verify_snapshot
@@ -25,9 +25,11 @@ ProgressCb = Optional[Callable[[dict], None]]
 
 
 def _build_locator(sources, libraries):
-    """A name->path locator over the user's libraries (default: Splice) + sources."""
+    """A name->path locator over the user's libraries (default: Splice) + sources,
+    plus the folders the DAWs search themselves (FL Studio's user data folder)."""
     roots = [Path(lib) for lib in (libraries or [])] or default_libraries()
     roots += [Path(s) for s in sources]
+    roots += [d for d in daw_data_folders() if d not in roots]
     return make_locator(roots)
 
 

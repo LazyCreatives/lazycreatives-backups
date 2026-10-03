@@ -120,7 +120,7 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
       <p className="miss-trust">
         Files <strong>{item.name}</strong> uses that aren’t where it expects them.
         {item.backed_up ? " Your last backup still holds a checked copy of everything else." : ""}
-        {" "}<strong>Fix now</strong> searches your sample folders from Settings and your project folders.
+        {" "}<strong>Fix now</strong> searches your sample folders from Settings, your project folders and FL Studio’s own folder.
         For anything it can’t find, <strong>Point to file</strong> lets you choose the exact one.
       </p>
 
@@ -141,7 +141,7 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
                   <div className="miss-path mono" title={m.expected_path}>{m.expected_path}</div>
                 </div>
                 <span className={`miss-badge col-trunc ${handPicked ? "pointed" : !probed ? "checking" : m.recoverable ? "found" : "lost"}`}>
-                  {handPicked ? `Using ${handPicked.split("/").pop()}`
+                  {handPicked ? `Using ${handPicked.split(/[\\/]/).pop()}`
                     : !probed ? "Checking…"
                     : m.recoverable ? "Found in your samples"
                     : "Not found anywhere"}

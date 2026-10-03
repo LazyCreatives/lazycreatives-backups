@@ -429,3 +429,19 @@ label.field > span { font-weight: 500; }
 }
 .lookpick__opt[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .lookpick__opt small { color: var(--text-faint); font-size: 12px; }
+
+/* "Version / Check for updates" row in Settings (components/UpdateCheck.tsx). */
+.updcheck { display: grid; gap: 6px; }
+.updcheck__row {
+  display: grid; grid-template-columns: 120px minmax(0, 1fr) 170px; align-items: center; column-gap: 14px;
+  min-height: 44px; padding: 0 6px 0 14px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface);
+}
+.updcheck__ver { font-size: 13px; white-space: nowrap; }
+.updcheck__ver .mono { color: var(--text); font-weight: 600; }
+.updcheck__state { justify-self: start; min-width: 0; }
+.updcheck__act { justify-self: end; }
+.updcheck__note { margin: 0 0 0 2px; font-size: 12.5px; }
+[data-look="crate"] .updcheck__row { border-left: 3px solid var(--accent); border-radius: 0; }
+[data-look="crate"] .updcheck__ver .mono { color: var(--accent); }
+[data-look="sleeve"] .updcheck__row { border-radius: var(--radius-lg); min-height: 52px; }

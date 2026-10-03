@@ -41,3 +41,21 @@ jobs:
         run: npm test
       - name: Build renderer
         run: npm run build
+
+  # A pull request that changes the app's version must bring that version's
+  # "What's new" notes in CHANGELOG.md; the release copies them onto its page.
+  release-notes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Notes for a new version
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          new=$(node -p "require('./electron/package.json').version")
+          old=$(git show "origin/$BASE:electron/package.json" | node -p "JSON.parse(require('fs').readFileSync(0)).version")
+          if [ "$new" = "$old" ]; then echo "Version unchanged ($new)."; exit 0; fi
+          python3 .github/scripts/release_notes.py "$new" --check

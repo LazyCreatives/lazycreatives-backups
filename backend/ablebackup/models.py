@@ -10,6 +10,9 @@ class FileRef:
     absolute_path: Optional[str] = None     # from <Path Value=.../>
     relative_path: Optional[str] = None     # POSIX-style, from <RelativePath .../>
     size: int = 0                           # from <OriginalFileSize/>, 0 if unknown
+    # The DAW itself relinks a moved sample by file name alone (FL Studio does), so a
+    # single same-named file in the searched folders is the one the DAW would load.
+    name_match: bool = False
 
 
 @dataclass

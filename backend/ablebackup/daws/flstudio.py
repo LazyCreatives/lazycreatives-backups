@@ -11,20 +11,24 @@ from typing import Optional
 from ablebackup.daws.base import COMMON_SKIP, walk_for_extensions
 from ablebackup.daws.flp import read_all, read_sample_paths, rewrite_sample_paths
 from ablebackup.models import FileRef
+from ablebackup.resolver import basename, first_existing, is_unc
 
 SKIP_DIRS = COMMON_SKIP
 
 
 def _is_abs(p: str) -> bool:
-    return os.path.isabs(p) or (len(p) > 1 and p[1] == ":")
+    # Drive paths (C:\\...) and network-share paths (\\\\PC\\Share\\...) are absolute
+    # whichever computer reads the project.
+    return os.path.isabs(p) or (len(p) > 1 and p[1] == ":") or is_unc(p)
 
 
 def _to_ref(s: str) -> FileRef:
     # Relative paths (incl. our portable rewrite's "_External/x.wav") resolve
-    # against the .flp's folder — same convention as Reaper/DAWproject.
+    # against the .flp's folder — same convention as Reaper/DAWproject. FL relinks a
+    # moved sample by file name, so the resolver may too (name_match).
     if _is_abs(s):
-        return FileRef(name=Path(s).name, absolute_path=s)
-    return FileRef(name=Path(s.replace("\\", "/")).name, relative_path=s)
+        return FileRef(name=basename(s), absolute_path=s, name_match=True)
+    return FileRef(name=basename(s), relative_path=s, name_match=True)
 
 
 class FlStudioAdapter:
@@ -53,8 +57,8 @@ class FlStudioAdapter:
         project_dir = Path(project_path).parent
 
         def mapper(s: str) -> Optional[str]:
-            cand = Path(s) if _is_abs(s) else project_dir / s.replace("\\", "/")
-            if not cand.is_file():
+            cand, _ = first_existing(_to_ref(s), project_dir)
+            if cand is None:
                 return None
             try:
                 cand.resolve().relative_to(project_dir.resolve())

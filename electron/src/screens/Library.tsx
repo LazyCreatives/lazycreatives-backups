@@ -16,6 +16,7 @@ import { Icon } from "../components/Icon";
 import { Cover } from "../components/Cover";
 import { genreColor, useLook } from "../look";
 import { PageHeader } from "../components/PageHeader";
+import { BPM_BANDS, FIRST_DIR, NO_FILTERS, applyFilters, rememberSort, rememberedSort, sortItems, type LibSort, type SortKey, extraFilterCount, isFiltered, itemStatus, rememberFilters, rememberedFilters, type LibFilters, type StatusFilter } from "../libraryFilter";
 import "../library.css";
 
 const api = makeApi();
@@ -33,6 +34,10 @@ const SCOPES: { key: string; label: string }[] = [
   { key: "volumes", label: "+ External drives" },
 ];
 const IS_MAC = currentOs() === "mac";
+
+const DAW_NAMES: Record<string, string> = {
+  ableton: "Ableton Live", flstudio: "FL Studio", reaper: "Reaper", dawproject: "DAWproject", audacity: "Audacity",
+};
 
 function ownerLabel(owner: string): string {
   if (owner === "system") return "Other / system";
@@ -96,7 +101,16 @@ export function Library({ scan, openProject, onOpenHandled }: {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [err, setErr] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);  // project_id of the open detail row
-  const [filter, setFilter] = useState<"all" | "attention">("all");
+  const [filters, setFiltersState] = useState<LibFilters>(rememberedFilters);
+  const [sort, setSortState] = useState<LibSort | null>(rememberedSort);
+  // click a heading to sort by it, click it again to flip the order
+  const sortBy = (key: SortKey) => setSortState((cur) => {
+    const n: LibSort = cur?.key === key ? { key, dir: cur.dir === 1 ? -1 : 1 } : { key, dir: FIRST_DIR[key] };
+    rememberSort(n); return n;
+  });
+  const setFilters = (patch: Partial<LibFilters> | null) => {
+    setFiltersState((f) => { const n = patch ? { ...f, ...patch } : NO_FILTERS; rememberFilters(n); return n; });
+  };
   const [look] = useLook();
   const [fixingAll, setFixingAll] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);  // one-line result of "Fix all"
@@ -113,7 +127,6 @@ export function Library({ scan, openProject, onOpenHandled }: {
     const hit = items.find((i) => i.name === openProject);
     if (hit) {
       setExpanded(hit.project_id);
-      setFilter("all");  // a deep-linked project must be visible regardless of filter
       // The row lives in its owner group; if that group is collapsed the row
       // isn't in the DOM, so un-collapse it before trying to scroll.
       setCollapsed((c) => ({ ...c, [hit.owner || "system"]: false }));
@@ -189,7 +202,18 @@ export function Library({ scan, openProject, onOpenHandled }: {
   }
 
   const attentionCount = items.filter((i) => i.missing_count > 0).length;
-  const shown = filter === "attention" ? items.filter((i) => i.missing_count > 0) : items;
+  const shown = useMemo(() => sortItems(applyFilters(items, filters), sort), [items, filters, sort]);
+  // the status buttons count what the other filters leave, so the numbers add up
+  const statusCounts = useMemo(() => {
+    const c: Record<StatusFilter, number> = { all: 0, safe: 0, missing: 0, none: 0 };
+    for (const it of applyFilters(items, filters, true)) { c.all++; c[itemStatus(it)]++; }
+    return c;
+  }, [items, filters]);
+  const dawOptions = useMemo(() => [...new Set(items.map((i) => i.daw || "").filter(Boolean))].sort(), [items]);
+  const genreOptions = useMemo(() => [...new Set(items.map((i) => i.genre || "").filter(Boolean))].sort((a, b) => a.localeCompare(b)), [items]);
+  const filtered = isFiltered(filters);
+  // only "Missing samples" picked and nothing left: that's good news, not a failed search
+  const onlyMissing = filters.status === "missing" && extraFilterCount(filters) === 0 && !filters.q.trim();
   // With no songs anywhere yet, the song column shrinks so the rest has room.
   const colsClass = items.some((i) => i.latest_export) ? "lib-cols" : "lib-cols lib-cols--nosongs";
   const byOwner = useMemo(() => {
@@ -303,16 +327,57 @@ export function Library({ scan, openProject, onOpenHandled }: {
       </div>
 
       {!loading && items.length > 0 && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
-          <div className="seg" role="group">
-            <button className={`seg__opt${filter === "all" ? " seg__opt--on" : ""}`} onClick={() => setFilter("all")}>
-              All ({items.length})
-            </button>
-            <button className={`seg__opt${filter === "attention" ? " seg__opt--on" : ""}`} onClick={() => setFilter("attention")}>
-              Needs a look ({attentionCount})
-            </button>
+        <div className="lib-find">
+          <div className="lib-find__top">
+            <label className="lib-search">
+              <Icon name="search" size={15} />
+              <input type="search" placeholder="Search projects, genres, songs…" value={filters.q}
+                aria-label="Search projects" spellCheck={false}
+                onChange={(e) => setFilters({ q: e.target.value })}
+                onKeyDown={(e) => { if (e.key === "Escape") setFilters({ q: "" }); }} />
+              {filters.q && <button className="lib-search__x" aria-label="Clear search" onClick={() => setFilters({ q: "" })}><Icon name="close" size={13} /></button>}
+            </label>
+            <div className="seg" role="group" aria-label="Backup state">
+              {([["all", "All"], ["safe", "Safe"], ["missing", "Missing samples"], ["none", "Not backed up"]] as [StatusFilter, string][]).map(([k, label]) => (
+                <button key={k} className={`seg__opt${filters.status === k ? " seg__opt--on" : ""}`} onClick={() => setFilters({ status: k })}>
+                  {label} <span className="lib-find__n">{statusCounts[k]}</span>
+                </button>
+              ))}
+            </div>
           </div>
-          {notice && <p className="lib-notice" style={{ flexBasis: "100%" }}>{notice}</p>}
+          <div className="lib-find__row">
+            {dawOptions.length > 1 && (
+              <select className={filters.daw ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.daw} aria-label="DAW" onChange={(e) => setFilters({ daw: e.target.value })}>
+                <option value="">Any DAW</option>
+                {dawOptions.map((d) => <option key={d} value={d}>{DAW_NAMES[d] || d}</option>)}
+              </select>
+            )}
+            {genreOptions.length > 0 && (
+              <select className={filters.genre ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.genre} aria-label="Genre" onChange={(e) => setFilters({ genre: e.target.value })}>
+                <option value="">Any genre</option>
+                {genreOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+            )}
+            <select className={filters.bpm ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.bpm} aria-label="BPM" onChange={(e) => setFilters({ bpm: e.target.value })}>
+              <option value="">Any BPM</option>
+              {BPM_BANDS.map((b) => <option key={b.key} value={b.key}>{b.label} BPM</option>)}
+            </select>
+            <select className={filters.song !== "any" ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.song} aria-label="Songs" onChange={(e) => setFilters({ song: e.target.value as LibFilters["song"] })}>
+              <option value="any">Any songs</option>
+              <option value="has">Has a song</option>
+              <option value="soundcloud">On SoundCloud</option>
+              <option value="nosong">No song yet</option>
+            </select>
+            <span className="lib-find__count">
+              {filtered ? <>Showing <b>{shown.length}</b> of {items.length} project{items.length === 1 ? "" : "s"}</> : <>{items.length} project{items.length === 1 ? "" : "s"}</>}
+            </span>
+            {filtered && (
+              <button className="lib-find__clear" onClick={() => setFilters(null)}>
+                <Icon name="close" size={12} />Clear all
+              </button>
+            )}
+          </div>
+          {notice && <p className="lib-notice">{notice}</p>}
         </div>
       )}
 
@@ -325,8 +390,11 @@ export function Library({ scan, openProject, onOpenHandled }: {
         </div>
       ) : shown.length === 0 ? (
         <div className="empty">
-          <div className="empty__icon"><SlothMascot label="All clear" /></div>
-          Nothing needs a look — every project’s samples are accounted for.
+          <div className="empty__icon"><SlothMascot label={onlyMissing ? "All clear" : "Nothing found"} /></div>
+          {onlyMissing
+            ? <>Nothing needs a look — every project’s samples are accounted for.</>
+            : <>No projects match{filters.q.trim() ? <> “{filters.q.trim()}”</> : ""}.
+                <div style={{ marginTop: 12 }}><Button variant="ghost" size="sm" onClick={() => setFilters(null)}>Clear search and filters</Button></div></>}
         </div>
       ) : (
         owners.map((owner) => {
@@ -399,9 +467,19 @@ export function Library({ scan, openProject, onOpenHandled }: {
               )}
               {!isCollapsed && look === "crate" && (
                 <div className="table table--crate">
-                  <div className={`row cols cols-head ${colsClass}`} aria-hidden>
-                    <span /><span /><span /><span>Project</span><span>Latest song</span><span className="col-num">BPM</span>
-                    <span>Backup</span><span className="col-num">Last backup</span><span /><span />
+                  <div className={`row cols cols-head ${colsClass}`}>
+                    <span /><span /><span />
+                    {([["name", "Project", ""], ["song", "Latest song", ""], ["bpm", "BPM", " col-num"], ["status", "Backup", ""], ["backup", "Last backup", " col-num"]] as [SortKey, string, string][]).map(([k, label, cls]) => {
+                      const on = sort?.key === k;
+                      return (
+                        <button key={k} className={`lib-sort${cls}${on ? " lib-sort--on" : ""}`} onClick={() => sortBy(k)}
+                          aria-sort={on ? (sort!.dir === 1 ? "ascending" : "descending") : "none"}
+                          title={`Sort by ${label.toLowerCase()}`}>
+                          {label}{on && <Icon name={sort!.dir === 1 ? "arrowUp" : "arrowDown"} size={11} />}
+                        </button>
+                      );
+                    })}
+                    <span /><span />
                   </div>
                   {list.map((it) => {
                     const st = statusLine(it);

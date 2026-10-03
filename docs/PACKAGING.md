@@ -60,10 +60,12 @@ freezes the sidecar, checks the frozen binary answers `/health`, bundles rclone,
 | `lazycreatives-backups-macos-arm64` | `LazyCreatives Backups-<ver>-arm64.dmg` | Apple Silicon only. Ad-hoc signed (no Apple account); after copying it to Applications run `xattr -dr com.apple.quarantine "/Applications/LazyCreatives Backups.app"` after copying it in. |
 | `lazycreatives-backups-linux` | `LazyCreatives Backups-<ver>.AppImage` | `chmod +x` then run. |
 
-**Publishing a release:** bump `version` in `electron/package.json`, merge, then push
+**Publishing a release:** rename the "Unreleased" section of `CHANGELOG.md` to the new
+version (the checks fail on a version bump without it), bump `version` in `electron/package.json`, merge, then push
 a matching tag (`git tag v0.1.0 && git push origin v0.1.0`). The release job only runs
 on the public repo (it is skipped when the repo name ends in `-dev`), where it builds
-all three installers and publishes a GitHub Release with fixed asset names, so these
+all three installers and publishes a GitHub Release with fixed asset names and that
+version's notes from `CHANGELOG.md` as its description, so these
 links always point at the newest release:
 
 - `https://github.com/LazyCreatives/lazycreatives-backups/releases/latest/download/LazyCreatives-Backups-Windows-Setup.exe`
