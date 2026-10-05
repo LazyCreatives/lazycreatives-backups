@@ -13,7 +13,7 @@
 </p>
 
 Point it at your project folders and it finds every session (Ableton, FL Studio,
-Logic Pro, Studio One, Reaper, Audacity, plus Bitwig through its DAWproject export),
+Logic Pro, Studio One, Bitwig, Reaper, Audacity, plus anything exported as DAWproject),
 follows each one's samples, copies complete de-duplicated snapshots to your own
 NAS/drive, then **re-reads and re-hashes every file to prove the backup actually
 opens**. No account, and no cloud unless you choose one — you own the storage.
@@ -43,7 +43,7 @@ behind-the-scenes work of making music off your plate. *Looks lazy. Works obsess
 - **Space-efficient.** A content-addressed pool + hardlinks mean each dated
   snapshot is a full, openable project but only costs the bytes that changed.
 - **Only snapshots when something changed** — no redundant history.
-- **Multi-DAW.** Ableton, FL Studio, Logic Pro, Studio One, Reaper, Audacity and DAWproject today; more by adding one adapter.
+- **Multi-DAW.** Ableton, FL Studio, Logic Pro, Studio One, Bitwig, Reaper, Audacity and DAWproject today; more by adding one adapter.
 - **Offsite copies, optional.** Mirror every backup to a second drive, a synced
   folder, or Google Drive / Dropbox / OneDrive with a one-click sign-in (rclone
   ships inside the installers, nothing extra to install).
@@ -67,7 +67,8 @@ signed yet, so the first launch shows an "unknown developer" warning; see
 | Reaper | `.rpp` (text) | ✅ full — also reads tempo, tracks and effects |
 | Audacity | `.aup3` (SQLite), `.aup` (XML) | ✅ — old `.aup` backups can't be made portable, and the app says so |
 | Studio One / Fender Studio Pro | `.song` (zip of XML) | ✅ full — Windows and Mac; follows the song's Media folder even after a move, reads tempo, key, tracks and plug-ins; skips History autosaves |
-| Bitwig (and Studio One exports) | `.dawproject` (export file) | ✅ via the shared DAWproject export |
+| Bitwig Studio | `.bwproject` (binary) | ✅ — Windows, Mac and Linux; the audio listed in the file's own header, tempo and plug-in names; skips auto-backups. Key and track count aren't stored where they can be read |
+| Bitwig / Studio One exports | `.dawproject` (export file) | ✅ via the shared DAWproject export |
 | Logic Pro | `.logicx` / `.logic` project (Mac package) | ✅ — the whole package plus audio it uses from elsewhere; reads tempo and tracks, not plugin names |
 
 ## How it works
@@ -98,7 +99,7 @@ sidecar that does all the file/parse/backup/verify work.
 ```
 electron/   desktop shell + UI (Setup → Home → Library → Dig → Settings)
 backend/    ablebackup/ — the engine
-  daws/         per-DAW adapters (Ableton, FL Studio, Logic Pro, Studio One, Reaper, Audacity, DAWproject) behind one registry
+  daws/         per-DAW adapters (Ableton, FL Studio, Logic Pro, Studio One, Bitwig, Reaper, Audacity, DAWproject) behind one registry
   scanner       discover + resolve projects (dispatches by file type)
   resolver      resolve sample refs to disk; relink missing from libraries
   backup_engine dedup pool, hardlinks, atomic snapshots, manifest

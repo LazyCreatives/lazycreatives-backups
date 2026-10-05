@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 import sqlite3
 import threading
@@ -38,8 +39,10 @@ CREATE TABLE IF NOT EXISTS discovered (
     size INTEGER,
     mtime REAL,
     missing_count INTEGER,
-    genre TEXT,                    -- guessed at scan time (BPM + name/sample keywords)
+    genre TEXT,                    -- the genre shown everywhere: the producer's pick, else the guess
     genre_emoji TEXT,
+    genre_guess TEXT,              -- what the last scan guessed (BPM + name/sample keywords)
+    genre_by_you INTEGER DEFAULT 0, -- 1 when the producer set the genre; scans then keep it
     bpm REAL,
     tracks INTEGER,                -- content track/lane count (NULL if the format hides it)
     plugins TEXT,                  -- JSON array of plugin names used by the project
@@ -58,7 +61,47 @@ CREATE TABLE IF NOT EXISTS exports (
     mtime REAL,
     match TEXT NOT NULL,
     hidden INTEGER NOT NULL DEFAULT 0,
+    kind TEXT NOT NULL DEFAULT 'song', -- 'song' or 'stem' (one part of a song)
+    why TEXT,                          -- plain words for the clue that linked it
+    sure INTEGER NOT NULL DEFAULT 1,   -- 0 = a guess (shown with a dotted underline)
     PRIMARY KEY (path, project_id)
+);
+-- Songs in exports folders that no project matched, rebuilt on refresh, with the
+-- project they're most likely from. ignored=1 is "not a song", kept across refreshes.
+CREATE TABLE IF NOT EXISTS unmatched_exports (
+    path TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    size INTEGER,
+    mtime REAL,
+    kind TEXT NOT NULL DEFAULT 'song',
+    suggest_id TEXT,
+    suggest_why TEXT,
+    ignored INTEGER NOT NULL DEFAULT 0
+);
+-- "Tidy names": each rename the user made from a project page, with everything
+-- needed to put every name back (one click Undo). steps = [[from, to], ...] in the
+-- order they were done; file_map/dir_map/id_map record where things ended up.
+CREATE TABLE IF NOT EXISTS tidy_batches (
+    id TEXT PRIMARY KEY,
+    at TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    project_ids TEXT NOT NULL,     -- JSON: the projects' ids after the rename
+    steps TEXT NOT NULL,
+    file_map TEXT NOT NULL,
+    dir_map TEXT NOT NULL,
+    id_map TEXT NOT NULL,
+    undone_at TEXT
+);
+-- Old name -> new name for everything a tidy moved, so anything that remembered the
+-- old one can follow it: Uploader reads this (read-only) to keep a renamed song tied
+-- to its SoundCloud upload and its project. kind: 'file' | 'folder' | 'project' (ids).
+-- An undo deletes its batch's rows.
+CREATE TABLE IF NOT EXISTS renamed (
+    old TEXT NOT NULL,
+    new TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    batch_id TEXT NOT NULL,
+    at TEXT NOT NULL
 );
 """
 
@@ -92,6 +135,11 @@ def _changed_since_backup(d: dict) -> bool:
     return mtime > base + 1
 
 
+def _natural(s: str) -> list:
+    """Sort key that orders numbers by value: "v2" before "v10"."""
+    return [(0, int(t), "") if t.isdigit() else (1, 0, t) for t in re.split(r"(\d+)", s.lower()) if t]
+
+
 class Catalog:
     def __init__(self, db_path: Path):
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -123,9 +171,20 @@ class Catalog:
                          "tracks": "INTEGER", "plugins": "TEXT",
                          # the project file's save time when it was last backed up
                          # (or found identical to its last backup)
-                         "backed_mtime": "REAL"}.items():
+                         "backed_mtime": "REAL",
+                         # genre correction: the latest guess, and whether the
+                         # producer set the genre themselves
+                         "genre_guess": "TEXT", "genre_by_you": "INTEGER DEFAULT 0"}.items():
             if col not in dcols:
                 self.conn.execute(f"ALTER TABLE discovered ADD COLUMN {col} {typ}")
+        if "genre_guess" not in dcols:  # until the next scan, the stored genre is the guess
+            self.conn.execute("UPDATE discovered SET genre_guess = genre")
+        # exports: stems and "guessed" links, added after that table shipped
+        ecols = {r["name"] for r in self.conn.execute("PRAGMA table_info(exports)")}
+        for col, typ in {"kind": "TEXT NOT NULL DEFAULT 'song'", "why": "TEXT",
+                         "sure": "INTEGER NOT NULL DEFAULT 1"}.items():
+            if col not in ecols:
+                self.conn.execute(f"ALTER TABLE exports ADD COLUMN {col} {typ}")
 
     def record_snapshot(self, project_name, timestamp, total_size,
                         file_count, status, missing, error=None,
@@ -305,20 +364,79 @@ class Catalog:
         with self._lock:
             self.conn.executemany(
                 "INSERT INTO discovered "
-                "(project_id, name, path, dir, daw, owner, size, mtime, missing_count, genre, genre_emoji, bpm, tracks, plugins, found_at) "
-                "VALUES (:project_id, :name, :path, :dir, :daw, :owner, :size, :mtime, :missing_count, :genre, :genre_emoji, :bpm, :tracks, :plugins, :found_at) "
+                "(project_id, name, path, dir, daw, owner, size, mtime, missing_count, genre, genre_emoji, genre_guess, bpm, tracks, plugins, found_at) "
+                "VALUES (:project_id, :name, :path, :dir, :daw, :owner, :size, :mtime, :missing_count, :genre, :genre_emoji, :genre_raw, :bpm, :tracks, :plugins, :found_at) "
                 "ON CONFLICT(project_id) DO UPDATE SET "
                 "  name=excluded.name, path=excluded.path, dir=excluded.dir, daw=excluded.daw, "
                 "  owner=excluded.owner, size=excluded.size, mtime=excluded.mtime, "
-                "  missing_count=excluded.missing_count, genre=excluded.genre, "
-                "  genre_emoji=excluded.genre_emoji, bpm=excluded.bpm, "
+                "  missing_count=excluded.missing_count, genre_guess=excluded.genre_guess, "
+                # a genre the producer set survives every re-scan
+                "  genre=CASE WHEN discovered.genre_by_you = 1 THEN discovered.genre ELSE excluded.genre END, "
+                "  genre_emoji=CASE WHEN discovered.genre_by_you = 1 THEN discovered.genre_emoji ELSE excluded.genre_emoji END, "
+                "  bpm=excluded.bpm, "
                 "  tracks=excluded.tracks, plugins=excluded.plugins, found_at=excluded.found_at",
                 # default genre/meta fields so rows that omit them still bind cleanly
                 [{"genre": None, "genre_emoji": None, "bpm": None, "tracks": None,
-                  "plugins": None, **r, "found_at": found_at} for r in rows],
+                  "plugins": None, **r, "genre_raw": r.get("genre_raw", r.get("genre")),
+                  "found_at": found_at} for r in rows],
             )
             self.conn.commit()
         return len(rows)
+
+    def set_project_genre(self, project_ids: list[str], genre: str | None) -> int:
+        """Set the genre of these projects (the producer's correction), or with
+        genre=None go back to what the app guessed. Returns how many changed."""
+        from ablebackup.genre import emoji_for
+        if not project_ids:
+            return 0
+        marks = ",".join("?" * len(project_ids))
+        with self._lock:
+            if genre:
+                cur = self.conn.execute(
+                    f"UPDATE discovered SET genre = ?, genre_emoji = ?, genre_by_you = 1 "
+                    f"WHERE project_id IN ({marks})", (genre, emoji_for(genre), *project_ids))
+                n = cur.rowcount
+            else:
+                rows = self.conn.execute(
+                    f"SELECT project_id, genre_guess FROM discovered WHERE project_id IN ({marks})",
+                    project_ids).fetchall()
+                for r in rows:
+                    g = r["genre_guess"]
+                    self.conn.execute(
+                        "UPDATE discovered SET genre = ?, genre_emoji = ?, genre_by_you = 0 "
+                        "WHERE project_id = ?", (g, emoji_for(g) if g else None, r["project_id"]))
+                n = len(rows)
+            self.conn.commit()
+        return n
+
+    def genre_examples(self) -> list[tuple]:
+        """[(bpm, genre)] for projects the producer corrected: what the guesser learns from."""
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT bpm, genre FROM discovered WHERE genre_by_you = 1 "
+                "AND genre IS NOT NULL AND bpm IS NOT NULL").fetchall()
+        return [(r["bpm"], r["genre"]) for r in rows]
+
+    def genre_rows(self) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT project_id, name, bpm, genre, genre_guess, genre_by_you FROM discovered").fetchall()
+        return [dict(r) for r in rows]
+
+    def set_guessed_genre(self, project_id: str, genre, emoji) -> None:
+        with self._lock:
+            self.conn.execute(
+                "UPDATE discovered SET genre = ?, genre_emoji = ? WHERE project_id = ? AND genre_by_you = 0",
+                (genre, emoji, project_id))
+            self.conn.commit()
+
+    def genres_set_by_you(self) -> list[dict]:
+        """[{project_id, name, genre}] for projects whose genre the producer set."""
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT project_id, name, genre FROM discovered "
+                "WHERE genre_by_you = 1 AND genre IS NOT NULL").fetchall()
+        return [dict(r) for r in rows]
 
     def mark_backed(self, project_id: str, mtime: float) -> None:
         """Remember the project file's save time as of a backup that captured it (or
@@ -353,13 +471,32 @@ class Catalog:
             except (TypeError, ValueError):
                 d["plugins"] = []
             out.append(d)
+        # versions in natural order: "Song v2" before "Song v10"
+        out.sort(key=lambda d: ((d.get("owner") or ""), _natural(d.get("name") or "")))
         return out
 
     # ---- exports (song renders linked to projects) ------------------------------
     def discovered_projects(self) -> list[dict]:
         with self._lock:
             rows = self.conn.execute(
-                "SELECT project_id, name, dir, daw, mtime FROM discovered").fetchall()
+                "SELECT project_id, name, path, dir, daw, mtime, backed_mtime FROM discovered"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def snapshot_names(self) -> list[dict]:
+        """Each backup's project id, name, folder and time: used to remember a
+        project's earlier names and when it was worked on."""
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT project_id, project_name, dir, timestamp FROM snapshots").fetchall()
+        return [dict(r) for r in rows]
+
+    def export_choices(self) -> list[dict]:
+        """Songs you linked by hand or said aren't from a project."""
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT path, project_id, name, match, hidden FROM exports "
+                "WHERE match = 'manual' OR hidden = 1").fetchall()
         return [dict(r) for r in rows]
 
     def replace_auto_exports(self, rows: list[dict], keep_existing: bool = False) -> int:
@@ -372,8 +509,10 @@ class Catalog:
                 self.conn.execute(
                     "DELETE FROM exports WHERE match IN ('folder', 'name') AND hidden = 0")
             self.conn.executemany(
-                "INSERT OR IGNORE INTO exports (path, project_id, name, size, mtime, match) "
-                "VALUES (:path, :project_id, :name, :size, :mtime, :match)", rows)
+                "INSERT OR IGNORE INTO exports "
+                "(path, project_id, name, size, mtime, match, kind, why, sure) "
+                "VALUES (:path, :project_id, :name, :size, :mtime, :match, :kind, :why, :sure)",
+                [{"kind": "song", "why": None, "sure": 1, **r} for r in rows])
             self.conn.commit()
             n = self.conn.execute(
                 "SELECT COUNT(*) FROM exports WHERE match IN ('folder', 'name') AND hidden = 0"
@@ -392,7 +531,8 @@ class Catalog:
         """project_id -> {count, latest export row} for the Library list."""
         with self._lock:
             rows = self.conn.execute(
-                "SELECT * FROM exports WHERE hidden = 0 ORDER BY mtime ASC").fetchall()
+                "SELECT * FROM exports WHERE hidden = 0 AND kind != 'stem' "
+                "ORDER BY mtime ASC").fetchall()
         out: dict[str, dict] = {}
         for r in rows:
             cur = out.setdefault(r["project_id"], {"count": 0, "latest": None})
@@ -400,15 +540,57 @@ class Catalog:
             cur["latest"] = dict(r)  # ASC => the newest wins
         return out
 
-    def link_export(self, path: str, project_id: str, name: str, size, mtime) -> None:
+    def link_export(self, path: str, project_id: str, name: str, size, mtime,
+                    kind: str = "song") -> None:
         with self._lock:
             self.conn.execute(
-                "INSERT INTO exports (path, project_id, name, size, mtime, match, hidden) "
-                "VALUES (?, ?, ?, ?, ?, 'manual', 0) "
+                "INSERT INTO exports (path, project_id, name, size, mtime, match, hidden, "
+                "  kind, why, sure) "
+                "VALUES (?, ?, ?, ?, ?, 'manual', 0, ?, 'added by you', 1) "
                 "ON CONFLICT(path, project_id) DO UPDATE SET match = 'manual', hidden = 0, "
-                "  size = excluded.size, mtime = excluded.mtime",
-                (path, project_id, name, size, mtime))
+                "  size = excluded.size, mtime = excluded.mtime, kind = excluded.kind, "
+                "  why = excluded.why, sure = 1",
+                (path, project_id, name, size, mtime, kind))
             self.conn.commit()
+
+    # ---- songs no project matched ------------------------------------------------
+    def replace_unmatched(self, rows: list[dict], keep_existing: bool = False) -> None:
+        """Swap in the songs the last re-check couldn't match. "Not a song" marks
+        survive; with ``keep_existing`` earlier rows are kept too."""
+        with self._lock:
+            if not keep_existing:
+                self.conn.execute("DELETE FROM unmatched_exports WHERE ignored = 0")
+            self.conn.executemany(
+                "INSERT INTO unmatched_exports "
+                "(path, name, size, mtime, kind, suggest_id, suggest_why) "
+                "VALUES (:path, :name, :size, :mtime, :kind, :suggest_id, :suggest_why) "
+                "ON CONFLICT(path) DO UPDATE SET name = excluded.name, size = excluded.size, "
+                "  mtime = excluded.mtime, kind = excluded.kind, "
+                "  suggest_id = excluded.suggest_id, suggest_why = excluded.suggest_why",
+                rows)
+            self.conn.commit()
+
+    def unmatched(self, ignored: bool = False) -> list[dict]:
+        """Songs waiting for a project, newest first (leaving out any since linked)."""
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT u.* FROM unmatched_exports u WHERE u.ignored = ? AND NOT EXISTS "
+                "(SELECT 1 FROM exports e WHERE e.path = u.path AND e.hidden = 0) "
+                "ORDER BY u.mtime DESC", (1 if ignored else 0,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def ignore_unmatched(self, path: str, ignored: bool = True) -> bool:
+        with self._lock:
+            cur = self.conn.execute("UPDATE unmatched_exports SET ignored = ? WHERE path = ?",
+                                    (1 if ignored else 0, path))
+            self.conn.commit()
+        return cur.rowcount > 0
+
+    def is_unmatched(self, path: str) -> bool:
+        with self._lock:
+            row = self.conn.execute("SELECT 1 FROM unmatched_exports WHERE path = ? LIMIT 1",
+                                    (path,)).fetchone()
+        return row is not None
 
     def hide_export(self, path: str, project_id: str) -> bool:
         with self._lock:

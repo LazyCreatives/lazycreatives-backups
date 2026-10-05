@@ -13,12 +13,13 @@ from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from ablebackup import entitlement, exports, waveform
+from ablebackup import entitlement, exports, tidy, waveform
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
 from ablebackup.api.schemas import (
     ActivateRequest, BackupRequest, CloudConnectRequest, CloudDisconnectRequest,
-    Config, ExportFoldersRequest, ExportLinkRequest, RestoreRequest, ScanRequest,
+    Config, ExportFoldersRequest, ExportIgnoreRequest, ExportLinkRequest, GenreRequest,
+    RestoreRequest, ScanRequest, TidyRequest, TidyUndoRequest,
 )
 from ablebackup.catalog import Catalog
 from ablebackup.scheduler import BackupScheduler
@@ -26,11 +27,12 @@ from ablebackup.service import (
     _build_locator,
     CLOUD_FOLDER_SUBDIR, CLOUD_PROVIDERS, CloudConnectSession, cloud_folders, build_overview, cloud_disconnect,
     default_timestamp, full_disk_access_ok, pool_cache_age, rclone_available,
-    backfill_genres, project_genres, rclone_remotes, refresh_pool_cache,
+    backfill_genres, project_genres, relearn_genres, rclone_remotes, refresh_pool_cache,
     resolve_scan_roots, restore_snapshot, run_backup, safe_remote_name, scan_summary,
     share_snapshot, snapshot_diff,
 )
 from ablebackup.scanner import scan_one
+from ablebackup.songmatch import is_stem
 from ablebackup.suggest import suggested_folders
 from ablebackup.verifier import verify_snapshot
 
@@ -297,7 +299,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         stats: dict = {}
         projects = scan_summary(
             sources, progress=progress, find_missing=find_missing,
-            libraries=cfg.get("libraries", []), stats=stats)
+            libraries=cfg.get("libraries", []), stats=stats,
+            learned=app.state.catalog.genre_examples())
         if not _allows("multi_daw"):
             projects = [p for p in projects if p.get("daw") == "ableton"]
         # Persist what we found so History shows the whole library, not just backups.
@@ -311,6 +314,10 @@ def create_app(token: str, db_path: Path) -> FastAPI:
             for p in projects
         ], default_timestamp())
         exports.refresh(app.state.catalog)  # link song renders to the projects just found
+        set_by_you = {r["project_id"]: r["genre"] for r in app.state.catalog.genres_set_by_you()}
+        for p in projects:  # show the producer's genre, not the fresh guess
+            if p["project_id"] in set_by_you:
+                p["genre"] = set_by_you[p["project_id"]]
         return {"projects": projects, "scope": req.scope or "sources",
                 "full_disk_access": full_disk_access_ok(),
                 "skipped_dirs": stats.get("skipped_dirs", 0),
@@ -331,14 +338,69 @@ def create_app(token: str, db_path: Path) -> FastAPI:
                  "mtime": ex["latest"]["mtime"],
                  "uploaded": ex["latest"]["path"] in uploaded} if ex else None)
         owners = sorted({r["owner"] or "system" for r in rows})
-        return {"projects": rows, "owners": owners, "count": len(rows)}
+        return {"projects": rows, "owners": owners, "count": len(rows),
+                "unmatched_songs": len(app.state.catalog.unmatched())}
+
+    @app.get("/api/genres", dependencies=[Depends(require_token)])
+    def genre_list():
+        """The genres the guesser knows, for the genre picker."""
+        from ablebackup.genre import known_genres
+        return {"genres": known_genres()}
+
+    @app.post("/api/project/genre", dependencies=[Depends(require_token)])
+    def set_genre(req: GenreRequest):
+        """Correct the genre of one or more projects, or (genre=None) go back to the
+        guess. Uploader reads the same record, so it follows the correction too."""
+        genre = (req.genre or "").strip() or None
+        n = app.state.catalog.set_project_genre(req.project_ids, genre)
+        if not n:
+            raise HTTPException(status_code=404, detail="Project not found.")
+        # similar projects learn from the correction straight away
+        return {"changed": n, "relearned": relearn_genres(app.state.catalog)}
 
     def _uploaded_paths() -> list[dict]:
+        follow = tidy.follower(app.state.catalog)  # songs renamed since they were uploaded
         out = []
         for u in exports.uploader_uploads():
             if u.get("file_path"):
-                out.append({"path": exports._resolve(Path(u["file_path"]))})
+                out.append({"path": follow(exports._resolve(Path(u["file_path"])))})
         return out
+
+    # ---- tidy names: rename a song's versions, folder and exports together ------
+    def _tidy_opts(req: TidyRequest) -> dict:
+        return {"names": req.names, "style": req.style, "numbers": req.numbers,
+                "song_style": req.song_style,
+                "folder": req.folder, "overrides": req.overrides, "skip": req.skip}
+
+    def _backup_running() -> bool:
+        return any(j.get("state") in ("running", "cancelling") for j in app.state.jobs.values())
+
+    @app.post("/api/tidy/preview", dependencies=[Depends(require_token)])
+    def tidy_preview(req: TidyRequest):
+        """What Rename would do. Changes nothing."""
+        return tidy.plan(app.state.catalog, req.project_ids, **_tidy_opts(req))
+
+    @app.post("/api/tidy/apply", dependencies=[Depends(require_token)])
+    def tidy_apply(req: TidyRequest):
+        if _backup_running():
+            raise HTTPException(status_code=409, detail="A backup is running. Rename once it has finished.")
+        try:
+            return tidy.apply(app.state.catalog, req.project_ids, **_tidy_opts(req))
+        except tidy.TidyError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+
+    @app.get("/api/tidy/last", dependencies=[Depends(require_token)])
+    def tidy_last(project_id: str):
+        return {"batch": tidy.last_batch(app.state.catalog, project_id)}
+
+    @app.post("/api/tidy/undo", dependencies=[Depends(require_token)])
+    def tidy_undo(req: TidyUndoRequest):
+        if _backup_running():
+            raise HTTPException(status_code=409, detail="A backup is running. Undo once it has finished.")
+        try:
+            return tidy.undo(app.state.catalog, req.batch_id)
+        except tidy.TidyError as e:
+            raise HTTPException(status_code=409, detail=str(e))
 
     # ---- song exports linked to projects (and their SoundCloud uploads) --------
     @app.get("/api/exports", dependencies=[Depends(require_token)])
@@ -346,7 +408,9 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         rows = app.state.catalog.exports_for(project_id)
         for r in rows:
             r["exists"] = os.path.isfile(r["path"])
-        elsewhere = exports.attach_uploads(rows, project_id)
+        elsewhere = exports.attach_uploads(rows, project_id,
+                                           follow=tidy.follower(app.state.catalog),
+                                           follow_id=tidy.id_follower(app.state.catalog))
         return {"project_id": project_id, "exports": rows, "uploads_elsewhere": elsewhere,
                 "uploader_installed": exports.find_uploader_db() is not None}
 
@@ -390,8 +454,27 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         if req.project_id not in known:
             raise HTTPException(status_code=404, detail="unknown project")
         st = p.stat()
+        name = next((d["name"] for d in app.state.catalog.discovered_projects()
+                     if d["project_id"] == req.project_id), "")
+        kind = "stem" if is_stem(p, project=name) else "song"
         app.state.catalog.link_export(exports._resolve(p), req.project_id, p.stem,
-                                      st.st_size, st.st_mtime)
+                                      st.st_size, st.st_mtime, kind)
+        return {"ok": True}
+
+    @app.get("/api/exports/unmatched", dependencies=[Depends(require_token)])
+    def exports_unmatched(ignored: bool = False):
+        """Songs in your exports folders that no project matched, newest first, each
+        with the project it's most likely from (suggest_id / suggest_why) if any."""
+        rows = app.state.catalog.unmatched(ignored)
+        for r in rows:
+            r["exists"] = os.path.isfile(r["path"])
+        return {"songs": rows, "count": len(rows)}
+
+    @app.post("/api/exports/ignore", dependencies=[Depends(require_token)])
+    def exports_ignore(req: ExportIgnoreRequest):
+        """"Not a song": stop listing it as waiting for a project (or undo that)."""
+        if not app.state.catalog.ignore_unmatched(req.path, req.ignored):
+            raise HTTPException(status_code=404, detail="not in the list")
         return {"ok": True}
 
     @app.post("/api/exports/unlink", dependencies=[Depends(require_token)])
@@ -399,6 +482,11 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         if not app.state.catalog.hide_export(req.path, req.project_id):
             raise HTTPException(status_code=404, detail="not linked")
         return {"ok": True}
+
+    def _known_song(path: str) -> bool:
+        """A song Backups found itself: linked to a project, or waiting for one."""
+        cat = app.state.catalog
+        return (cat.is_export(path) or cat.is_unmatched(path)) and os.path.isfile(path)
 
     @app.get("/api/exports/audio")
     def exports_audio(path: str, t: str = ""):
@@ -408,7 +496,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         expected = app.state.token
         if expected and not hmac.compare_digest(t or "", expected):
             raise HTTPException(status_code=401, detail="invalid or missing token")
-        if not app.state.catalog.is_export(path) or not os.path.isfile(path):
+        if not _known_song(path):
             raise HTTPException(status_code=404, detail="not a linked export")
         media = mimetypes.guess_type(path)[0] or "application/octet-stream"
         return FileResponse(path, media_type=media)
@@ -417,7 +505,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     def exports_peaks(path: str):
         """The outline of a linked export's sound, for drawing its waveform. `peaks` is
         null for formats read by the app itself (MP3 and the like)."""
-        if not app.state.catalog.is_export(path) or not os.path.isfile(path):
+        if not _known_song(path):
             raise HTTPException(status_code=404, detail="not a linked export")
         return {"peaks": waveform.peaks(path)}
 

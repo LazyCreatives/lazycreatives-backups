@@ -1,4 +1,4 @@
-import type { CloudFolder, Config, SuggestedFolder, ProjectExports, Entitlement, JobStatus, LibraryItem, Overview, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, VerifyResult } from "./types";
+import type { CloudFolder, Config, SuggestedFolder, ProjectExports, Entitlement, JobStatus, LibraryItem, Overview, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, TidyBatch, TidyDone, TidyOptions, TidyPlan, UnmatchedSong, VerifyResult } from "./types";
 
 function base() {
   const port = (window as any).ablebackup?.port ?? "8753";
@@ -35,8 +35,12 @@ export function makeApi() {
     async scanMac(scope: string, findMissing = false): Promise<{ projects: ProjectSummary[]; scope: string; full_disk_access: boolean; skipped_dirs: number; skipped_examples: string[] }> {
       return req("POST", "/api/scan", { scope, find_missing: findMissing });
     },
-    async library(): Promise<{ projects: LibraryItem[]; owners: string[]; count: number }> {
+    async library(): Promise<{ projects: LibraryItem[]; owners: string[]; count: number; unmatched_songs?: number }> {
       return req("GET", "/api/library");
+    },
+    // Correct projects' genre; null goes back to what the app guessed.
+    async setGenre(projectIds: string[], genre: string | null): Promise<{ changed: number; relearned?: number }> {
+      return req("POST", "/api/project/genre", { project_ids: projectIds, genre });
     },
     // Live, complete list of one project's missing samples — re-scanned on demand so
     // it reflects the current state of disk (the trust view). With find=true each
@@ -118,6 +122,13 @@ export function makeApi() {
     async unlinkExport(path: string, projectId: string): Promise<{ ok: boolean }> {
       return req("POST", "/api/exports/unlink", { path, project_id: projectId });
     },
+    // Songs in exports folders no project matched (or the ones marked "not a song").
+    async unmatchedSongs(ignored = false): Promise<{ songs: UnmatchedSong[]; count: number }> {
+      return req("GET", `/api/exports/unmatched${ignored ? "?ignored=true" : ""}`);
+    },
+    async ignoreSong(path: string, ignored = true): Promise<{ ok: boolean }> {
+      return req("POST", "/api/exports/ignore", { path, ignored });
+    },
     // the outline of a song, for drawing its waveform (null: decode it here)
     async exportPeaks(path: string): Promise<{ peaks: number[] | null }> {
       return req("GET", `/api/exports/peaks?path=${encodeURIComponent(path)}`);
@@ -126,6 +137,15 @@ export function makeApi() {
     // serves files already linked as exports).
     exportAudioUrl(path: string): string {
       return `${base()}/api/exports/audio?path=${encodeURIComponent(path)}&t=${encodeURIComponent(token())}`;
+    },
+    // Tidy names: preview changes nothing; apply renames; undo puts every name back.
+    async tidyPreview(o: TidyOptions): Promise<TidyPlan> { return req("POST", "/api/tidy/preview", o); },
+    async tidyApply(o: TidyOptions): Promise<TidyDone> { return req("POST", "/api/tidy/apply", o); },
+    async tidyLast(projectId: string): Promise<{ batch: TidyBatch | null }> {
+      return req("GET", `/api/tidy/last?project_id=${encodeURIComponent(projectId)}`);
+    },
+    async tidyUndo(batchId: string): Promise<{ restored: number; id_map: Record<string, string> }> {
+      return req("POST", "/api/tidy/undo", { batch_id: batchId });
     },
     async entitlement(): Promise<Entitlement> { return req("GET", "/api/entitlement"); },
     async activateLicense(key: string): Promise<Entitlement> { return req("POST", "/api/entitlement/activate", { key }); },

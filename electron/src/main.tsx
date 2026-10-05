@@ -3,12 +3,11 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { EntitlementProvider } from "./entitlement";
 // Bundled fonts so the app looks the same on every computer.
-// Shared with Uploader: Geist for text, Geist Mono for numbers, Bebas Neue for the app name and big titles.
-import "@fontsource/geist-sans/400.css";
-import "@fontsource/geist-sans/500.css";
-import "@fontsource/geist-sans/600.css";
-import "@fontsource/geist-mono/400.css";
-import "@fontsource/geist-mono/500.css";
+// Shared with Uploader: Schibsted Grotesk for everything, Bebas Neue for the app name and big titles.
+import "@fontsource/schibsted-grotesk/400.css";
+import "@fontsource/schibsted-grotesk/500.css";
+import "@fontsource/schibsted-grotesk/600.css";
+import "@fontsource/schibsted-grotesk/700.css";
 import "@fontsource/bebas-neue";
 import "./lazy-ui.css";  // shared look (same file in Uploader)
 import "./theme.css";    // Backups-only bits

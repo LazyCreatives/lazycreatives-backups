@@ -46,6 +46,7 @@ export function dawLabel(daw?: string): string {
     : daw === "audacity" ? "AUD"
     : daw === "logic" ? "Logic"
     : daw === "studioone" ? "Studio One"
+    : daw === "bitwig" ? "Bitwig"
     : daw === "ableton" ? "Live" : "DAW";
 }
 
@@ -54,6 +55,19 @@ export function fmtClock(iso?: string | null): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+// When the next backup runs: "today 03:05 PM", "tomorrow 03:05 PM" or "Oct 7, 03:05 PM".
+export function fmtNext(iso?: string | null, now: Date = new Date()): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (sameDay(d, now)) return `today ${time}`;
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  if (sameDay(d, tomorrow)) return `tomorrow ${time}`;
+  return `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
 }
 
 export function fmtInterval(min: number): string {

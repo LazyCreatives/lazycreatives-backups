@@ -10,6 +10,7 @@ import { Cover } from "../components/Cover";
 import { PlayButton, SongWave } from "../components/Player";
 import { coverColor, useLook } from "../look";
 import { EmptyState } from "../components/SlothSpot";
+import { GenreChip } from "../components/GenrePick";
 import "../label.css";
 
 const api = makeApi();
@@ -43,8 +44,8 @@ export interface ProjectTab { key: string; label: string; count?: number; conten
 
 // The project page: a header with what it is and how it stands, tabs for its songs,
 // backups, missing samples and history, and a column of plain facts on the right.
-export function ProjectLabel({ item, onOpenInDaw, onReveal, tabs, actions }: {
-  item: LibraryItem; onOpenInDaw: () => void; onReveal: () => void; tabs: ProjectTab[]; actions?: ReactNode;
+export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actions }: {
+  item: LibraryItem; onOpenInDaw: () => void; onReveal: () => void; onGenre?: () => void; tabs: ProjectTab[]; actions?: ReactNode;
 }) {
   const [snaps, setSnaps] = useState<Snapshot[]>([]);
   const [diffs, setDiffs] = useState<Record<number, SnapshotDiff>>({});
@@ -197,7 +198,13 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, tabs, actions }: {
     ["Backups", String(item.snapshot_count)],
     ["Last checked", lastVerifiedSnap ? fmtDT(parseStamp(lastVerifiedSnap.timestamp)) : "Never", lastVerifiedSnap ? "" : "faint"],
     ["Missing samples", warn ? `${warn}` : "None", warn ? "warn" : ""],
-    ["Crate", crate],
+    ["Genre", onGenre
+      ? <button type="button" className="linkbtn dl-genre" onClick={onGenre}
+          title={item.genre_by_you ? "Set by you. Click to change" : "Guessed from tempo and name. Click to correct it"}>
+          <span className={item.genre_by_you || !item.genre ? "" : "genre-guess"}>{crate}</span>
+          <span className="faint">{item.genre ? (item.genre_by_you ? " · set by you" : " · guessed") : ""}</span>
+        </button>
+      : crate],
     ["Catalogue no.", cat],
   ];
 
@@ -209,15 +216,20 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, tabs, actions }: {
     : item.backed_up ? <span className="ok-text"><span className="dot dot--ok" /> safe, opens</span>
     : <span className="faint">not backed up yet</span>;
   const statusChip = warn > 0 ? <span className="fact-chip fact-chip--warn">{warn} sample{warn === 1 ? "" : "s"} missing</span>
-    : item.changed ? <span className="fact-chip fact-chip--changed" title="Saved since its last backup; back it up to keep this version">● Changed since backup</span>
+    : item.changed ? <span className="fact-chip fact-chip--changed" title="Saved since its last backup; back it up to keep this version">● Saved since last backup</span>
     : item.backed_up ? <span className="fact-chip fact-chip--ok">● Safe, opens</span>
     : <span className="fact-chip">Not backed up yet</span>;
 
+  const chip = onGenre && <GenreChip genre={item.genre ?? null} setByYou={!!item.genre_by_you} onClick={onGenre} />;
   return (
     <>
       {look === "sleeve" ? (
         <header className="proj-hero" style={{ ["--tint" as string]: tint }}>
-          <Cover name={item.name} genre={item.genre} className="proj-hero__cover" />
+          <div className="proj-hero__sleeve">
+            {/* the spine, printed like a record's: catalogue number and title */}
+            <span className="proj-hero__spine" aria-hidden="true"><b>{cat}</b>{item.name}</span>
+            <Cover name={item.name} genre={item.genre} className="proj-hero__cover" label={false} />
+          </div>
           <div className="proj-hero__text">
             <div className="eyebrow">{[crate !== "Untagged" ? `${crate} project` : "", dawLabel(item.daw)].filter(Boolean).join(" · ")}</div>
             <h1 className="proj-hero__name col-trunc" title={item.name}>{item.name}</h1>
@@ -226,9 +238,10 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, tabs, actions }: {
                 created ? `started ${fmtD(created)}` : "", `${item.snapshot_count} backup${item.snapshot_count === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}
               {" · "}{statusText}
             </div>
+            {chip && <div className="proj-hero__genre">{chip}</div>}
             <div className="proj-hero__actions">
               {song && <PlayButton path={song.path} title={song.name} meta={songMeta} size={48} className="playbtn--big" />}
-              <Button variant="primary" onClick={onOpenInDaw}>Open in {dawLabel(item.daw)}</Button>
+              <Button variant="ghost" onClick={onOpenInDaw}>Open in {dawLabel(item.daw)}</Button>
               <Button variant="ghost" onClick={onReveal}><Icon name="folder" size={15} />Show in folder</Button>
               <CopyButton text={item.path} what="project path" size={15} className="copybtn--big" />
               {actions}
@@ -238,16 +251,20 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, tabs, actions }: {
       ) : (
         <>
           <header className="deck-head">
-            <Cover name={item.name} genre={item.genre} size={124} />
+            <Cover name={item.name} genre={item.genre} size={124} label={false} />
             <div style={{ minWidth: 0 }}>
               <div className="eyebrow deck-head__eyebrow" style={{ color: tint }}>{[crate !== "Untagged" ? `${crate} project` : "", dawLabel(item.daw)].filter(Boolean).join(" · ")}</div>
               <h1 className="col-trunc" title={item.name}>{item.name}</h1>
+              {/* like the screen on a deck: tempo, tracks, size, backups */}
+              <div className="deckread">
+                <span className="deckread__cell"><small>BPM</small><b>{item.bpm ? Math.round(item.bpm) : "–"}</b></span>
+                <span className="deckread__cell"><small>Tracks</small><b>{item.tracks || "–"}</b></span>
+                <span className="deckread__cell"><small>Size</small><b>{fmtSize(item.size)}</b></span>
+                <span className="deckread__cell"><small>Backups</small><b>{item.snapshot_count}</b></span>
+              </div>
               <div className="fact-chips">
-                {item.bpm ? <span className="fact-chip">{Math.round(item.bpm)} BPM</span> : null}
-                {item.tracks ? <span className="fact-chip">{item.tracks} tracks</span> : null}
-                <span className="fact-chip">{fmtSize(item.size)}</span>
-                <span className="fact-chip">{item.snapshot_count} backup{item.snapshot_count === 1 ? "" : "s"}</span>
                 {statusChip}
+                {chip}
               </div>
             </div>
             <div className="page-head__actions">

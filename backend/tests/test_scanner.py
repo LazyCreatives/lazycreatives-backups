@@ -67,3 +67,30 @@ def test_scan_emits_progress_events(tmp_path):
     assert len(ticks) == 2
     assert ticks[-1]["done"] == 2 and ticks[-1]["total"] == 2
     assert events[-1]["count"] == 2
+
+
+def test_scan_carries_on_past_a_parser_crash(tmp_path, monkeypatch):
+    # One project whose parser throws something unexpected (not a read error) is
+    # skipped; the rest of the scan still finishes.
+    import ablebackup.scanner as scanner
+    proj = tmp_path / "Music"
+    write_als(proj / "Good Project" / "Good.als", [])
+    write_als(proj / "Odd Project" / "Odd.als", [])
+    real = scanner.parse_with_meta
+
+    def flaky(adapter, path):
+        if path.stem == "Odd":
+            raise KeyError("unexpected layout")
+        return real(adapter, path)
+    monkeypatch.setattr(scanner, "parse_with_meta", flaky)
+    real_parse = None
+
+    def flaky_refs(self, path):
+        if path.stem == "Odd":
+            raise IndexError("unexpected layout")
+        return real_parse(self, path)
+    from ablebackup.daws.ableton import AbletonAdapter
+    real_parse = AbletonAdapter.parse_project
+    monkeypatch.setattr(AbletonAdapter, "parse_project", flaky_refs)
+    projects = scan_projects([proj])
+    assert [p.name for p in projects] == ["Good"]

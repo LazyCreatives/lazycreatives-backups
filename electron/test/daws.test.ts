@@ -13,6 +13,11 @@ describe("music program names", () => {
     expect(dawDisplay("studioone")).toBe("Studio One");
     expect(toProject({ project_name: "Night Drive", daw: "studioone" } as any).daw).toBe("studioone");
   });
+  it("names Bitwig projects in both looks", () => {
+    expect(dawLabel("bitwig")).toBe("Bitwig");
+    expect(dawDisplay("bitwig")).toBe("Bitwig");
+    expect(toProject({ project_name: "Night Drive", daw: "bitwig" } as any).daw).toBe("bitwig");
+  });
   it("still falls back for programs it doesn't know", () => {
     expect(dawLabel("cubase")).toBe("DAW");
   });

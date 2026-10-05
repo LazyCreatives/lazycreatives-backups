@@ -24,7 +24,7 @@ export function FirstBackupModal({ completed, onHistory, onClose }: {
           It's on your own drive; <strong style={{ color: "var(--text)" }}>you own it</strong>.
         </p>
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-          <Button onClick={onHistory}>See what we gathered →</Button>
+          <Button onClick={onHistory}>See your backed-up projects →</Button>
           <Button variant="ghost" onClick={onClose}>Got it</Button>
         </div>
       </div>

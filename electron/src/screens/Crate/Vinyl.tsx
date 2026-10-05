@@ -6,7 +6,7 @@ import { Cover } from "../../components/Cover";
 
 // One record's faces. Crate look: a vinyl whose centre label is the project's cover; the
 // record (.platter) spins on the ACTIVE record only. Sleeve look: the square cover
-// itself, with the record peeking out the side.
+// itself, with the record peeking out the side (it turns too, on the active one).
 // --tint is set by the parent .rec wrapper in VinylStack.
 export function Vinyl({ project, isActive, reduce, look }: {
   project: Project; isActive: boolean; reduce: boolean; look: "crate" | "sleeve";
@@ -23,8 +23,11 @@ export function Vinyl({ project, isActive, reduce, look }: {
     return (
       <>
         <motion.div className="rec__peek" initial={false}
-          animate={{ x: isActive && !reduce ? "34%" : "8%" }}
-          transition={{ duration: reduce ? 0 : DUR.slow, ease: EASE_LAZY }} />
+          animate={{ x: isActive && !reduce ? "34%" : "8%", rotate: spinning ? 360 : 0 }}
+          transition={{
+            x: { duration: reduce ? 0 : DUR.slow, ease: EASE_LAZY },
+            rotate: spinning ? { duration: SPIN_SECONDS, ease: "linear", repeat: Infinity } : { duration: 0 },
+          }} />
         <Cover name={project.name} genre={genreOf(project)} className="rec__cover" />
         {badge}
       </>

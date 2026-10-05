@@ -155,6 +155,46 @@
   position: absolute; top: 4%; left: 4%; width: 92%; height: 92%; border-radius: 50%;
   background: radial-gradient(circle, var(--tint) 0 15%, #0A0B0D 16% 34%, #15191E 35% 37%, #0A0B0D 38% 60%, #15191E 61% 63%, #0A0B0D 64%);
 }
+.rec__peek::after {  /* edge pip so the turning shows */
+  content: ""; position: absolute; top: 7px; left: 50%; width: 3px; height: 12px;
+  border-radius: 2px; background: rgba(255, 255, 255, 0.35); transform: translateX(-50%);
+}
+
+/* the deck: the stage plus its tonearm. After a while untouched (.dig-deck--idle) the
+   whole crate sways a couple of pixels, like it's breathing. --deck-cy is the centre
+   of the record on deck, measured from the top of the stage. */
+.dig-deck { position: relative; --deck-cy: 210px; transform-origin: 50% 100%; }
+.dig-deck--idle { animation: deck-sway 9s ease-in-out infinite; }
+@keyframes deck-sway {
+  0%, 50%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-2px) rotate(0.3deg); }
+  75% { transform: translateY(-1px) rotate(-0.3deg); }
+}
+
+/* tonearm: a fixed base, and the arm that swings from it. Colours come from the theme
+   so it follows whatever palette the app wears. Never takes clicks. */
+.tonearm { position: absolute; z-index: 150; width: 60px; pointer-events: none; }
+.tonearm__base {
+  position: absolute; left: 30px; top: 40px; width: 54px; height: 54px; transform: translate(-50%, -50%);
+  border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border-strong);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), inset 0 0 0 7px var(--surface);
+}
+.tonearm__arm, .tonearm__wobble { transform-origin: 30px 40px; }
+.tonearm__arm svg { display: block; overflow: visible; filter: drop-shadow(0 4px 3px rgba(0, 0, 0, 0.5)); transition: filter 0.2s; }
+.tonearm--up .tonearm__arm svg { filter: drop-shadow(0 12px 8px rgba(0, 0, 0, 0.45)); }
+.ta-tube { stroke: var(--text-dim); stroke-width: 4; stroke-linecap: round; }
+.ta-weight { fill: var(--surface-2); stroke: var(--text-faint); stroke-width: 1.5; }
+.ta-hub { fill: var(--text-dim); stroke: var(--surface); stroke-width: 3; }
+.ta-shell { fill: var(--text-dim); stroke: var(--text); stroke-width: 1; }
+.ta-lift { stroke: var(--text-dim); stroke-width: 2; stroke-linecap: round; }
+.ta-cart { fill: var(--accent); }
+.ta-tip { fill: var(--text); }
+/* a slight wobble while idle, as if the record were a touch warped */
+.tonearm__wobble.is-idle { animation: arm-wobble 3.5s ease-in-out infinite; }
+@keyframes arm-wobble {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(0.6deg); }
+}
 
 /* flip arrows + position, bottom centre of the stage */
 .dig-flip {
@@ -180,7 +220,7 @@
 .ondeck__wave { min-width: 0; display: grid; gap: 2px; font-size: 12px; }
 .ondeck__wave .faint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ondeck--sleeve { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; text-align: left; }
-.ondeck--sleeve .eyebrow { text-transform: uppercase; letter-spacing: 0.06em; font-size: 11.5px; margin: 0; }
+.ondeck--sleeve .eyebrow { text-transform: uppercase; letter-spacing: 0.06em; font-size: 12px; margin: 0; }
 .ondeck__name { font: 400 52px/1 var(--display); letter-spacing: 0.02em; margin: 2px 0 4px; overflow-wrap: anywhere; }
 .ondeck__actions { display: flex; align-items: center; gap: 12px; }
 .ondeck--sleeve .playbtn--big { background: var(--text); border-color: var(--text); color: var(--bg); }
@@ -203,4 +243,5 @@
   .bin:hover .crec, .bin:focus-visible .crec { transform: translateX(-50%) rotate(var(--lean)) !important; }
   .bin:hover .crec-disc, .bin:focus-visible .crec-disc { transform: translateY(-12px); }
   .dig-wash { transition: none !important; }
+  .dig-deck--idle, .tonearm__wobble.is-idle { animation: none !important; }
 }

@@ -12,7 +12,7 @@ import { osWords } from "../platform";
 const api = makeApi();
 function reveal(p?: string) { if (p) (window as any).ablebackup?.revealPath?.(p); }
 function openInDaw(p?: string) { if (p) (window as any).ablebackup?.openProject?.(p); }
-const PROJECT_EXT = /\.(als|flp|rpp|dawproject|aup3|aup|song)$/i;
+const PROJECT_EXT = /\.(als|flp|rpp|dawproject|aup3|aup|song|bwproject)$/i;
 // A Logic project is a folder (package) at the top of the backup: "Song.logicx/…".
 const PACKAGE_TOP = /^([^/]+\.(logicx|logic))\//i;
 
@@ -289,7 +289,7 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
                       {showDiff ? "hide" : "show"} which files
                     </button>
                     {showDiff && (
-                      <ul style={{ margin: "7px 0 0", paddingLeft: 16, fontSize: 11.5, color: "var(--text-dim)", lineHeight: 1.7 }}>
+                      <ul style={{ margin: "7px 0 0", paddingLeft: 16, fontSize: 12, color: "var(--text-dim)", lineHeight: 1.7 }}>
                         {diff.added.map((p) => <li key={"a" + p}><span style={{ color: "var(--accent-2)" }}>＋</span> {p.split("/").pop()}</li>)}
                         {diff.changed.map((p) => <li key={"c" + p}><span style={{ color: "var(--warn)" }}>✎</span> {p.split("/").pop()}</li>)}
                         {diff.removed.map((p) => <li key={"r" + p}><span style={{ color: "var(--danger)" }}>－</span> {p.split("/").pop()}</li>)}

@@ -15,10 +15,14 @@ import { Icon } from "../components/Icon";
 import { Cover } from "../components/Cover";
 import { genreColor, useLook } from "../look";
 import { PageHeader } from "../components/PageHeader";
-import { BPM_BANDS, FIRST_DIR, NO_FILTERS, applyFilters, rememberSort, rememberedSort, sortItems, type LibSort, type SortKey, extraFilterCount, isFiltered, itemStatus, rememberFilters, rememberedFilters, type LibFilters, type StatusFilter } from "../libraryFilter";
-import { openMenu, type MenuItem } from "../components/Desktop";
+import { UnmatchedSongs } from "./UnmatchedSongs";
+import { BPM_BANDS, FIRST_DIR, NO_FILTERS, applyFilters, rememberSort, rememberedSort, sortItems, type LibSort, type SortKey, extraFilterCount, isFiltered, itemStatus, rememberFilters, rememberedFilters, type LibFilters, type LibraryView, type StatusFilter, viewFor } from "../libraryFilter";
+import { openMenu, toast, type MenuItem } from "../components/Desktop";
+import { pickGenre } from "../components/GenrePick";
 import { copyText, keep, recall } from "../desktop";
-import { pinnedFirst, setPins, togglePin, usePins } from "../pins";
+import { pinnedFirst, renamePins, setPins, togglePin, usePins } from "../pins";
+import { TidyNames } from "./TidyNames";
+import type { TidyBatch, TidyDone } from "../types";
 import { EmptyState } from "../components/SlothSpot";
 import "../library.css";
 
@@ -40,7 +44,7 @@ const IS_MAC = currentOs() === "mac";
 
 const DAW_NAMES: Record<string, string> = {
   ableton: "Ableton Live", flstudio: "FL Studio", reaper: "Reaper", dawproject: "DAWproject", audacity: "Audacity",
-  logic: "Logic Pro", studioone: "Studio One",
+  logic: "Logic Pro", studioone: "Studio One", bitwig: "Bitwig Studio",
 };
 
 function ownerLabel(owner: string): string {
@@ -102,12 +106,16 @@ let rememberedScope = recall("lc-library-scope", "home", (v) => SCOPES.some((s) 
 // openProject: the project shown as its own page (its id, or its name when another
 // screen opened it), or null for the list. Opening and closing go through the app's
 // back/forward history, so the side mouse buttons step between list and project.
-export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false, onScanStarted }: {
+export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false, onScanStarted, show = null, onShown }: {
   scan: ScanProgress; openProject?: string | null;
   onOpen: (projectId: string) => void; onClose: () => void;
   scanOnOpen?: boolean; onScanStarted?: () => void;  // first run: find projects straight away
+  show?: LibraryView | null; onShown?: () => void;   // another screen asked for this view
 }) {
   const [items, setItems] = useState<LibraryItem[]>([]);
+  // songs in exports folders no project matched, and whether that list is open
+  const [unmatched, setUnmatched] = useState(0);
+  const [showUnmatched, setShowUnmatched] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scope, setScopeState] = useState(rememberedScope);
   const setScope = (v: string) => { rememberedScope = v; keep("lc-library-scope", v); setScopeState(v); };
@@ -133,11 +141,77 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   const [fixingAll, setFixingAll] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);  // one-line result of "Fix all"
   const lastOpen = useRef<string | null>(null);  // the project page shown last, to un-fold its group
+  // "Tidy names": the projects whose names are being tidied (the window is open)
+  const [tidyFor, setTidyFor] = useState<LibraryItem[] | null>(null);
+  const [tidyTick, setTidyTick] = useState(0);  // bumps after a rename or undo
 
   function load() {
-    api.library().then((r) => setItems(r.projects)).catch(() => {}).finally(() => setLoading(false));
+    return api.library().then((r) => { setItems(r.projects); setUnmatched(r.unmatched_songs ?? 0); })
+      .catch(() => {}).finally(() => setLoading(false));
+  }
+
+  // After a rename (or its undo) each project has a new id, which comes from where its
+  // file is: carry pins and the open page over to it.
+  async function afterRename(idMap: Record<string, string>) {
+    renamePins(idMap);
+    setPicked(new Set());
+    await load();
+    setTidyTick((t) => t + 1);
+    if (openProject && idMap[openProject]) onOpen(idMap[openProject]);
+  }
+  async function tidyDone(r: TidyDone) {
+    setTidyFor(null);
+    await afterRename(r.id_map);
   }
   useEffect(() => { load(); }, []);
+
+  // Correct the genre of one project (or every ticked one). Covers, stripes and Dig
+  // crates follow it, and so does Uploader, which reads the same record.
+  async function changeGenre(list: LibraryItem[]) {
+    if (!list.length) return;
+    const one = list[0];
+    const byYou = list.every((i) => !!i.genre_by_you);
+    const same = list.every((i) => (i.genre || null) === (one.genre || null));
+    const pick = await pickGenre({
+      title: list.length === 1 ? one.name : `${list.length} projects`,
+      cover: one.name, count: list.length,
+      current: same ? one.genre || null : null,
+      setByYou: same && byYou,
+      guess: list.length === 1 ? one.genre_guess ?? null : undefined,
+      why: one.bpm ? `from its tempo (${Math.round(one.bpm)} BPM) and name` : "from its name",
+      note: "Covers, colours and Dig crates follow your pick, and so does Uploader. A new scan won't change it, and similar projects learn from it.",
+      yours: items.filter((i) => i.genre_by_you && i.genre).map((i) => i.genre!),
+    });
+    if (pick === undefined) return;
+    const before = list.map((i) => ({ id: i.project_id, genre: i.genre_by_you ? i.genre || null : null }));
+    try {
+      const res = await api.setGenre(list.map((i) => i.project_id), pick);
+      load();
+      const what = list.length === 1 ? one.name : `${list.length} projects`;
+      const also = res.relearned ? ` ${res.relearned} similar project${res.relearned === 1 ? "" : "s"} re-guessed too.` : "";
+      toast((pick ? `${what} is now ${pick}.` : `${what} is back to the guess.`) + also, {
+        label: "Undo",
+        onClick: async () => {
+          for (const b of before) await api.setGenre([b.id], b.genre).catch(() => {});
+          load();
+        },
+      });
+    } catch {
+      toast("Couldn't change the genre. Try again.");
+    }
+  }
+  // Another screen sent us here to see something ("See what we gathered", "3 safe"):
+  // show exactly that, from the top, with fresh numbers. Works when already here too.
+  useEffect(() => {
+    if (!show) return;
+    onShown?.();
+    const v = viewFor(show, sort);
+    setFilters(v.filters);
+    if (v.sort !== sort) { rememberSort(v.sort); setSortState(v.sort); }
+    setCollapsed(() => ({}));
+    document.querySelector(".main")?.scrollTo({ top: 0 });
+    load();
+  }, [show]);
   useEffect(() => {
     if (!scanOnOpen) return;
     onScanStarted?.();
@@ -286,14 +360,22 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
     return (
       <>
         <button className="lib-back" onClick={onClose}><Icon name="arrowLeft" size={14} />Library</button>
+        <TidyUndo projectId={it.project_id} tick={tidyTick} onUndone={afterRename} />
         <ProjectLabel item={it}
+          onGenre={() => changeGenre([it])}
           onOpenInDaw={() => openInDaw(it.path)}
           onReveal={() => revealPath(it.path)}
-          actions={(!it.backed_up || it.changed) && (
-            <Button disabled={busy.has(it.project_id)} onClick={() => backupOne(it)}>
-              {busy.has(it.project_id) ? "Backing up…" : "Back up now"}
+          actions={<>
+            <Button variant="ghost" onClick={() => setTidyFor([it])}
+              title="Give this song's versions, folder and exported songs matching names">
+              <Icon name="edit" size={15} />Tidy names
             </Button>
-          )}
+            {(!it.backed_up || it.changed) && (
+              <Button disabled={busy.has(it.project_id)} onClick={() => backupOne(it)}>
+                {busy.has(it.project_id) ? "Backing up…" : "Back up now"}
+              </Button>
+            )}
+          </>}
           tabs={[
             // missing samples first: it's the thing that needs a decision
             ...(it.missing_count > 0 ? [{ key: "missing", label: "Missing samples", count: it.missing_count,
@@ -301,10 +383,15 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
             { key: "songs", label: "Songs", content: <ProjectExports item={it} onChanged={load} /> },
             { key: "backups", label: "Backups", count: it.snapshot_count, content: it.backed_up
               ? <ProjectBackups projectName={it.name} projectPath={it.path} onFixed={load} />
-              : <EmptyState pose="napping" title="No backups of this project yet">Press Back up now at the top and the first one shows here.</EmptyState> },
+              : <EmptyState pose="napping" title="No backups of this project yet" say="Nothing to guard yet.">Press Back up now at the top and the first one shows here.</EmptyState> },
           ]} />
+        {tidyFor && <TidyNames items={tidyFor} onClose={() => setTidyFor(null)} onDone={tidyDone} />}
       </>
     );
+  }
+
+  if (showUnmatched) {
+    return <UnmatchedSongs items={items} onBack={() => { setShowUnmatched(false); load(); }} onChanged={load} />;
   }
 
   return (
@@ -333,7 +420,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
         <select value={scope} onChange={(e) => setScope(e.target.value)} disabled={scanning}>
           {SCOPES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
-        <Button size="sm" onClick={() => runScan()} disabled={scanning}>
+        <Button variant="ghost" size="sm" onClick={() => runScan()} disabled={scanning}>
           {scanning ? "Scanning…" : "Scan now"}
         </Button>
         {showProgress && (
@@ -435,6 +522,13 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
               </button>
             )}
           </div>
+          {unmatched > 0 && (
+            <button type="button" className="lib-unmatched" onClick={() => setShowUnmatched(true)}>
+              <Icon name="music" size={14} />
+              <span><b>{unmatched}</b> song{unmatched === 1 ? " isn't" : "s aren't"} matched to a project yet</span>
+              <span className="lib-unmatched__go">Sort {unmatched === 1 ? "it" : "them"}<Icon name="chevronRight" size={13} /></span>
+            </button>
+          )}
           {notice && <p className="lib-notice">{notice}</p>}
         </div>
       )}
@@ -442,14 +536,14 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
       {loading ? (
         <div className="empty">Loading your library…</div>
       ) : items.length === 0 ? (
-        <EmptyState pose="empty-crate" title="No projects here yet"
+        <EmptyState pose="searching" title="No projects here yet" say="Empty crate. Let’s go digging."
           action={<Button size="sm" onClick={() => runScan()} disabled={scanning}>{scanning ? "Scanning…" : "Scan now"}</Button>}>
           Pick where to look above, then scan. Backups finds Ableton, FL Studio, Reaper and DAWproject projects.
         </EmptyState>
       ) : shown.length === 0 ? (
         onlyMissing
-          ? <EmptyState pose="thumbs-up" title="Nothing missing">Every project's samples are where they should be.</EmptyState>
-          : <EmptyState pose="searching" title={filters.q.trim() ? `No projects match “${filters.q.trim()}”` : "No projects match"}
+          ? <EmptyState pose="thumbs-up" title="Nothing missing" say="All there. Back to my nap.">Every project's samples are where they should be.</EmptyState>
+          : <EmptyState pose="searching" say="I looked everywhere." title={filters.q.trim() ? `No projects match “${filters.q.trim()}”` : "No projects match"}
               action={<Button variant="ghost" size="sm" onClick={() => setFilters(null)}>Clear search and filters</Button>}>
               Try fewer words or a different filter.
             </EmptyState>
@@ -476,14 +570,16 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
               { label: "Show backups & details", onClick: openIt },
               { label: it.backed_up ? "Back up again" : "Back up", onClick: () => backupOne(it), disabled: working },
               { label: pins.includes(it.project_id) ? "Unpin" : "Pin to the top", onClick: () => togglePin(it.project_id) },
+              { label: it.genre ? "Change genre…" : "Set genre…", onClick: () => changeGenre([it]) },
               ...(it.missing_count > 0 ? [{ label: "Look for samples in a folder…", onClick: () => lookInFolder(it), disabled: working }] : []),
+              { label: "Tidy names…", onClick: () => setTidyFor([it]) },
               { label: `Show in ${osWords().fileManager}`, onClick: () => revealPath(it.path) },
             ];
             const menu = <RowMenu items={items} />;
             // right-click: the same actions, plus copying where the project lives
             const onContextMenu = (e: React.MouseEvent) => openMenu(e, [
-              ...items.slice(0, 4), "-",
-              ...items.slice(4),
+              ...items.slice(0, 5), "-",
+              ...items.slice(5),
               { label: "Copy project path", onClick: () => { copyText(it.path); } },
             ] as MenuItem[]);
             const meta = it.latest_export ? { title: it.latest_export.name, project: it.name, genre: it.genre } : undefined;
@@ -535,7 +631,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                         <div className="sleeve__meta" style={{ gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center" }}>
                           <div style={{ minWidth: 0 }}>
                             <div className="sleeve__name" title={it.name}>{it.name}</div>
-                            <div className="sleeve__sub">{[it.genre, it.bpm ? `${Math.round(it.bpm)} BPM` : "", dawLabel(it.daw)].filter(Boolean).join(" · ")}</div>
+                            <div className="sleeve__sub"><GenreSub item={it} rest={[it.bpm ? `${Math.round(it.bpm)} BPM` : "", dawLabel(it.daw)]} /></div>
                           </div>
                           <span className="sleeve__acts">{star}{menu}</span>
                         </div>
@@ -581,7 +677,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                         <Cover name={it.name} genre={it.genre} size={36} />
                         <div style={{ minWidth: 0 }} title={it.plugins?.length ? `Plugins: ${it.plugins.join(", ")}` : undefined}>
                           <div className="lib-namerow">{star}<span className="lib-name">{it.name}</span></div>
-                          <div className="lib-sub">{[it.genre, dawLabel(it.daw), st.size].filter(Boolean).join(" · ")}</div>
+                          <div className="lib-sub"><GenreSub item={it} rest={[dawLabel(it.daw), st.size]} /></div>
                         </div>
                         {it.latest_export && meta
                           ? <SongWave path={it.latest_export.path} meta={meta} />
@@ -619,13 +715,71 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                 Find missing samples ({missing.length})
               </Button>
             )}
+            <Button size="sm" variant="ghost" onClick={() => setTidyFor(pickedItems)}
+              title="Give each picked song's versions, folder and exported songs matching names">
+              <Icon name="edit" size={13} /> Tidy names
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => setPins(pickedItems.map((i) => i.project_id), !allPinned)}>
               <Icon name={allPinned ? "star" : "starFilled"} size={13} /> {allPinned ? "Unpin" : "Pin to the top"}
             </Button>
+            <Button size="sm" variant="ghost" onClick={() => changeGenre(pickedItems)}>Set genre…</Button>
             <button type="button" className="linkbtn pickbar__clear" onClick={() => setPicked(new Set())}>Clear</button>
           </div>
         );
       })()}
+      {tidyFor && <TidyNames items={tidyFor} onClose={() => setTidyFor(null)} onDone={tidyDone} />}
     </>
+  );
+}
+
+// The line under a project's name: its genre (dotted underline when the app guessed
+// it, plain when you set it) then the other facts.
+function GenreSub({ item, rest }: { item: LibraryItem; rest: (string | null | undefined)[] }) {
+  const others = rest.filter(Boolean).join(" · ");
+  if (!item.genre) return <>{others}</>;
+  return (
+    <>
+      <span className={item.genre_by_you ? "" : "genre-guess"}
+        title={item.genre_by_you ? "Genre set by you" : "Genre guessed from tempo and name. Right-click to correct it"}>{item.genre}</span>
+      {others ? ` · ${others}` : ""}
+    </>
+  );
+}
+
+// After names were tidied, the project page says so and offers to put them back.
+function TidyUndo({ projectId, tick, onUndone }: {
+  projectId: string; tick: number; onUndone: (idMap: Record<string, string>) => void;
+}) {
+  const [batch, setBatch] = useState<TidyBatch | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setErr(null);
+    api.tidyLast(projectId).then((r) => { if (alive) setBatch(r.batch); }).catch(() => {});
+    return () => { alive = false; };
+  }, [projectId, tick]);
+  if (!batch) return null;
+  const when = (() => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})/.exec(batch.at);
+    if (!m) return "";
+    const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+    return d.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  })();
+  async function undo() {
+    setBusy(true); setErr(null);
+    try {
+      const r = await api.tidyUndo(batch!.id);
+      setBatch(null);
+      onUndone(r.id_map);
+    } catch (e: any) { setErr(e.message || "Couldn't put the names back."); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="banner tidy-undo" role="status">
+      <Icon name="check" size={15} />
+      <span className="grow">{err ?? <>Names tidied {when}: {batch.count} renamed. Changed your mind?</>}</span>
+      <Button size="sm" variant="ghost" onClick={undo} disabled={busy}>{busy ? "Putting back…" : "Undo"}</Button>
+    </div>
   );
 }

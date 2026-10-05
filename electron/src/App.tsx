@@ -10,6 +10,7 @@ import { LcBrand } from "./components/LcBrand";
 import { FirstBackupModal } from "./components/FirstBackupModal";
 import { WhatsNewHost, openWhatsNew } from "./components/WhatsNew";
 import { ConfirmHost, ContextMenuHost, DropZone, ShortcutsPanel, ToastHost, toast } from "./components/Desktop";
+import { GenrePickHost } from "./components/GenrePick";
 import { baseName, folderOf, isInside, keep, recall, useDesktopCommands, useEscapeToClose, useFileDrop, useIconProgress, type Dropped } from "./desktop";
 import { makeApi } from "./api";
 import { useLiveProgress } from "./useProgress";
@@ -17,6 +18,7 @@ import type { Config, ProjectSummary } from "./types";
 import { PlayerBar, togglePlaying } from "./components/Player";
 import { EmptyState } from "./components/SlothSpot";
 import { useBackForwardInput, useNav, type Place } from "./nav";
+import { JUST_BACKED_UP, type LibraryView } from "./libraryFilter";
 
 const api = makeApi();
 
@@ -27,7 +29,7 @@ const LAST_PAGE = "lc-last-page";
 
 // Project files Backups knows; dropping one adds the folder it sits in. A Logic
 // project is a folder that Finder shows as one file, so it counts as a project too.
-const PROJECT_FILE = /\.(als|flp|rpp|dawproject|aup3|aup|song)$/i;
+const PROJECT_FILE = /\.(als|flp|rpp|dawproject|aup3|aup|song|bwproject)$/i;
 const PROJECT_PACKAGE = /\.(logicx|logic)\/?$/i;
 
 export interface PendingBackup {
@@ -72,6 +74,10 @@ export default function App() {
   const [showKeys, setShowKeys] = useState(false);
   const [settingsKey, setSettingsKey] = useState(0);  // bumped to reload Settings after a drop
   const [scanLibraryNow, setScanLibraryNow] = useState(false);  // first run with backups skipped
+  // Open the Library on a given view. The view is passed along separately because
+  // going to the Library while already on it changes no page, and must still show it.
+  const [libraryView, setLibraryView] = useState<LibraryView | null>(null);
+  const openLibrary = (view: LibraryView) => { setLibraryView(view); setTab("library"); };
   useEffect(() => { keep(LAST_PAGE, tab); }, [tab]);
 
   // Keyboard shortcuts and the menu bar (see desktop.ts).
@@ -227,11 +233,13 @@ export default function App() {
               onOpenSettings={() => setTab("settings")}
               onResumeProgress={() => setFlow("progress")}
               onOpenHistory={() => setTab("library")}
+              onOpenStatus={(status) => openLibrary({ status })}
               onOpenProject={(name) => setTab("library", name)}
             />
           ) : tab === "library" ? (
             <Library scan={live.scan} openProject={sub}
               scanOnOpen={scanLibraryNow} onScanStarted={() => setScanLibraryNow(false)}
+              show={libraryView} onShown={() => setLibraryView(null)}
               onOpen={(id) => setTab("library", id)} onClose={closeSub} />
           ) : tab === "dig" ? (
             <Dig openCrate={sub} onOpenCrate={(key) => setTab("dig", key)} onCloseCrate={closeSub}
@@ -247,12 +255,13 @@ export default function App() {
       <ContextMenuHost />
       <ToastHost />
       <ConfirmHost />
+      <GenrePickHost />
       <DropZone show={dragging} title="Drop to add" hint="Drop a project folder to add it to the folders Backups looks in." />
       {showKeys && <ShortcutsPanel onClose={() => setShowKeys(false)} />}
       {showFirstBackup && (
         <FirstBackupModal
           completed={live.backup.completed}
-          onHistory={() => { setShowFirstBackup(false); setTab("library"); }}
+          onHistory={() => { setShowFirstBackup(false); openLibrary(JUST_BACKED_UP); }}
           onClose={() => setShowFirstBackup(false)}
         />
       )}

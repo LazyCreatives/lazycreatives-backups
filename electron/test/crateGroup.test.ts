@@ -93,6 +93,6 @@ describe("toProject", () => {
     expect(pr).toMatchObject({ id: "Track", name: "Track", daw: "flstudio", genre: "Unknown", bpm: null, musicalKey: null, sizeBytes: 99, verified: true, snapshots: 2 });
   });
   it("coerces unknown daw strings to 'unknown'", () => {
-    expect(toProject({ project_name: "X", snapshot_count: 0, last_timestamp: "", total_size: 0, daw: "bitwig" } as any).daw).toBe("unknown");
+    expect(toProject({ project_name: "X", snapshot_count: 0, last_timestamp: "", total_size: 0, daw: "cubase" } as any).daw).toBe("unknown");
   });
 });

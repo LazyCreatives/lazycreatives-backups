@@ -5,6 +5,7 @@ from typing import Optional
 from ablebackup.daws.ableton import AbletonAdapter
 from ablebackup.daws.audacity import AudacityAdapter
 from ablebackup.daws.base import DawAdapter
+from ablebackup.daws.bitwig import BitwigAdapter
 from ablebackup.daws.dawproject import DawprojectAdapter
 from ablebackup.daws.flstudio import FlStudioAdapter
 from ablebackup.daws.logic import LogicAdapter
@@ -14,7 +15,7 @@ from ablebackup.daws.studioone import StudioOneAdapter
 # New DAWs register by adding one adapter and one entry here — nothing else changes.
 DAW_REGISTRY: list[DawAdapter] = [
     AbletonAdapter(), FlStudioAdapter(), ReaperAdapter(), DawprojectAdapter(),
-    AudacityAdapter(), LogicAdapter(), StudioOneAdapter(),
+    AudacityAdapter(), LogicAdapter(), StudioOneAdapter(), BitwigAdapter(),
 ]
 
 _BY_EXT = {ext.lower(): a for a in DAW_REGISTRY for ext in a.extensions}
@@ -37,7 +38,8 @@ def package_extensions() -> tuple[str, ...]:
 
 def ignored_file(path) -> bool:
     """A file with a project extension that its program says is not a project of its
-    own (Studio One's autosaves and saved versions in a song's History folder)."""
+    own (Studio One's autosaves and saved versions in a song's History folder, Bitwig's
+    auto-backups)."""
     a = adapter_for_path(path)
     fn = getattr(a, "ignore_file", None) if a else None
     return bool(fn and fn(path))

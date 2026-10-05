@@ -32,6 +32,7 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
   const [folders, setFolders] = useState<{ folders: string[]; found_folders?: string[]; ignored?: string[]; uploader_folders: string[] } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showStems, setShowStems] = useState(false);
   // While Backups is still looking through folders for songs: "folder 3 of 12".
   const [checking, setChecking] = useState<{ done: number; total: number } | null>(null);
 
@@ -91,16 +92,65 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
     run(() => api.unlinkExport(path, item.project_id));
     toast(`Removed ${name} from this project.`, { label: "Undo", onClick: () => run(() => api.linkExport(path, item.project_id)) });
   }
+  // A guessed song is right: keep it for good (and teach the matching its name).
+  function confirm(e: ExportRow) {
+    run(() => api.linkExport(e.path, item.project_id));
+    toast(`${e.name} is kept with this project.`);
+  }
   // A folder Backups found by itself: remember not to look there again.
   function ignoreFound(p: string) {
     run(() => api.setExportFolders(folders?.folders ?? [], [...(folders?.ignored ?? []), p]));
   }
 
   const rows = data?.exports ?? [];
+  const songs = rows.filter((e) => e.kind !== "stem");
+  const stems = rows.filter((e) => e.kind === "stem");
   // The SoundCloud column only takes room when a song is actually on SoundCloud.
   const linked = rows.some((e) => e.upload?.url) || (data?.uploads_elsewhere ?? []).some((u) => u.url);
   const cols = `row cols song-cols${linked ? "" : " song-cols--nolink"}`;
   const lookIn = [...(folders?.folders ?? []), ...(folders?.found_folders ?? []), ...(folders?.uploader_folders ?? [])];
+
+  const songRow = (e: ExportRow) => (
+        <div key={e.path} className={cols} onContextMenu={(ev) => openMenu(ev, [
+          ...(e.upload?.url ? [
+            { label: "Open on SoundCloud", onClick: () => bridge()?.openExternal?.(e.upload!.url) },
+            { label: "Copy SoundCloud link", onClick: () => { copyText(e.upload!.url!); } }, "-" as const] : []),
+          ...(e.exists ? [{ label: "Show the file", onClick: () => bridge()?.revealPath?.(e.path) }] : []),
+          { label: "Copy file path", onClick: () => { copyText(e.path); } },
+          ...(e.sure === 0 ? ["-" as const, { label: "Yes, it's from this project", onClick: () => confirm(e) }] : []),
+        ])}>
+          {e.exists ? <PlayButton path={e.path} title={e.name} meta={songMeta(e.name)} /> : <span />}
+          <div style={{ minWidth: 0 }}>
+            <div className="song-name">
+              <span className={e.sure === 0 ? "genre-guess" : undefined}
+                title={e.sure === 0
+                  ? `Guessed: ${e.why}. Right-click to confirm it, or press × if it isn't from this project.\n${e.path}`
+                  : `${e.path}\n${e.why || HOW[e.match]}`}>{e.name}</span>
+            </div>
+            {e.exists
+              ? <SongWave path={e.path} meta={songMeta(e.name)} height={20} />
+              : <div className="sub col-trunc" style={{ margin: 0, fontSize: 12 }}>File has been moved or deleted</div>}
+          </div>
+          <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{e.exists ? fmtWhen(e.mtime) : "—"}</div>
+          <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{e.exists ? fmtSize(e.size ?? 0) : "—"}</div>
+          {linked && <div className="col-end">
+            {e.upload?.url && (
+              <button type="button" className="pill pill--ok linkpill"
+                title={`Uploaded as "${e.upload.title}"`} onClick={() => bridge()?.openExternal?.(e.upload!.url)}>
+                On SoundCloud <Icon name="external" size={12} />
+              </button>
+            )}
+          </div>}
+          <div className="song-actions">
+            <button className="iconbtn" title="Show the file" aria-label={`Show ${e.name}`}
+              onClick={() => bridge()?.revealPath?.(e.path)} style={{ visibility: e.exists ? "visible" : "hidden" }}><Icon name="folder" /></button>
+            <button className="iconbtn" disabled={busy}
+              title="Not from this project: remove it here and don't match it again"
+              aria-label={`${e.name} is not from this project`}
+              onClick={() => unlink(e.path, e.name)}><Icon name="close" /></button>
+          </div>
+        </div>
+  );
 
   return (
     <div>
@@ -125,48 +175,22 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
         <div className={`${cols} cols-head`} aria-hidden>
           <span /><span>Song</span><span className="col-num">Exported</span><span className="col-num">Size</span>{linked && <span>SoundCloud</span>}<span />
         </div>
-      {rows.map((e) => (
-        <div key={e.path} className={cols} onContextMenu={(ev) => openMenu(ev, [
-          ...(e.upload?.url ? [
-            { label: "Open on SoundCloud", onClick: () => bridge()?.openExternal?.(e.upload!.url) },
-            { label: "Copy SoundCloud link", onClick: () => { copyText(e.upload!.url!); } }, "-" as const] : []),
-          ...(e.exists ? [{ label: "Show the file", onClick: () => bridge()?.revealPath?.(e.path) }] : []),
-          { label: "Copy file path", onClick: () => { copyText(e.path); } },
-        ])}>
-          {e.exists ? <PlayButton path={e.path} title={e.name} meta={songMeta(e.name)} /> : <span />}
-          <div style={{ minWidth: 0 }}>
-            <div className="song-name" title={`${e.path}\n${HOW[e.match]}`}>{e.name}</div>
-            {e.exists
-              ? <SongWave path={e.path} meta={songMeta(e.name)} height={20} />
-              : <div className="sub col-trunc" style={{ margin: 0, fontSize: 11.5 }}>File has been moved or deleted</div>}
-          </div>
-          <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{e.exists ? fmtWhen(e.mtime) : "—"}</div>
-          <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{e.exists ? fmtSize(e.size ?? 0) : "—"}</div>
-          {linked && <div className="col-end">
-            {e.upload?.url && (
-              <button type="button" className="pill pill--ok linkpill"
-                title={`Uploaded as "${e.upload.title}"`} onClick={() => bridge()?.openExternal?.(e.upload!.url)}>
-                On SoundCloud <Icon name="external" size={12} />
-              </button>
-            )}
-          </div>}
-          <div className="song-actions">
-            <button className="iconbtn" title="Show the file" aria-label={`Show ${e.name}`}
-              onClick={() => bridge()?.revealPath?.(e.path)} style={{ visibility: e.exists ? "visible" : "hidden" }}><Icon name="folder" /></button>
-            <button className="iconbtn" disabled={busy}
-              title="Not from this project: remove it here and don't match it again"
-              aria-label={`${e.name} is not from this project`}
-              onClick={() => unlink(e.path, e.name)}><Icon name="close" /></button>
-          </div>
-        </div>
-      ))}
+      {songs.map(songRow)}
+      {stems.length > 0 && (
+        <button type="button" className={`${cols} stems-toggle`} aria-expanded={showStems}
+          onClick={() => setShowStems((v) => !v)}>
+          <span className="stems-toggle__icon"><Icon name={showStems ? "chevronDown" : "chevronRight"} size={14} /></span>
+          <span>Stems <span className="faint">({stems.length}) · the separate parts: kick, vocals and so on</span></span>
+        </button>
+      )}
+      {showStems && stems.map(songRow)}
 
       {(data?.uploads_elsewhere ?? []).map((u) => (
         <div key={u.url ?? u.title} className={cols}>
           <span />
           <div>
             <div className="song-name">{u.title}</div>
-            <div className="sub col-trunc" style={{ margin: 0, fontSize: 11.5 }}>On SoundCloud · the file has since moved</div>
+            <div className="sub col-trunc" style={{ margin: 0, fontSize: 12 }}>On SoundCloud · the file has since moved</div>
           </div>
           <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>—</div>
           <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>—</div>

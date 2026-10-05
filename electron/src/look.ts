@@ -32,6 +32,8 @@ const GENRE_COLORS: Record<string, string> = {
   "Dubstep": "#9B6BD8", "DnB": "#E0784F", "Jungle": "#C2B04A", "Hardstyle": "#E05A5A",
   "Hyperpop": "#F08CD0", "Pop": "#F0A35E", "Ambient": "#79B8A6",
 };
+// The genres the apps know, in the order the genre picker lists them.
+export const GENRES = Object.keys(GENRE_COLORS);
 const SPARE = ["#5B9BD5", "#E0784F", "#B48CF0", "#56C08A", "#E8C547", "#4FC3C9", "#E0628A"];
 export const NO_GENRE = "#4A525C";  // no genre yet: a quiet grey stripe
 

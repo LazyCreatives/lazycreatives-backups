@@ -2,7 +2,7 @@ import type { ProjectRow, LibraryItem } from "../../types";
 import { coverColor } from "../../look";
 
 // Crate-digger data contract — a pure projection over the catalog (/api/projects).
-export type Daw = "ableton" | "flstudio" | "reaper" | "dawproject" | "audacity" | "logic" | "studioone" | "unknown";
+export type Daw = "ableton" | "flstudio" | "reaper" | "dawproject" | "audacity" | "logic" | "studioone" | "bitwig" | "unknown";
 export type GroupBy = "genre" | "daw" | "tempo" | "recency";
 export type CrateSort = "count" | "name" | "recent";
 export type DigSort = "recent" | "name" | "bpm" | "size";
@@ -38,12 +38,12 @@ export const SLOTH_BLUE = "#86B3D3";
 const DAW_LABEL: Record<Daw, string> = {
   ableton: "Ableton", flstudio: "FL Studio", reaper: "Reaper",
   dawproject: "DAWproject", audacity: "Audacity", logic: "Logic Pro",
-  studioone: "Studio One", unknown: "DAW",
+  studioone: "Studio One", bitwig: "Bitwig", unknown: "DAW",
 };
 export const dawDisplay = (d: Daw): string => DAW_LABEL[d] ?? "DAW";
 const asDaw = (d?: string): Daw =>
   d === "flstudio" || d === "reaper" || d === "dawproject" || d === "audacity"
-    || d === "logic" || d === "studioone" || d === "ableton" ? d : "unknown";
+    || d === "logic" || d === "studioone" || d === "bitwig" || d === "ableton" ? d : "unknown";
 
 // Catalog timestamps are "YYYY-MM-DD_HHMM" (default_timestamp), which Date.parse can't
 // read — parse it explicitly, tolerating ISO too. Returns epoch ms (0 if unparseable).

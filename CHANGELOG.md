@@ -13,6 +13,32 @@ How to keep this up to date:
   The checks on pull requests fail if the app's version has no section here.
 -->
 
+## 0.1.10 (5 October 2026)
+
+### New
+- **A tonearm in Dig.** When you flip to a record, a tonearm swings over and lowers onto it; flip again and it lifts off while the next record settles. Leave Dig alone for a few seconds and the crate gently sways. In Sleeve the record peeking out of the cover now turns too. Both looks; switched off when your computer is set to reduce motion.
+- **Correct a project's genre.** The genre the app guesses from tempo and name can now be fixed: click the genre on a project's page, right-click a project in the Library, or tick several and press Set genre. Covers, colours and Dig crates follow your pick, a new scan keeps it, Uploader uses it too, and "Use the guess" puts the guess back. Guessed genres have a dotted underline; ones you set don't. Works in both looks.
+- **Your own genres.** Type any genre with "Something else…" and it stays at the top of the genre list, with its own colour and Dig crate.
+- **Tidy names.** A "Tidy names" button on a project page (and for several ticked projects) gives a song's versions, its folder and its exported songs matching names, such as "Glasshouse v2.als" and "Glasshouse v2 (master).wav". You see every old and new name side by side and can change any of them; nothing is renamed until you press Rename, and Undo puts every name back. Samples, recordings, Backup folders and what's inside your project files are never touched, songs on SoundCloud stay linked, and your backups follow the new names. Works in both looks.
+- **Bitwig projects are found and backed up.** Backups now spots your Bitwig Studio projects on Windows, Mac and Linux without exporting anything first, backs up each project with the audio it uses (recordings, samples and bounced clips, plus any from elsewhere), shows tempo and plug-ins, links the songs you export, flags audio that has gone missing, and leaves Bitwig's auto-backup copies out. Works in both looks.
+- **Songs not matched yet.** If a song in your exports folder can't be tied to a project, the Library says how many and lists them. Play one, pick its project (Backups suggests one when it can, for example the project you saved ten minutes before the song was exported) and press Link, or mark it as not a song. Works in both looks.
+- **Stems kept apart.** Separate parts like "Night Drive Kick" or a "Stems" folder now sit under a fold below the project's songs instead of looking like extra songs, and the Library shows the real song as the latest one.
+
+### Better
+- **Smarter genre guesses.** When a tempo fits more than one genre, the closest and most common one wins (a 124 BPM track is now House, not Phonk). Correcting a project also re-guesses projects at a similar tempo to match, and Undo puts them back.
+- **Versions sort in number order.** "Song v2" now comes before "Song v10" in the Library and scan lists.
+- **Finds far more of your exported songs.** Songs are matched even with your artist name or a date in front ("Robert - Night Drive", "2026-10-01 Night Drive"), tempo and key in the name ("124bpm Amin"), words run together ("NightDrive"), a small typo when the song was exported soon after the project was saved, "_02" style numbers, the name a project had before you renamed it, the title saved inside the file, and names like songs you linked by hand. Reaper projects tell Backups where they render and what they call the files, and Logic's own Bounces folder is checked too.
+- **Guessed links are marked.** A song linked by a looser clue has a dotted underline; hover to see why. Right-click it and choose "Yes, it's from this project" to keep it for good.
+- **A new sloth drawing.** While a backup runs, and wherever no backup drive is chosen yet (the "Check and start" step and Settings), a sloth hugging a hard drive now keeps you company. Works in both looks.
+- **Two more sloth drawings, and they move.** A sleepy sloth napping on a branch shows when there are no backups yet, and a sloth peering through a magnifying glass shows on Scan before you scan, in an empty Library and when a search finds nothing. Both sit still if you turn animations off in your computer's settings. Works in both looks.
+- **Calmer, clearer screens.** Settings sections have plain headings in both looks, the Crate look keeps its coloured stripe for genres only (menus, pop-ups and panels no longer have a blue edge), windows slide in smoothly instead of bouncing, and Home says "next tomorrow 03:05" instead of a time with no day.
+- **A look of its own.** A new sturdy font and deep ink colours, covers made like printed record sleeves, a shelf of record spines on Home (one per project, click one to open it), a deck-style readout of tempo and size on project pages, level meters that move while a song plays, a record spine with the catalogue number in Sleeve, slightly bigger small text, and the sloth now says a word when a page is empty.
+
+### Fixed
+- **The button after your first backup now goes somewhere.** In the "Your first backup is done" box, "See your backed-up projects" (it used to say "See what we gathered") opens the Library on every project, newest backups on top. Before, if you started the backup from the Library, it only closed the box. Works in both looks.
+- **The counts on Home open the right list.** Clicking "3 safe", "1 changed", "need a look" or "not yet" under the bar on Home now opens the Library showing just those projects.
+- **One odd project no longer stops a scan.** A project file the app can't make sense of is skipped and the rest of the scan carries on.
+
 ## 0.1.9 (5 October 2026)
 
 ### New

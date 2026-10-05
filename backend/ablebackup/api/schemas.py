@@ -42,6 +42,16 @@ class ExportLinkRequest(BaseModel):
     project_id: str = Field(..., min_length=1, max_length=128)
 
 
+class ExportIgnoreRequest(BaseModel):
+    path: str = Field(..., min_length=1, max_length=_PATH)
+    ignored: bool = True
+
+
+class GenreRequest(BaseModel):
+    project_ids: list[str] = Field(..., min_length=1, max_length=_LIST)
+    genre: str | None = Field(None, max_length=40)  # None: go back to the guess
+
+
 class ExportFoldersRequest(BaseModel):
     folders: list[str] = Field(default_factory=list, max_length=_LIST)
     # Folders Backups found on its own that the user said not to look in. None = unchanged.
@@ -59,3 +69,19 @@ class BackupRequest(BaseModel):
     find_missing: bool = False          # relink missing samples from libraries
     libraries: list[str] | None = Field(None, max_length=_LIST)  # one-off folders to also search this run (merged with saved libraries)
     relink_map: dict[str, str] | None = Field(None)  # exact per-file remaps {missing expected_path -> chosen file} the user pointed at
+
+
+class TidyRequest(BaseModel):
+    """Tidy names: the projects picked, and how the person wants them named."""
+    project_ids: list[str] = Field(..., min_length=1, max_length=500)
+    names: dict[str, str] | None = Field(None)       # {group id: song name}
+    style: str = Field("v", max_length=8)             # v | v0
+    numbers: str = Field("keep", max_length=8)        # keep | order
+    song_style: str = Field("paren", max_length=8)    # paren | dash
+    folder: bool = True                               # rename the project folder too
+    overrides: dict[str, str] | None = Field(None)    # {current path: new name}
+    skip: list[str] | None = Field(None, max_length=_LIST)  # current paths to leave alone
+
+
+class TidyUndoRequest(BaseModel):
+    batch_id: str = Field(..., min_length=1, max_length=64)

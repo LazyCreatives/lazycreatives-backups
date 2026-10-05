@@ -2,24 +2,26 @@ import { useEffect, useRef, useState } from "react";
 import { makeApi } from "../api";
 import type { Overview, LibraryItem } from "../types";
 import type { BackupProgress } from "../useProgress";
-import { fmtSize, fmtDate, fmtInterval, fmtClock, shortPath, dawLabel } from "../format";
+import type { StatusFilter } from "../libraryFilter";
+import { fmtSize, fmtDate, fmtInterval, fmtNext, shortPath, dawLabel } from "../format";
 import { Icon } from "../components/Icon";
 import { Cover } from "../components/Cover";
 import { PlayButton, SongWave, type SongMeta } from "../components/Player";
 import { genreColor, useLook } from "../look";
 import { usePins } from "../pins";
-import { EmptyState } from "../components/SlothSpot";
+import { EmptyState, SlothSpot } from "../components/SlothSpot";
 import "../home.css";
 
 const api = makeApi();
 
 /* ── Home ── */
-export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, onOpenHistory, onOpenProject }: {
+export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, onOpenHistory, onOpenStatus, onOpenProject }: {
   backup: BackupProgress;
   onBackupNow: () => void;
   onOpenSettings: () => void;
   onResumeProgress: () => void;
   onOpenHistory: () => void;
+  onOpenStatus: (status: StatusFilter) => void;  // the Library showing only these
   onOpenProject: (name: string) => void;
 }) {
   const [ov, setOv] = useState<Overview | null>(null);
@@ -147,7 +149,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
     : "Every backed-up project was re-opened and loads without errors.";
   const eyebrow = off ? "Backups off" : ov.last_run
     ? `Last backup ${fmtDate(ov.last_run)} · ${ov.schedule.enabled
-        ? `next ${ov.schedule.next_run ? fmtClock(ov.schedule.next_run) : fmtInterval(ov.schedule.interval_minutes)}`
+        ? `next ${ov.schedule.next_run ? fmtNext(ov.schedule.next_run) : fmtInterval(ov.schedule.interval_minutes)}`
         : "next: when you say so"}`
     : "No backups yet";
   const pct = backup.total > 0 ? Math.round((backup.completed / backup.total) * 100) : 0;
@@ -222,7 +224,6 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   const needsHead = (
     <div className="section__head">
       <h2>Needs a look</h2>
-      <button className="linkbtn" onClick={onOpenHistory}>Open the library</button>
     </div>
   );
   const hasNeeds = changedItems.length > 0 || lookItems.length > 0 || failed.length > 0;
@@ -262,10 +263,10 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
               {newCount > 0 && <span style={{ flex: newCount, background: "var(--idle)" }} />}
             </div>
             <div className="home-hero__legend">
-              <button className="linkbtn" onClick={onOpenHistory}><b>{okCount}</b> safe</button>
-              {changedItems.length > 0 && <button className="linkbtn" onClick={onOpenHistory}><b>{changedItems.length}</b> changed</button>}
-              <button className="linkbtn" onClick={onOpenHistory}><b>{lookCount}</b> need a look</button>
-              <button className="linkbtn" onClick={onOpenHistory}><b>{notYet}</b> not yet</button>
+              <button className="linkbtn" onClick={() => onOpenStatus("safe")}><b>{okCount}</b> safe</button>
+              {changedItems.length > 0 && <button className="linkbtn" onClick={() => onOpenStatus("changed")}><b>{changedItems.length}</b> changed</button>}
+              <button className="linkbtn" onClick={() => onOpenStatus("missing")}><b>{lookCount}</b> need a look</button>
+              <button className="linkbtn" onClick={() => onOpenStatus("none")}><b>{notYet}</b> not yet</button>
             </div>
             <div className="home-hero__saved">Space saved by sharing files <span className="mono">{spaceSaved}</span></div>
           </div>
@@ -312,7 +313,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
                 <Cover name={it.name} genre={it.genre} label={false} />
                 <div className="needcard__body">
                   <div className="sleeve__name" title={it.name}>{it.name}</div>
-                  <div className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Changed since backup</div>
+                  <div className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Saved since last backup</div>
                   {backupButton(it)}
                 </div>
               </div>
@@ -351,15 +352,24 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
     </div>
   );
 
-  // Crate: a ring of where things stand, the list of what needs a look, latest songs as waveforms
-  const R = 70, C = 2 * Math.PI * R;
-  const arcs = [
-    { n: okCount, color: "var(--accent-2)" },
-    { n: changedItems.length, color: "var(--accent)" },
-    { n: lookItems.length, color: "var(--warn)" },
-    { n: newCount, color: "var(--idle)" },
+  // Crate: a shelf of record spines (one per project, coloured by where it stands) under a
+  // deck-style readout, the list of what needs a look, latest songs as waveforms
+  type Spine = { names: string[]; tone: "ok" | "changed" | "look" | "new" };
+  const ordered: Spine[] = [
+    ...items.filter((i) => i.backed_up && !i.changed && i.missing_count === 0).map((i) => ({ names: [i.name], tone: "ok" as const })),
+    ...changedItems.map((i) => ({ names: [i.name], tone: "changed" as const })),
+    ...lookItems.map((i) => ({ names: [i.name], tone: "look" as const })),
+    ...items.filter((i) => !i.backed_up && i.missing_count === 0).map((i) => ({ names: [i.name], tone: "new" as const })),
   ];
-  let at = 0;
+  // Big libraries: one spine stands for a few projects of the same kind so the shelf still fits.
+  const per = Math.max(1, Math.ceil(ordered.length / 72));
+  const spines: Spine[] = [];
+  for (const sp of ordered) {
+    const last = spines[spines.length - 1];
+    if (last && last.tone === sp.tone && last.names.length < per) last.names.push(sp.names[0]);
+    else spines.push({ names: [...sp.names], tone: sp.tone });
+  }
+  const toneWord = { ok: "safe", changed: "saved since its last backup", look: "missing samples", new: "not backed up yet" };
   return (
     <div className="home home--crate">
       <header className="page-head">{head}</header>
@@ -367,27 +377,26 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
 
       {items.length > 0 && (
         <div className="home-deck">
-          <section className="ringcard" aria-label="Where your projects stand">
-            <svg viewBox="0 0 180 180" width="180" height="180" className="ring" aria-hidden="true">
-              <circle cx="90" cy="90" r={R} fill="none" stroke="var(--surface-3)" strokeWidth="16" />
-              {total > 0 && arcs.map((a, i) => {
-                if (!a.n) return null;
-                const len = (a.n / total) * C;
-                const gap = arcs.filter((x) => x.n).length > 1 ? 3 : 0;
-                const el = <circle key={i} cx="90" cy="90" r={R} fill="none" stroke={a.color} strokeWidth="16"
-                  strokeDasharray={`${Math.max(0, len - gap)} ${C}`} strokeDashoffset={-at} transform="rotate(-90 90 90)" />;
-                at += len;
-                return el;
-              })}
-              <text x="90" y="92" textAnchor="middle" className="ring__big">{okCount}</text>
-              <text x="90" y="116" textAnchor="middle" className="ring__small">of {items.length} safe</text>
-            </svg>
-            <div className="ring__legend">
-              <button className="ring__row" onClick={onOpenHistory}><span className="dot dot--ok" />Backed up, opens<b>{okCount}</b></button>
-              {changedItems.length > 0 && <button className="ring__row" onClick={onOpenHistory}><span className="dot dot--accent" />Changed since backup<b>{changedItems.length}</b></button>}
-              <button className="ring__row" onClick={onOpenHistory}><span className="dot dot--warn" />Need a look<b>{lookCount}</b></button>
-              <button className="ring__row" onClick={onOpenHistory}><span className="dot" />Not backed up<b>{notYet}</b></button>
-              <div className="ring__row ring__row--quiet">Space saved by sharing files<b>{spaceSaved}</b></div>
+          <section className="deckcard" aria-label="Where your projects stand">
+            <div className="deckcard__screen">
+              <span className="deckcard__lbl">Safe</span>
+              <span className="deckcard__big">{okCount}<small>/{total}</small></span>
+              <span className="deckcard__lbl deckcard__lbl--r">{changedItems.length + lookCount > 0 ? `${changedItems.length + lookCount} to do` : "All good"}</span>
+            </div>
+            <div className={`spines${spines.length > 40 ? " spines--tight" : ""}`} role="list" aria-label="One line per project">
+              {spines.map((sp, i) => (
+                <button key={i} role="listitem" className={`spine spine--${sp.tone}`}
+                  title={sp.names.length === 1 ? `${sp.names[0]}: ${toneWord[sp.tone]}` : `${sp.names.length} projects ${toneWord[sp.tone]}`}
+                  aria-label={sp.names.length === 1 ? `${sp.names[0]}, ${toneWord[sp.tone]}` : `${sp.names.length} projects ${toneWord[sp.tone]}`}
+                  onClick={() => sp.names.length === 1 ? onOpenProject(sp.names[0]) : onOpenHistory()} />
+              ))}
+            </div>
+            <div className="deckcard__legend">
+              <button className="deckcard__row" onClick={onOpenHistory}><span className="dot dot--ok" />Backed up, opens<b>{okCount}</b></button>
+              {changedItems.length > 0 && <button className="deckcard__row" onClick={onOpenHistory}><span className="dot dot--accent" />Saved since last backup<b>{changedItems.length}</b></button>}
+              <button className="deckcard__row" onClick={onOpenHistory}><span className="dot dot--warn" />Need a look<b>{lookCount}</b></button>
+              <button className="deckcard__row" onClick={onOpenHistory}><span className="dot" />Not backed up<b>{notYet}</b></button>
+              <div className="deckcard__row deckcard__row--quiet">Space saved by sharing files<b>{spaceSaved}</b></div>
             </div>
           </section>
 
@@ -405,7 +414,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
                         <div className="col-trunc" style={{ fontWeight: 500 }}>{it.name}</div>
                         <div className="lib-sub">{subLine(it)}</div>
                       </span>
-                      <span className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Changed since backup</span>
+                      <span className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Saved since last backup</span>
                       {backupButton(it)}
                     </div>
                   ))}
@@ -437,7 +446,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
                   })}
                 </div>
               ) : (
-                <div className="allgood"><span className="dot dot--ok" />Nothing needs a look. Every backed-up project opens.</div>
+                <div className="allgood"><SlothSpot pose="thumbs-up" size={40} /><span><b>Nothing needs a look.</b> Every backed-up project opens.</span><span className="allgood__say">All safe. Back to my nap.</span></div>
               )}
             </section>
 

@@ -21,6 +21,14 @@ export function setPins(ids: string[], on: boolean) {
   subs.forEach((f) => f(pinned));
 }
 
+// A rename gives a project a new id (it comes from where the file is): keep its pin.
+export function renamePins(idMap: Record<string, string>) {
+  if (!pinned.some((id) => id in idMap)) return;
+  pinned = pinned.map((id) => idMap[id] ?? id);
+  keep(KEY, pinned);
+  subs.forEach((f) => f(pinned));
+}
+
 export function usePins(): string[] {
   const [p, setP] = useState(pinned);
   useEffect(() => { subs.add(setP); return () => { subs.delete(setP); }; }, []);

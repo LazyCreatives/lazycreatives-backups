@@ -1,11 +1,9 @@
 import hashlib
 import os
-import struct
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
 from typing import Callable, Optional
-from xml.etree.ElementTree import ParseError
 
 from ablebackup.daws.base import empty_meta, parse_with_meta
 from ablebackup.daws.registry import (DAW_REGISTRY, adapter_for_path, ignored_file,
@@ -102,12 +100,18 @@ def find_projects_progress(roots: list[Path], progress: ProgressCb = None,
     return out
 
 
+# Anything a broken or unusual project file can make a parser throw. A scan skips that one
+# project and carries on; it must never stop the whole scan (KeyError, IndexError, zlib
+# errors and friends included, not only the expected read errors).
+_BAD_FILE = (Exception,)
+
+
 def _parse_safely(adapter, project_path: Path) -> tuple[list[FileRef], dict]:
     """The adapter's refs + display metadata in one read. Metadata is best-effort —
     a meta-side failure must never cost us the refs (backups beat badges)."""
     try:
         return parse_with_meta(adapter, project_path)
-    except (OSError, EOFError, ParseError, ValueError, struct.error):
+    except _BAD_FILE:
         # Retry refs alone: if this also fails, the project is genuinely unreadable
         # and the caller's except will skip it as before.
         return adapter.parse_project(project_path), empty_meta()
@@ -141,7 +145,7 @@ def _parse_in_worker(project_path_str: str) -> Optional[dict]:
             return None
         raw_refs, meta = _parse_safely(adapter, project_path)
         return {"refs": raw_refs, "meta": meta}
-    except (OSError, EOFError, ParseError, ValueError, struct.error):
+    except _BAD_FILE:
         return None
 
 
@@ -181,7 +185,7 @@ def _scan_safely(project_path: Path, locate) -> Optional[ProjectScan]:
     """scan_one but swallow per-file failures (serial path)."""
     try:
         return scan_one(project_path, locate=locate)
-    except (OSError, EOFError, ParseError, ValueError, struct.error):
+    except _BAD_FILE:
         return None
 
 
@@ -238,12 +242,17 @@ def scan_projects(roots: list[Path], progress: ProgressCb = None,
                 }
                 for fut in as_completed(futures):
                     idx = futures[fut]
-                    raw = fut.result()
+                    try:
+                        raw = fut.result()
+                    except BrokenProcessPool:
+                        raise
+                    except _BAD_FILE:
+                        raw = None
                     scan = None
                     if raw is not None:
                         try:
                             scan = _resolve_parsed(project_files[idx], raw["refs"], locate, raw.get("meta"))
-                        except (OSError, EOFError, ParseError, ValueError, struct.error):
+                        except _BAD_FILE:
                             scan = None
                     _tick(idx, scan)
         except BrokenProcessPool:

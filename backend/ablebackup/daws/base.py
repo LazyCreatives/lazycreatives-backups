@@ -9,7 +9,7 @@ from ablebackup.models import FileRef
 # (or a source that overlaps it) never descends into prior backups.
 BACKUP_ROOTS = {"AbletonBackups", "FLStudioBackups", "ReaperBackups",
                 "DAWprojectBackups", "AudacityBackups", "LogicBackups",
-                "StudioOneBackups"}
+                "StudioOneBackups", "BitwigBackups"}
 COMMON_SKIP = {"Backup", "Backups"} | BACKUP_ROOTS
 
 # Trees that never hold DAW projects but are huge — pruning them keeps a whole-Mac

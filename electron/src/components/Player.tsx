@@ -4,6 +4,7 @@ import { coverColor } from "../look";
 import { Cover } from "./Cover";
 import { Icon } from "./Icon";
 import { Wave } from "./Wave";
+import { Meter } from "./Meter";
 
 const api = makeApi();
 
@@ -53,6 +54,11 @@ export function togglePlaying(): boolean {
   if (!state.path) return false;
   toggle(state.path, state.meta ?? undefined);
   return true;
+}
+
+// Where the song is right now, read straight from the player (for the level meters).
+export function now(): number {
+  return audio ? audio.currentTime : 0;
 }
 
 export function seek(fraction: number) {
@@ -196,6 +202,7 @@ export function PlayerBar() {
       <Wave peaks={peaks} color={coverColor(m.genre, m.project ?? m.title)} played={s.duration ? s.time / s.duration : 0}
         height={36} onSeek={seek} className="playerbar__wave" />
       <span className="playerbar__time">{s.duration ? clock(s.duration) : "–:––"}</span>
+      <Meter peaks={peaks} playing={s.playing} duration={s.duration} now={now} />
       <button type="button" className="iconbtn" onClick={close} aria-label="Close the player"><Icon name="close" /></button>
     </div>
   );

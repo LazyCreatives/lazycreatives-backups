@@ -17,30 +17,48 @@
 .needcard .warn-line { white-space: normal; overflow: visible; align-items: flex-start; line-height: 1.35; }
 .needcard .warn-line .dot { margin-top: 5px; }
 
-/* ── Crate: ring on the left, "needs a look" rows and latest songs on the right ── */
+/* ── Crate: deck readout and record shelf on the left, "needs a look" rows and latest songs on the right ── */
 .home-deck { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 24px; align-items: start; margin-bottom: 24px; }
-.ringcard {
-  border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface);
-  padding: 22px 20px 14px; display: grid; justify-items: center; gap: 16px;
+.deckcard { border-top: 2px solid var(--border-strong); padding-top: 14px; display: grid; gap: 14px; }
+/* like the screen on a deck: an inset panel with the number large and two small labels */
+.deckcard__screen {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: end; gap: 10px;
+  padding: 12px 14px 10px; background: #070A0D; border: 1px solid var(--border); border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.6);
 }
-.ring__big { font: 500 40px var(--font-mono); fill: var(--text); }
-.ring__small { font-size: 12.5px; fill: var(--text-dim); }
-.ring__legend { width: 100%; display: grid; }
-.ring__row {
+.deckcard__big { font: 600 44px/0.9 var(--font); letter-spacing: -0.03em; color: var(--accent-2); text-align: center; }
+.deckcard__big small { font-size: 20px; font-weight: 500; color: var(--text-faint); letter-spacing: 0; margin-left: 2px; }
+.deckcard__lbl { font: 600 12px var(--font); text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); align-self: start; }
+.deckcard__lbl--r { text-align: right; }
+/* one spine per project, as if looking down into the crate */
+.spines { display: flex; gap: 3px; height: 56px; align-items: stretch; }
+.spines--tight { gap: 1px; }
+.spine {
+  flex: 1 1 0; min-width: 1px; max-width: 9px; padding: 0; border: 0; border-radius: 1px; cursor: pointer;
+  background: var(--idle); transition: transform var(--dur-quick) var(--ease-glide), filter var(--dur-quick);
+}
+.spine:hover, .spine:focus-visible { transform: translateY(-4px); filter: brightness(1.25); }
+.spine--ok { background: color-mix(in srgb, var(--accent-2) 70%, var(--bg)); }
+.spine--changed { background: var(--accent); }
+.spine--look { background: var(--warn); }
+.deckcard__legend { width: 100%; display: grid; }
+.deckcard__row {
   display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 8px;
   padding: 9px 2px; border: 0; border-top: 1px solid var(--border); background: none; color: var(--text);
   font: inherit; font-size: 13px; text-align: left; cursor: pointer;
 }
-.ring__row:hover { color: var(--accent); }
-.ring__row b { font: 500 13px var(--font-mono); color: var(--text); }
-.ring__row--quiet { grid-template-columns: minmax(0, 1fr) auto; color: var(--text-faint); cursor: default; font-size: 12px; }
-.ring__row--quiet:hover { color: var(--text-faint); }
-.ring__row--quiet b { color: var(--text-dim); font-size: 12px; }
+.deckcard__row:hover { color: var(--accent); }
+.deckcard__row b { font: 600 13px var(--font-mono); color: var(--text); }
+.deckcard__row--quiet { grid-template-columns: minmax(0, 1fr) auto; color: var(--text-faint); cursor: default; font-size: 12.5px; }
+.deckcard__row--quiet:hover { color: var(--text-faint); }
+.deckcard__row--quiet b { color: var(--text-dim); font-size: 12.5px; }
 .needs-cols { --cols: 4px 36px minmax(0, 1fr) 170px 150px; cursor: pointer; }
 .allgood {
-  display: flex; align-items: center; gap: 10px; padding: 14px 16px; font-size: 13px; color: var(--text-dim);
-  border: 1px solid var(--border-strong); border-left: 4px solid var(--accent-2); border-radius: 8px;
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px 10px 10px; font-size: 13.5px; color: var(--text-dim);
+  border: 1px solid var(--border-strong); border-radius: 8px;
 }
+.allgood b { color: var(--text); font-weight: 600; }
+.allgood__say { margin-left: auto; font-size: 13px; color: var(--text-faint); font-style: italic; }
 .songgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; }
 .songcell {
   display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 12px; align-items: center;
@@ -48,10 +66,12 @@
 }
 .songcell__top { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; margin-bottom: 4px; }
 .songcell__top .linkbtn { color: var(--text); font-weight: 500; text-align: left; }
-.songcell__top .mono { font-size: 11.5px; flex: none; }
+.songcell__top .mono { font-size: 12px; flex: none; }
 @media (max-width: 1050px) {
   .home-deck { grid-template-columns: 1fr; }
-  .ringcard { grid-template-columns: 180px minmax(0, 1fr); justify-items: stretch; align-items: center; }
+  .deckcard { grid-template-columns: 240px minmax(0, 1fr); align-items: start; column-gap: 24px; }
+  .deckcard__screen, .spines { grid-column: 1; }
+  .deckcard__legend { grid-row: 1 / span 2; grid-column: 2; }
 }
 
 /* ── Sleeve: a hero panel, a shelf of recent covers, "needs a look" as cards ── */

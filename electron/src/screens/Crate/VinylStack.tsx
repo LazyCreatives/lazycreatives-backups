@@ -5,8 +5,11 @@ import type { Project } from "./types";
 import { tintOf } from "./types";
 import { useLook } from "../../look";
 import { Vinyl } from "./Vinyl";
+import { Tonearm } from "./Tonearm";
+import { useIdle } from "./hooks/useIdle";
 
 const WINDOW = 10;                     // virtualise to ±10 (≤21 mounted nodes)
+const IDLE_MS = 8000;                  // the crate starts to sway after this long untouched
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
 // Resting transform per record as a function of its offset from `active`. We change
@@ -36,6 +39,7 @@ export function VinylStack({ list, active, setActive, reduce, onOpenProject }: {
   const activeRef = useRef<HTMLDivElement>(null);
   const wheelLock = useRef(0);
   const [look] = useLook();
+  const idle = useIdle(IDLE_MS, !reduce);
 
   // Roving focus: only move DOM focus to the active record when focus is already
   // inside the stage (so we never steal focus on mount / from elsewhere).
@@ -76,28 +80,31 @@ export function VinylStack({ list, active, setActive, reduce, onOpenProject }: {
   }
 
   return (
-    <motion.div className="stage" ref={stageRef}
-      drag={reduce ? false : "x"} dragConstraints={{ left: 0, right: 0 }} dragElastic={0.12}
-      onDragEnd={reduce ? undefined : onDragEnd} onWheel={onWheel} onKeyDown={onKeyDown}
-      role="group" aria-label="Records — arrow keys to flip, Enter to open">
-      {windowed.map((p, k) => {
-        const i = lo + k;
-        const isActive = i === active;
-        return (
-          <motion.div key={p.id} className={`rec rec--${look}`}
-            ref={isActive ? activeRef : undefined}
-            tabIndex={isActive ? 0 : -1}
-            aria-label={`${p.name}, ${p.bpm ?? "unknown"} BPM`}
-            aria-setsize={list.length} aria-posinset={i + 1}
-            style={{ ["--tint" as string]: tintOf(p), transformPerspective: 1150 }}
-            animate={vinylTransform(i - active, reduce, look === "sleeve")}
-            transition={{ duration: reduce ? 0.18 : DUR.slow, ease: EASE_LAZY }}
-            onClick={() => { if (isActive) onOpenProject?.(p.name); else setActive(i); }}
-          >
-            <Vinyl project={p} isActive={isActive} reduce={reduce} look={look} />
-          </motion.div>
-        );
-      })}
-    </motion.div>
+    <div className={`dig-deck${idle ? " dig-deck--idle" : ""}`}>
+      <motion.div className="stage" ref={stageRef}
+        drag={reduce ? false : "x"} dragConstraints={{ left: 0, right: 0 }} dragElastic={0.12}
+        onDragEnd={reduce ? undefined : onDragEnd} onWheel={onWheel} onKeyDown={onKeyDown}
+        role="group" aria-label="Records — arrow keys to flip, Enter to open">
+        {windowed.map((p, k) => {
+          const i = lo + k;
+          const isActive = i === active;
+          return (
+            <motion.div key={p.id} className={`rec rec--${look}`}
+              ref={isActive ? activeRef : undefined}
+              tabIndex={isActive ? 0 : -1}
+              aria-label={`${p.name}, ${p.bpm ?? "unknown"} BPM`}
+              aria-setsize={list.length} aria-posinset={i + 1}
+              style={{ ["--tint" as string]: tintOf(p), transformPerspective: 1150 }}
+              animate={vinylTransform(i - active, reduce, look === "sleeve")}
+              transition={{ duration: reduce ? 0.18 : DUR.slow, ease: EASE_LAZY }}
+              onClick={() => { if (isActive) onOpenProject?.(p.name); else setActive(i); }}
+            >
+              <Vinyl project={p} isActive={isActive} reduce={reduce} look={look} />
+            </motion.div>
+          );
+        })}
+      </motion.div>
+      {list.length > 0 && <Tonearm active={active} look={look} reduce={reduce} idle={idle} />}
+    </div>
   );
 }

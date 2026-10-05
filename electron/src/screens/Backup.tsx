@@ -12,7 +12,7 @@ import { Cover } from "../components/Cover";
 import { Icon } from "../components/Icon";
 import { coverColor, useLook } from "../look";
 import type { BackupItem } from "../useProgress";
-import { EmptyState } from "../components/SlothSpot";
+import { EmptyState, SlothSpot } from "../components/SlothSpot";
 import { useGenres } from "../useGenres";
 
 const STATE_TEXT: Record<BackupItem["state"], string> = {
@@ -73,7 +73,7 @@ export function Backup({ progress: p, jobId }: { progress: BackupProgress; jobId
               <p className="sub" style={{ margin: "10px 0 0" }}>Start a new backup from Scan &amp; Back up.</p>
             </>
           ) : (
-            <EmptyState pose="napping" title="No backups yet">Start one from Scan and back up.</EmptyState>
+            <EmptyState pose="napping" title="No backups yet" say="Wake me when there’s something to keep.">Start one from Scan and back up.</EmptyState>
           )}
         </div>
       ) : (
@@ -108,6 +108,7 @@ export function Backup({ progress: p, jobId }: { progress: BackupProgress; jobId
                 <span className={look === "sleeve" ? "run__name display" : "run__title"}>{p.preparing ? "Finding your projects…" : nowName}</span>
                 <span className="faint mono">{p.preparing ? "" : `${doneCount} of ${p.total}`}{p.skipped > 0 ? ` · ${p.skipped} unchanged` : ""}{p.errors > 0 ? ` · ${p.errors} failed` : ""}</span>
               </div>
+              <SlothSpot pose="hugging-drive" size={look === "sleeve" ? 132 : 72} />
             </div>
             <ProgressBar value={p.preparing ? 1 : doneCount} max={p.preparing ? 1 : p.total} active={p.active} />
           </div>}

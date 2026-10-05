@@ -9,6 +9,7 @@ import { Info } from "../components/Info";
 import { PlanCard } from "../components/PlanCard";
 import { ProBadge } from "../components/ProBadge";
 import { Icon, type IconName } from "../components/Icon";
+import { SlothSpot } from "../components/SlothSpot";
 import { Cover } from "../components/Cover";
 import { genreColor, useLook } from "../look";
 import { UpdateCheck } from "../components/UpdateCheck";
@@ -205,7 +206,7 @@ export function Sources() {
 
       {!beta && <PlanCard />}
 
-      <SetGroup n="01" title="How it looks" />
+      <SetGroup title="How it looks" />
       <SetRow title="Look" help="How the app is laid out. Switch any time; nothing else changes.">
         <div className="lookpick" role="group" aria-label="Look">
           {([["crate", "Crate", "Rows like a DJ library, with waveforms and genre stripes"],
@@ -218,7 +219,7 @@ export function Sources() {
         </div>
       </SetRow>
 
-      <SetGroup n="02" title="Your music" />
+      <SetGroup title="Your music" />
       <SetRow title="Project folders" help="Backups looks in these folders for your projects.">
         <FolderTable paths={cfg.sources} loaded={loaded} empty="No folders yet." onRemove={removeSource} />
         <Button variant="ghost" size="sm" onClick={addSource} disabled={!loaded}><Icon name="plus" size={14} />Add folder</Button>
@@ -231,10 +232,10 @@ export function Sources() {
         <Button variant="ghost" size="sm" onClick={addLibrary} disabled={!loaded}><Icon name="plus" size={14} />Add a sample folder</Button>
       </SetRow>
 
-      <SetGroup n="03" title="Where backups go" />
+      <SetGroup title="Where backups go" />
       <SetRow title="Backup drive" help="The folder where backups are kept: your own drive or NAS, or a Dropbox or Google Drive folder. You own every copy.">
         <div className="drive">
-          <Icon name="disc" size={22} className="drive__icon" />
+          {cfg.dest ? <Icon name="disc" size={22} className="drive__icon" /> : <SlothSpot pose="hugging-drive" size={56} />}
           <div className="drive__main">
             <span className="pathline">
               <span className="mono col-trunc drive__path" title={cfg.dest}>{cfg.dest || "No folder chosen yet"}</span>
@@ -309,7 +310,7 @@ export function Sources() {
         )}
       </SetRow>
 
-      <SetGroup n="04" title="When it runs" />
+      <SetGroup title="When it runs" />
       <SetRow title={<>Automatic backup{!canSchedule && <ProBadge />}</>}
         help={`Leave the app running (it lives in your ${words.tray}) and it backs up on its own.`}>
         <div className={`seg${canSchedule ? "" : " locked"}`} role="group" style={{ flexWrap: "wrap", alignSelf: "flex-start" }}>
@@ -340,7 +341,7 @@ export function Sources() {
         </SetRow>
       )}
 
-      <SetGroup n="05" title="About" />
+      <SetGroup title="About" />
       <SetRow title="Updates" help="The app checks for a new version on its own. Press the button to check right now.">
         <UpdateCheck />
       </SetRow>
@@ -348,15 +349,9 @@ export function Sources() {
   );
 }
 
-// A heading over a few settings rows. Crate: a numbered strip like a DJ app's
-// preferences. Sleeve: a big poster-style title.
-function SetGroup({ n, title }: { n: string; title: string }) {
-  return (
-    <h2 className="set-group">
-      <span className="set-group__n mono">{n}</span>
-      <span className="set-group__title">{title}</span>
-    </h2>
-  );
+// A heading over a few settings rows.
+function SetGroup({ title }: { title: string }) {
+  return <h2 className="set-group">{title}</h2>;
 }
 
 const pct = (v: number, of: number) => Math.max(0, Math.min(100, of > 0 ? (v / of) * 100 : 0));

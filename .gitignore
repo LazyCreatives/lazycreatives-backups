@@ -29,3 +29,7 @@ docs/SECURITY-AUDIT.md
 # per-build entitlement signing secret — generated at packaging, never commit
 backend/ablebackup/_buildsecret.py
 electron/rclone/
+
+# Impeccable design checker: per-machine state
+.impeccable/
+.claude/settings.local.json

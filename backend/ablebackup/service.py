@@ -478,7 +478,31 @@ def _genre_for_snapshot(snapshot_dir, project_name: str) -> dict:
                 from ablebackup.daws.studioone import read_tempo as song_tempo
                 song = next(iter(d.glob("*.song")), None)
                 bpm = song_tempo(song) if song else None
+            if bpm is None and manifest.get("daw") == "bitwig":
+                from ablebackup.daws.bitwig import project_tempo
+                proj = next(iter(d.glob("*.bwproject")), None)
+                bpm = project_tempo(proj) if proj else None
     return guess_genre(project_name, bpm, names)
+
+
+def relearn_genres(catalog) -> int:
+    """After a correction, re-guess projects whose genre the producer hasn't set, so
+    similar tempos follow the genres they picked (and go back once a correction is
+    undone). Only the name and tempo are re-read; when the corrections don't decide
+    it, the project keeps the guess its last scan made. Returns how many changed."""
+    from ablebackup.genre import emoji_for, guess_genre
+    learned = catalog.genre_examples()
+    mine = {g for _b, g in learned}
+    changed = 0
+    for r in catalog.genre_rows():
+        if r["genre_by_you"]:
+            continue
+        g = guess_genre(r["name"], r["bpm"], (), learned)["genre"] if learned else None
+        new = g if g in mine else r["genre_guess"]
+        if new != r["genre"]:
+            catalog.set_guessed_genre(r["project_id"], new, emoji_for(new) if new else None)
+            changed += 1
+    return changed
 
 
 def project_genres(catalog) -> dict:
@@ -497,6 +521,10 @@ def project_genres(catalog) -> dict:
         else:
             out[name] = {"genre": None, "emoji": "🎵", "bpm": None,
                          "confidence": 0.0, "pending": True}
+    # a genre the producer set wins over the guess
+    for r in catalog.genres_set_by_you():
+        if r["name"] in out:
+            out[r["name"]].update(genre=r["genre"], emoji=emoji_for(r["genre"]), confidence=1.0, by_you=True)
     return out
 
 
@@ -766,7 +794,7 @@ def full_disk_access_ok() -> bool:
 
 
 def scan_summary(sources: list[Path], progress: ProgressCb = None,
-                 find_missing: bool = False, libraries=None, stats=None) -> list[dict]:
+                 find_missing: bool = False, libraries=None, stats=None, learned=()) -> list[dict]:
     """Scan sources and return JSON-serializable project summaries.
 
     When progress is given, emits scan_start/scan_progress/scan_done events so the
@@ -782,7 +810,9 @@ def scan_summary(sources: list[Path], progress: ProgressCb = None,
     for p in scan_projects([Path(s) for s in sources], progress=progress, locate=locate, stats=stats):
         # Genre-tag at scan time from BPM (Ableton) + project name + sample filenames,
         # so the whole scanned library is diggable by genre, not just backed-up projects.
-        g = guess_genre(p.name, p.tempo, [r.name for r in p.refs])
+        samples = [r.name for r in p.refs]
+        g = guess_genre(p.name, p.tempo, samples, learned)  # leans on your corrections
+        raw = guess_genre(p.name, p.tempo, samples) if learned else g
         out.append({
             "name": p.name,
             "daw": p.daw_id,
@@ -798,6 +828,7 @@ def scan_summary(sources: list[Path], progress: ProgressCb = None,
             "mtime": p.mtime,  # for "recently modified" sorting in the UI
             "genre": g.get("genre"),
             "genre_emoji": g.get("emoji"),
+            "genre_raw": raw.get("genre"),  # the guess without your corrections
             "bpm": p.tempo,
             "tracks": p.track_count,
             "plugins": p.plugins,

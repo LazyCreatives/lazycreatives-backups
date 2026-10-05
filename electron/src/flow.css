@@ -65,7 +65,10 @@
 .run { margin-bottom: 18px; }
 .run__now { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; min-width: 0; }
 .run__text { display: grid; gap: 3px; min-width: 0; }
-.run__text .eyebrow { margin: 0; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+.run__now .slothspot { margin: 0 0 0 auto; }
+.notice--sloth { display: flex; align-items: center; gap: 12px; }
+.notice--sloth .slothspot { margin: 0; }
+.run__text .eyebrow { margin: 0; text-transform: uppercase; letter-spacing: 0.06em; font-size: 12px; }
 .run__title { font-size: 18px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run__name { font-size: 52px; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run--crate { padding: 14px 18px 16px 0; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); overflow: hidden; }

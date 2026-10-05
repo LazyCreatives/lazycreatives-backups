@@ -90,8 +90,10 @@ export interface LibraryItem {
   size: number;
   mtime: number;
   missing_count: number;
-  genre?: string | null;       // guessed at scan time
+  genre?: string | null;       // the producer's pick, else the guess from the last scan
   genre_emoji?: string | null;
+  genre_guess?: string | null; // what the app guessed (tempo + name)
+  genre_by_you?: number | boolean | null; // set when the producer picked the genre
   bpm?: number | null;
   tracks?: number | null;      // content track/lane count (null if the format hides it)
   plugins?: string[];          // plugin names the project uses
@@ -111,8 +113,22 @@ export interface ExportRow {
   size: number | null;
   mtime: number | null;
   match: "folder" | "name" | "manual";
+  kind?: "song" | "stem";        // a stem is one part of the song (kick, vocals…)
+  why?: string | null;           // plain words for the clue that linked it
+  sure?: number;                 // 0: a guess (dotted underline)
   exists: boolean;
   upload: ExportUpload | null;   // on SoundCloud (via Uploader), if it was uploaded
+}
+// A song in an exports folder that no project matched, with the likeliest project.
+export interface UnmatchedSong {
+  path: string;
+  name: string;
+  size: number | null;
+  mtime: number | null;
+  kind: "song" | "stem";
+  suggest_id: string | null;
+  suggest_why: string | null;
+  exists: boolean;
 }
 export interface ProjectExports {
   project_id: string;
@@ -188,3 +204,24 @@ export interface CloudFolder {
   label: string;
   path: string | null;
 }
+
+// "Tidy names": what renaming a song's versions, folder and songs would do.
+export type TidyKind = "folder" | "version" | "song";
+// rename: will change · same: already right · kept: must keep its name (note says why)
+// blocked: can't (note says why) · skipped: the person unticked it
+export type TidyStatus = "rename" | "same" | "kept" | "blocked" | "skipped";
+export interface TidyRow {
+  kind: TidyKind; old: string; new: string; old_name: string; new_name: string;
+  status: TidyStatus; note: string; version?: number; project_id?: string; uploaded?: boolean;
+}
+export interface TidyGroup {
+  id: string; name: string; suggested: string; folder: string; rows: TidyRow[];
+  count: number; versions: number; songs: number;
+}
+export interface TidyPlan { groups: TidyGroup[]; count: number }
+export interface TidyOptions {
+  project_ids: string[]; names?: Record<string, string>; style?: "v" | "v0"; numbers?: "keep" | "order";
+  song_style?: "paren" | "dash"; folder?: boolean; overrides?: Record<string, string>; skip?: string[];
+}
+export interface TidyDone { batch_id: string; renamed: number; id_map: Record<string, string>; summary: string }
+export interface TidyBatch { id: string; at: string; summary: string; count: number }

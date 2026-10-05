@@ -35,19 +35,43 @@ _GENRES = [
     ("Ambient",    "🌌", 1, 110,  ["ambient", "drone", "soundscape", "atmos", "cinematic", "field rec"]),
 ]
 
+# When only the tempo speaks, lean a little towards the genres most producers make,
+# so a 145 BPM beat reads as Trap before Hardstyle.
+_COMMON = {"Trap", "House", "Hip hop", "DnB", "Techno", "Pop", "Lo-fi"}
+
 _NEUTRAL = {"genre": None, "emoji": "🎵", "confidence": 0.0, "alternatives": []}
 _EMOJI = {g: e for g, e, *_ in _GENRES}
+
+
+def _learned_points(genre: str, bpm_r, learned) -> float:
+    if bpm_r is None or not learned:
+        return 0.0
+    near = sum(1 for b, g in learned if g == genre and b is not None and abs(b - bpm_r) <= _LEARN_BPM)
+    return _LEARN_POINTS * min(near, 3)
+
+
+def known_genres() -> list[str]:
+    return [g for g, *_ in _GENRES]
 
 
 def emoji_for(genre: str | None) -> str:
     return _EMOJI.get(genre, "🎵")
 
 
-def guess_genre(name: str, bpm: float | None, sample_names=()) -> dict:
+# How near (in BPM) a project you corrected has to be to count as "similar", and how
+# much each one adds. A name keyword (6) still beats a couple of corrections.
+_LEARN_BPM = 4
+_LEARN_POINTS = 3.0
+
+
+def guess_genre(name: str, bpm: float | None, sample_names=(), learned=()) -> dict:
     """Return {genre, emoji, bpm, confidence, alternatives}. genre is None when there
     isn't enough signal. Confidence reflects EVIDENCE QUALITY: a genre word in the
     project name is near-certain (the producer said so); a sample-name word is
-    medium; a bare BPM band is a low-confidence guess (tempos overlap)."""
+    medium; a bare BPM band is a low-confidence guess (tempos overlap).
+
+    `learned` is [(bpm, genre)] from projects the producer corrected: similar tempos
+    lean towards the genre they picked (their own genres included)."""
     name_l = (name or "").lower()
     samp_l = " ".join(sample_names).lower()
     bpm_r = round(bpm) if bpm else None
@@ -57,7 +81,10 @@ def guess_genre(name: str, bpm: float | None, sample_names=()) -> dict:
         s = 0.0
         if bpm_r is not None:
             if lo <= bpm_r <= hi:
-                s += 2.0
+                # in range; nearer the middle of the range scores a little more, so
+                # overlapping ranges are settled by the closest fit, not list order
+                s += 2.0 + 0.5 * max(0.0, 1 - abs(bpm_r - (lo + hi) / 2) / 10)
+                s += 0.3 if genre in _COMMON else 0.0
             elif lo - 5 <= bpm_r <= hi + 5:
                 s += 0.7
         name_kw = samp_kw = False
@@ -68,8 +95,15 @@ def guess_genre(name: str, bpm: float | None, sample_names=()) -> dict:
             if _has_kw(kw, samp_l):
                 s += 1.5
                 samp_kw = True
+        s += _learned_points(genre, bpm_r, learned)
         if s > 0:
             scored.append((s, name_kw, samp_kw, genre, emoji))
+    # genres the producer made up themselves can be guessed too, from their corrections
+    for genre in sorted({g for _b, g in learned if g and g not in _EMOJI}):
+        name_kw = _has_kw(genre.lower(), name_l)
+        s = _learned_points(genre, bpm_r, learned) + (6.0 if name_kw else 0.0)
+        if s > 0:
+            scored.append((s, name_kw, False, genre, "🎵"))
 
     if not scored:
         return {**_NEUTRAL, "bpm": bpm_r}

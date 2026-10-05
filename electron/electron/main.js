@@ -44,7 +44,7 @@ function createWindow() {
   // Reopens at the size and place it was last closed at (see desktop.js).
   const placement = windowStateOptions();
   win = new BrowserWindow({
-    ...placement.options, backgroundColor: "#0A0B0D",
+    ...placement.options, backgroundColor: "#0B0E12",
     ...(hasIcon() ? { icon: ICON } : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -125,7 +125,7 @@ ipcMain.handle("reveal-path", (_e, target) => {
 // Open a project in its DAW (OS default app). Allowlisted to project extensions so
 // this channel can never be used to launch arbitrary files.
 // Logic projects are folders (macOS packages) that open like a file.
-const OPENABLE_PROJECT = /\.(als|flp|rpp|dawproject|aup3|aup|logicx|logic|song)$/i;
+const OPENABLE_PROJECT = /\.(als|flp|rpp|dawproject|aup3|aup|logicx|logic|song|bwproject)$/i;
 ipcMain.handle("open-project", (_e, target) => {
   if (typeof target === "string" && OPENABLE_PROJECT.test(target)) {
     return shell.openPath(target); // resolves to "" on success, error string otherwise

@@ -8,7 +8,7 @@ import { Info } from "../components/Info";
 import { fmtSize } from "../format";
 import { Cover } from "../components/Cover";
 import { useLook } from "../look";
-import { EmptyState } from "../components/SlothSpot";
+import { EmptyState, SlothSpot } from "../components/SlothSpot";
 import { useGenres } from "../useGenres";
 
 const api = makeApi();
@@ -63,8 +63,9 @@ export function Review({ pending, onStarted, onCancel }: {
       <PageHeader title="Check and start" subtitle="Here's what goes into this backup and where it's kept." />
 
       {!dest && (
-        <div className="notice notice--warn">
-          No backup drive is set yet. Pick one in Settings first.
+        <div className="notice notice--warn notice--sloth">
+          <SlothSpot pose="hugging-drive" size={56} />
+          <span>No backup drive is set yet. Pick one in Settings first.</span>
         </div>
       )}
 

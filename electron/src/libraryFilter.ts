@@ -122,3 +122,17 @@ const isSort = (v: unknown) => v === null
 let rememberedSortValue: LibSort | null = recall<LibSort | null>(SORT_KEY, null, isSort);
 export function rememberedSort(): LibSort | null { return rememberedSortValue; }
 export function rememberSort(s: LibSort | null) { rememberedSortValue = s; keep(SORT_KEY, s); }
+
+// ── opening the Library on a ready-made view from another screen ──
+// "See what we gathered" after a first backup, or a count on Home such as "3 safe".
+// Search and the other filters are cleared so nothing left over from earlier hides
+// the projects the button promised.
+export interface LibraryView { status: StatusFilter; newestFirst?: boolean }
+export function viewFor(v: LibraryView, sort: LibSort | null): { filters: LibFilters; sort: LibSort | null } {
+  return {
+    filters: { ...NO_FILTERS, status: v.status },
+    sort: v.newestFirst ? { key: "backup", dir: -1 } : sort,
+  };
+}
+// What "See what we gathered" opens: every project, the ones just backed up on top.
+export const JUST_BACKED_UP: LibraryView = { status: "all", newestFirst: true };

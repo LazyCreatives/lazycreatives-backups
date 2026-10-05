@@ -57,7 +57,7 @@
 .pickbar__n b { color: var(--text); }
 .pickbar .btn { display: inline-flex; align-items: center; gap: 6px; }
 .pickbar__clear { font-size: 13px; padding: 0 6px; }
-[data-look="crate"] .pickbar { border-radius: 0; border-left: 3px solid var(--accent); }
+[data-look="crate"] .pickbar { border-radius: 0; }
 [data-look="crate"] .pickbar .btn { border-radius: 0; }
 [data-look="sleeve"] .pickbar { border-radius: 999px; }
 [data-look="sleeve"] .pickbar .btn { border-radius: 999px; }
@@ -106,7 +106,31 @@
 .linkpill { border: 0; cursor: pointer; padding: 0; font: inherit; font-size: 12.5px; }
 .linkpill:hover { color: var(--text); }
 .linkpill svg { vertical-align: -1px; }
-.song-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.song-actions { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+/* the "Stems (n)" fold under a project's songs */
+.stems-toggle { width: 100%; background: none; border: 0; font: inherit; font-size: 13px; color: var(--text-dim); text-align: left; cursor: pointer; min-height: 40px; }
+.stems-toggle > :last-child { grid-column: 2 / -1; }
+.stems-toggle__icon { display: flex; justify-content: center; color: var(--text-faint); }
+.stems-toggle:hover { color: var(--text); }
+
+/* "Songs not matched yet": the line on the Library, and its page */
+.lib-unmatched {
+  display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 12px;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-lg); background: transparent;
+  color: var(--text-dim); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.lib-unmatched b { color: var(--text); font-weight: 600; }
+.lib-unmatched:hover { color: var(--text); border-color: var(--accent); }
+.lib-unmatched__go { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; color: var(--accent); font-weight: 600; }
+.unm-head { display: grid; gap: 6px; margin-bottom: 16px; max-width: 720px; }
+.unm-title { margin: 0; font-size: 22px; }
+/* play · song · exported · project · actions */
+.unm-cols { --cols: 28px minmax(0, 1fr) 136px minmax(190px, 250px) 92px; }
+.unm-where { font-size: 12px; margin-top: 2px; }
+.unm-pick { display: grid; gap: 4px; min-width: 0; }
+.unm-pick select { width: 100%; }
+.unm-why { font-size: 12px; line-height: 1.3; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.unm-tag { margin-left: 7px; padding: 1px 6px; border: 1px solid var(--border-strong); border-radius: 99px; font-size: 11px; color: var(--text-faint); vertical-align: 1px; }
 
 /* a project's backups: one row each, the open one highlighted */
 .snap-cols { --cols: 8px minmax(0, 1fr) 64px 80px 150px; }
@@ -133,7 +157,7 @@
   border: none; background: transparent; color: var(--text-faint); cursor: pointer; border-radius: 4px;
 }
 .lib-search__x:hover { color: var(--text); background: var(--surface-3); }
-.lib-find__n { color: var(--text-faint); font-family: var(--font-mono); font-size: 11.5px; margin-left: 4px; }
+.lib-find__n { color: var(--text-faint); font-family: var(--font-mono); font-size: 12px; margin-left: 4px; }
 .seg__opt--on .lib-find__n { color: var(--text-dim); }
 .lib-pick { width: auto; min-width: 128px; height: 30px; padding-top: 0; padding-bottom: 0; font-size: 12.5px; }
 .lib-pick--on { border-color: var(--accent); color: var(--text); }

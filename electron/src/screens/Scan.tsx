@@ -71,10 +71,10 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
     let v = projects.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()));
     if (hideAutosaves) v = v.filter((p) => !p.name.toLowerCase().includes("autosav"));
     const cmp: Record<SortKey, (a: ProjectSummary, b: ProjectSummary) => number> = {
-      name: (a, b) => a.name.localeCompare(b.name),
+      name: (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }),
       recent: (a, b) => b.mtime - a.mtime,
       size: (a, b) => b.total_size - a.total_size,
-      issues: (a, b) => b.missing_count - a.missing_count || a.name.localeCompare(b.name),
+      issues: (a, b) => b.missing_count - a.missing_count || a.name.localeCompare(b.name, undefined, { numeric: true }),
     };
     return [...v].sort(cmp[sortKey]);
   }, [projects, query, hideAutosaves, sortKey]);
@@ -172,8 +172,8 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
         </div>
       )}
 
-      {!projects && !scanning && <EmptyState pose="searching" title="Ready when you are">Press Scan now to find the projects in your folders.</EmptyState>}
-      {projects && projects.length === 0 && !scanning && <EmptyState pose="empty-crate" title="No projects found">Check the project folders in Settings, or drop a project folder onto this window.</EmptyState>}
+      {!projects && !scanning && <EmptyState pose="searching" title="Ready when you are" say="No rush.">Press Scan now to find the projects in your folders.</EmptyState>}
+      {projects && projects.length === 0 && !scanning && <EmptyState pose="empty-crate" title="No projects found" say="Couldn’t find any. Point me at a folder?">Check the project folders in Settings, or drop a project folder onto this window.</EmptyState>}
 
       {hasProjects && (
         <>
