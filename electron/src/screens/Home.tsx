@@ -235,7 +235,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
             {recent.map((it) => {
               const m = meta(it);
               return (
-                <div key={it.project_id} className="sleeve" role="button" tabIndex={0} onClick={() => onOpenProject(it.name)}
+                <div key={it.project_id} className="sleeve" data-nav-key={it.name} role="button" tabIndex={0} onClick={() => onOpenProject(it.name)}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenProject(it.name); } }}>
                   <div className="sleeve__art">
                     <Cover name={it.name} genre={it.genre} />
@@ -258,7 +258,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
           {needsHead}
           <div className="needcards">
             {lookItems.map((it) => (
-              <div key={it.project_id} className="needcard" role="button" tabIndex={0} onClick={() => onOpenProject(it.name)}
+              <div key={it.project_id} className="needcard" data-nav-key={it.name} role="button" tabIndex={0} onClick={() => onOpenProject(it.name)}
                 onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(it.name); }}>
                 <Cover name={it.name} genre={it.genre} label={false} />
                 <div className="needcard__body">
@@ -271,7 +271,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
             {failed.map((a) => {
               const it = byName.get(a.project_name);
               return (
-                <div key={"f" + a.project_name} className="needcard" role="button" tabIndex={0} onClick={() => onOpenProject(a.project_name)}
+                <div key={"f" + a.project_name} className="needcard" data-nav-key={a.project_name} role="button" tabIndex={0} onClick={() => onOpenProject(a.project_name)}
                   onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(a.project_name); }}>
                   <Cover name={a.project_name} genre={it?.genre} label={false} />
                   <div className="needcard__body">
@@ -335,7 +335,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
               {hasNeeds ? (
                 <div className="table table--crate">
                   {lookItems.map((it) => (
-                    <div key={it.project_id} className="row cols needs-cols" role="button" tabIndex={0}
+                    <div key={it.project_id} data-nav-key={it.name} className="row cols needs-cols" role="button" tabIndex={0}
                       onClick={() => onOpenProject(it.name)} onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(it.name); }}>
                       <span className="stripe" style={{ background: genreColor(it.genre) }} />
                       <Cover name={it.name} genre={it.genre} size={36} />
@@ -350,7 +350,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
                   {failed.map((a) => {
                     const it = byName.get(a.project_name);
                     return (
-                      <div key={"f" + a.project_name} className="row cols needs-cols" role="button" tabIndex={0}
+                      <div key={"f" + a.project_name} data-nav-key={a.project_name} className="row cols needs-cols" role="button" tabIndex={0}
                         onClick={() => onOpenProject(a.project_name)} onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(a.project_name); }}>
                         <span className="stripe" style={{ background: "var(--danger)" }} />
                         <Cover name={a.project_name} genre={it?.genre} size={36} />
@@ -373,7 +373,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
                   {songs.map((it) => {
                     const m = meta(it)!;
                     return (
-                      <div key={it.project_id} className="songcell">
+                      <div key={it.project_id} className="songcell" data-nav-key={it.name}>
                         <PlayButton path={it.latest_export!.path} title={it.latest_export!.name} meta={m} size={30} />
                         <div style={{ minWidth: 0 }}>
                           <div className="songcell__top">

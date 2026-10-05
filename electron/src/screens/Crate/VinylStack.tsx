@@ -51,6 +51,7 @@ export function VinylStack({ list, active, setActive, reduce, onOpenProject }: {
   const windowed = list.slice(lo, hi);
 
   function onKeyDown(e: React.KeyboardEvent) {
+    if (e.altKey || e.metaKey || e.ctrlKey) return;  // Alt/Cmd+arrows go back/forward a page
     switch (e.key) {
       case "ArrowLeft": e.preventDefault(); setActive((a) => clamp(a - 1, 0, list.length - 1)); break;
       case "ArrowRight": e.preventDefault(); setActive((a) => clamp(a + 1, 0, list.length - 1)); break;

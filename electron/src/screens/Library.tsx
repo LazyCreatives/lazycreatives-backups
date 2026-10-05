@@ -88,19 +88,30 @@ function RowMenu({ items }: { items: { label: string; onClick: () => void; disab
   );
 }
 
-export function Library({ scan, openProject, onOpenHandled }: {
-  scan: ScanProgress; openProject?: string | null; onOpenHandled?: () => void;
+// Which owner groups are folded shut, kept while the app is open so the list looks
+// the same when you come back to it.
+let rememberedCollapsed: Record<string, boolean> = {};
+let rememberedScope = "home";
+
+// openProject: the project shown as its own page (its id, or its name when another
+// screen opened it), or null for the list. Opening and closing go through the app's
+// back/forward history, so the side mouse buttons step between list and project.
+export function Library({ scan, openProject, onOpen, onClose }: {
+  scan: ScanProgress; openProject?: string | null;
+  onOpen: (projectId: string) => void; onClose: () => void;
 }) {
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [scope, setScope] = useState("home");
+  const [scope, setScopeState] = useState(rememberedScope);
+  const setScope = (v: string) => { rememberedScope = v; setScopeState(v); };
   const [scanning, setScanning] = useState(false);
   const [fdaOk, setFdaOk] = useState(true);
   const [skipped, setSkipped] = useState(0);     // dirs the last scan couldn't read
   const [busy, setBusy] = useState<Set<string>>(new Set());
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [collapsed, setCollapsedState] = useState<Record<string, boolean>>(() => rememberedCollapsed);
+  const setCollapsed = (f: (c: Record<string, boolean>) => Record<string, boolean>) =>
+    setCollapsedState((c) => (rememberedCollapsed = f(c)));
   const [err, setErr] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);  // project_id of the open detail row
   const [filters, setFiltersState] = useState<LibFilters>(rememberedFilters);
   const [sort, setSortState] = useState<LibSort | null>(rememberedSort);
   // click a heading to sort by it, click it again to flip the order
@@ -114,28 +125,19 @@ export function Library({ scan, openProject, onOpenHandled }: {
   const [look] = useLook();
   const [fixingAll, setFixingAll] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);  // one-line result of "Fix all"
+  const lastOpen = useRef<string | null>(null);  // the project page shown last, to un-fold its group
 
   function load() {
     api.library().then((r) => setItems(r.projects)).catch(() => {}).finally(() => setLoading(false));
   }
   useEffect(() => { load(); }, []);
 
-  // Deep-link (Home's "needs attention", an orb, Dig's pick): expand that project's
-  // detail row AND bring it into view — deep-list rows expand screens below the fold.
+  // Coming back from a project: make sure its owner group is open so its row shows.
   useEffect(() => {
-    if (!openProject || items.length === 0) return;
-    const hit = items.find((i) => i.name === openProject);
-    if (hit) {
-      setExpanded(hit.project_id);
-      // The row lives in its owner group; if that group is collapsed the row
-      // isn't in the DOM, so un-collapse it before trying to scroll.
-      setCollapsed((c) => ({ ...c, [hit.owner || "system"]: false }));
-    }
-    onOpenHandled?.();
+    if (openProject || !lastOpen.current) return;
+    const hit = items.find((i) => i.project_id === lastOpen.current);
+    if (hit && collapsed[hit.owner || "system"]) setCollapsed((c) => ({ ...c, [hit.owner || "system"]: false }));
   }, [openProject, items]);
-
-  // The project page replaces the list, so start it at the top.
-  useEffect(() => { document.querySelector(".main")?.scrollTo({ top: 0 }); }, [expanded]);
 
   async function runScan() {
     setScanning(true); setErr(null);
@@ -231,12 +233,16 @@ export function Library({ scan, openProject, onOpenHandled }: {
   const showProgress = scanning || scan.active;
 
   // ── project page: replaces the list, with a way back ──
-  const openItem = expanded ? items.find((i) => i.project_id === expanded) : null;
+  const openItem = openProject
+    ? items.find((i) => i.project_id === openProject) ?? items.find((i) => i.name === openProject) ?? null
+    : null;
+  if (openItem) lastOpen.current = openItem.project_id;
+  if (openProject && loading) return <div className="empty">Loading your library…</div>;
   if (openItem) {
     const it = openItem;
     return (
       <>
-        <button className="lib-back" onClick={() => setExpanded(null)}><Icon name="arrowLeft" size={14} />Library</button>
+        <button className="lib-back" onClick={onClose}><Icon name="arrowLeft" size={14} />Library</button>
         <ProjectLabel item={it}
           onOpenInDaw={() => openInDaw(it.path)}
           onReveal={() => revealPath(it.path)}
@@ -404,7 +410,7 @@ export function Library({ scan, openProject, onOpenHandled }: {
           const rowProps = (it: LibraryItem) => {
             const working = busy.has(it.project_id);
             const dawName = it.daw === "flstudio" ? "FL Studio" : it.daw === "ableton" ? "Ableton Live" : "its DAW";
-            const openIt = () => setExpanded(it.project_id);
+            const openIt = () => onOpen(it.project_id);
             const action = it.missing_count > 0 ? (
               <Button variant="ghost" size="sm" disabled={working} onClick={(e) => { e.stopPropagation(); openIt(); }}
                 title="See which samples are missing and point me to them">Fix</Button>
@@ -441,7 +447,7 @@ export function Library({ scan, openProject, onOpenHandled }: {
                     const st = statusLine(it);
                     const { working, openIt, menu, meta } = rowProps(it);
                     return (
-                      <div key={it.project_id} data-pid={it.project_id} className="sleeve" role="button" tabIndex={0}
+                      <div key={it.project_id} data-pid={it.project_id} data-nav-key={it.project_id} className="sleeve" role="button" tabIndex={0}
                         onClick={openIt}
                         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openIt(); } }}>
                         <div className="sleeve__art">
@@ -485,7 +491,7 @@ export function Library({ scan, openProject, onOpenHandled }: {
                     const st = statusLine(it);
                     const { working, openIt, action, menu, meta } = rowProps(it);
                     return (
-                      <div key={it.project_id} data-pid={it.project_id} className={`row cols lib-row ${colsClass}`} role="button" tabIndex={0}
+                      <div key={it.project_id} data-pid={it.project_id} data-nav-key={it.project_id} className={`row cols lib-row ${colsClass}`} role="button" tabIndex={0}
                         onClick={openIt}
                         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openIt(); } }}>
                         <span className="stripe" style={{ background: genreColor(it.genre) }} />

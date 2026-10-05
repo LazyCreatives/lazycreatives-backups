@@ -8,10 +8,12 @@ import { Library } from "./screens/Library";
 import { Dig } from "./screens/Dig";
 import { LcBrand } from "./components/LcBrand";
 import { FirstBackupModal } from "./components/FirstBackupModal";
+import { WhatsNewHost } from "./components/WhatsNew";
 import { makeApi } from "./api";
 import { useLiveProgress } from "./useProgress";
 import type { Config, ProjectSummary } from "./types";
 import { PlayerBar } from "./components/Player";
+import { useBackForwardInput, useNav, type Place } from "./nav";
 
 const api = makeApi();
 
@@ -32,16 +34,38 @@ function isConfigured(c: Config): boolean {
 
 export default function App() {
   const [cfg, setCfg] = useState<Config | null | "error">(null);
-  const [tab, setTab] = useState<Tab>("home");
-  const [flow, setFlow] = useState<FlowStep | null>(null);
+  // Where you are: a tab, maybe an open project or crate on it, maybe a backup flow
+  // step on top. Kept as a back/forward history (side mouse buttons, Alt+arrows).
+  const nav = useNav<Place & { tab: Tab; flow?: FlowStep | null }>({ tab: "home" });
+  useBackForwardInput(nav.back, nav.forward);
+  const { tab } = nav.place;
+  const flow = nav.place.flow ?? null;
+  const sub = nav.place.sub ?? null;
+  const setTab = (t: Tab, open: string | null = null) => nav.go({ tab: t, sub: open, flow: null });
+  // steps inside one backup replace each other, so Back leaves the flow in one press
+  const setFlow = (f: FlowStep | null) => f
+    ? nav.go({ tab, sub, flow: f }, { replace: !!flow })
+    : nav.go({ tab, sub, flow: null });
+  // Close an open project/crate: step back if that's where we came from, else go to the list.
+  const closeSub = () => {
+    const p = nav.prev;
+    if (p && p.tab === tab && !p.sub && !p.flow) nav.back(); else setTab(tab);
+  };
   const [scanProjects, setScanProjects] = useState<ProjectSummary[] | null>(null);
   const [pending, setPending] = useState<PendingBackup | null>(null);
   const [activeJob, setActiveJob] = useState<string | null>(null);
   const [showFirstBackup, setShowFirstBackup] = useState(false);
-  const [navProject, setNavProject] = useState<string | null>(null);  // Home → open a project in History
   const live = useLiveProgress();
 
-  useEffect(() => { api.getSettings().then(setCfg).catch(() => setCfg("error")); }, []);
+  // Was the app already set up when it opened? Only then can "What's new" show
+  // on a first run of this version (a fresh install has nothing new to show).
+  const setUpAtOpen = useRef<boolean | null>(null);
+  useEffect(() => {
+    api.getSettings().then((c) => {
+      if (setUpAtOpen.current === null) setUpAtOpen.current = isConfigured(c);
+      setCfg(c);
+    }).catch(() => setCfg("error"));
+  }, []);
 
   // Notification permission, once.
   useEffect(() => {
@@ -102,7 +126,7 @@ export default function App() {
     );
   }
   if (!isConfigured(cfg)) {
-    return <Setup onDone={(c) => { setCfg(c); setTab("home"); setFlow("scan"); }} />;
+    return <Setup onDone={(c) => { setCfg(c); nav.go({ tab: "home", flow: "scan" }, { replace: true }); }} />;
   }
 
   const busy = live.scan.active || live.backup.active;
@@ -110,7 +134,7 @@ export default function App() {
   return (
     <div className="app">
       <Nav tab={tab} flowActive={!!flow} busy={busy}
-        onNavigate={(t) => { setTab(t); setFlow(null); }} />
+        onNavigate={(t) => setTab(t)} />
       <div className="main">
         <div className="content">
           <div key={flow ?? tab} className="view-enter">
@@ -127,7 +151,7 @@ export default function App() {
               onReview={(p) => { setPending(p); setFlow("review"); }}
               onStarted={(jobId) => { setActiveJob(jobId); setFlow("progress"); }}
               onBackToScan={() => setFlow("scan")}
-              onExit={() => { setFlow(null); setTab("home"); }}
+              onExit={() => setTab("home")}
             />
           ) : tab === "home" ? (
             <Home
@@ -136,12 +160,14 @@ export default function App() {
               onOpenSettings={() => setTab("settings")}
               onResumeProgress={() => setFlow("progress")}
               onOpenHistory={() => setTab("library")}
-              onOpenProject={(name) => { setNavProject(name); setTab("library"); }}
+              onOpenProject={(name) => setTab("library", name)}
             />
           ) : tab === "library" ? (
-            <Library scan={live.scan} openProject={navProject} onOpenHandled={() => setNavProject(null)} />
+            <Library scan={live.scan} openProject={sub}
+              onOpen={(id) => setTab("library", id)} onClose={closeSub} />
           ) : tab === "dig" ? (
-            <Dig onOpenProject={(name) => { setNavProject(name); setTab("library"); }} />
+            <Dig openCrate={sub} onOpenCrate={(key) => setTab("dig", key)} onCloseCrate={closeSub}
+              onOpenProject={(name) => setTab("library", name)} />
           ) : (
             <Sources />
           )}
@@ -149,10 +175,11 @@ export default function App() {
         </div>
       </div>
       <PlayerBar />
+      <WhatsNewHost setUp={setUpAtOpen.current === true} />
       {showFirstBackup && (
         <FirstBackupModal
           completed={live.backup.completed}
-          onHistory={() => { setShowFirstBackup(false); setFlow(null); setTab("library"); }}
+          onHistory={() => { setShowFirstBackup(false); setTab("library"); }}
           onClose={() => setShowFirstBackup(false)}
         />
       )}

@@ -17,7 +17,24 @@ const api = makeApi();
 // collection (/api/library) so everything you've scanned is diggable, enriched with
 // genre/BPM from the backed-up set (/api/projects). Opening a record calls
 // onOpenProject(name) so the host can show that project's backups.
-export function CrateView({ onOpenProject }: { onOpenProject?: (name: string) => void }) {
+// Which crate is open lives in the app's back/forward history (openKey), and the
+// shelf settings and the record on deck are kept while the app is open, so coming
+// back from a project lands on the same record.
+const kept = {
+  groupBy: "genre" as GroupBy, crateSort: "count" as CrateSort, search: "",
+  active: 0, digSort: "recent" as DigSort, verifiedOnly: false,
+};
+function useKept<K extends keyof typeof kept>(k: K) {
+  const [v, setV] = useState<(typeof kept)[K]>(kept[k]);
+  const set = (n: (typeof kept)[K] | ((cur: (typeof kept)[K]) => (typeof kept)[K])) =>
+    setV((cur) => (kept[k] = typeof n === "function" ? (n as (c: (typeof kept)[K]) => (typeof kept)[K])(cur) : n));
+  return [v, set] as const;
+}
+
+export function CrateView({ openKey, onOpenKey, onCloseKey, onOpenProject }: {
+  openKey: string | null; onOpenKey: (key: string) => void; onCloseKey: () => void;
+  onOpenProject?: (name: string) => void;
+}) {
   const osReduce = useReducedMotion();
   const [manualReduce, setManualReduce] = useState(false);
   const reduce = !!osReduce || manualReduce;
@@ -33,15 +50,14 @@ export function CrateView({ onOpenProject }: { onOpenProject?: (name: string) =>
     return () => { alive = false; };
   }, []);
 
-  const [groupBy, setGroupBy] = useState<GroupBy>("genre");
-  const [crateSort, setCrateSort] = useState<CrateSort>("count");
-  const [search, setSearch] = useState("");
+  const [groupBy, setGroupBy] = useKept("groupBy");
+  const [crateSort, setCrateSort] = useKept("crateSort");
+  const [search, setSearch] = useKept("search");
   const crates = useCrates(projects, groupBy, crateSort, search);
 
-  const [openKey, setOpenKey] = useState<string | null>(null);
-  const [active, setActive] = useState(0);
-  const [digSort, setDigSort] = useState<DigSort>("recent");
-  const [verifiedOnly, setVerifiedOnly] = useState(false);
+  const [active, setActive] = useKept("active");
+  const [digSort, setDigSort] = useKept("digSort");
+  const [verifiedOnly, setVerifiedOnly] = useKept("verifiedOnly");
   const triggerRef = useRef<HTMLElement | null>(null);
 
   const openGroup: CrateGroup | null =
@@ -53,10 +69,10 @@ export function CrateView({ onOpenProject }: { onOpenProject?: (name: string) =>
   function open(key: string) {
     triggerRef.current = document.activeElement as HTMLElement;
     setActive(0);
-    setOpenKey(key);
+    onOpenKey(key);
   }
   function back() {
-    setOpenKey(null);
+    onCloseKey();
     const t = triggerRef.current;
     requestAnimationFrame(() => t?.focus?.());
   }

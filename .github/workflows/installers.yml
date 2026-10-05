@@ -1,19 +1,22 @@
 name: installers
-# Installers are slow (macOS bills 10x on private repos), so build only when
-# packaging can change: on demand, on PRs touching packaging files, and on v* tags.
+# Installers are slow and use up the free build allowance on private repos (macOS
+# counts 10x), so on the private dev repo they build only when asked: on a pull
+# request carrying the "build-installers" label, or by hand. The public repo builds
+# them on every v* tag and publishes the Release from them.
 on:
   pull_request:
-    paths:
-      - electron/package.json
-      - backend/sidecar.spec
-      - .github/workflows/installers.yml
-      - .github/scripts/smoke_sidecar.py
+    types: [opened, synchronize, reopened, labeled]
   push:
     tags: ["v*"]          # on the public repo a v<version> tag also publishes a Release
   workflow_dispatch:
 
 jobs:
   build:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'push' && !endsWith(github.repository, '-dev'))
+      || (github.event_name == 'pull_request'
+          && contains(github.event.pull_request.labels.*.name, 'build-installers'))
     strategy:
       fail-fast: false
       matrix:
@@ -52,7 +55,7 @@ jobs:
           python-version: "3.12"
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: electron/package-lock.json
 
@@ -139,6 +142,9 @@ jobs:
           name: lazycreatives-backups-${{ matrix.name }}
           path: ${{ matrix.artifact }}
           if-no-files-found: error
+          # Test copies only: keep them a few days so they don't fill the free
+          # storage for private repos. Releases are published from the public repo.
+          retention-days: 3
 
   # On a v* tag: attach all three installers to a GitHub Release under fixed names,
   # so the website can link to releases/latest/download/<name> and never go stale,

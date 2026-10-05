@@ -16,7 +16,7 @@ export function CrateShelf({ groups, onOpen, reduce }: {
   return (
     <motion.div className="shelf" variants={shelf} initial="hidden" animate="show" role="list">
       {groups.map((g) => (
-        <motion.div key={g.key} layout={!reduce} variants={crateIn} role="listitem">
+        <motion.div key={g.key} data-nav-key={g.key} layout={!reduce} variants={crateIn} role="listitem">
           <Crate group={g} onOpen={() => onOpen(g.key)} reduce={reduce} />
         </motion.div>
       ))}

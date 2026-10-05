@@ -58,12 +58,18 @@ function createWindow() {
 
   // Forward renderer console + crashes to stdout so they land in the run log
   // (renderer errors are otherwise only visible in the in-window devtools).
-  const LEVELS = ["log", "info", "warn", "error"];
-  win.webContents.on("console-message", (_e, level, message) => {
-    console.log(`[renderer:${LEVELS[level] || level}] ${message}`);
+  win.webContents.on("console-message", ({ level, message }) => {
+    console.log(`[renderer:${level}] ${message}`);
   });
   win.webContents.on("render-process-gone", (_e, details) => {
     console.error("[renderer GONE]", JSON.stringify(details));
+  });
+
+  // Side mouse buttons and the keyboard's Back/Forward keys reach Windows and Linux
+  // apps as window commands; the page treats them like its own back/forward.
+  win.on("app-command", (_e, cmd) => {
+    if (cmd === "browser-backward") win.webContents.send("nav-command", "back");
+    else if (cmd === "browser-forward") win.webContents.send("nav-command", "forward");
   });
 
   win.on("close", (e) => {
@@ -71,26 +77,31 @@ function createWindow() {
   });
 }
 
-ipcMain.handle("pick-folder", async () => {
-  const r = await dialog.showOpenDialog(win, { properties: ["openDirectory"] });
-  return r.canceled ? null : r.filePaths[0];
-});
+// File pickers open where the user last picked something. Electron 43+ would
+// otherwise start every picker in Downloads instead of the last-used folder.
+let lastPickedDir;
+async function pick(options) {
+  const r = await dialog.showOpenDialog(win, { defaultPath: lastPickedDir, ...options });
+  if (r.canceled || !r.filePaths.length) return null;
+  const picked = r.filePaths[0];
+  lastPickedDir = options.properties.includes("openDirectory") ? picked : path.dirname(picked);
+  return picked;
+}
+
+ipcMain.handle("pick-folder", () => pick({ properties: ["openDirectory"] }));
 
 // Pick a single audio file — used by "Point to file…" to hand-map one missing sample
 // to its exact replacement. Filtered to audio so the relink stays a media file.
-ipcMain.handle("pick-file", async () => {
-  const r = await dialog.showOpenDialog(win, {
-    properties: ["openFile"],
-    filters: [
-      { name: "Audio", extensions: [
-        "wav", "aif", "aiff", "aifc", "flac", "mp3", "ogg", "oga", "opus", "m4a",
-        "aac", "alac", "wma", "wv", "caf", "ape", "rex", "rx2", "w64", "au", "snd",
-      ] },
-      { name: "All files", extensions: ["*"] },
-    ],
-  });
-  return r.canceled ? null : r.filePaths[0];
-});
+ipcMain.handle("pick-file", () => pick({
+  properties: ["openFile"],
+  filters: [
+    { name: "Audio", extensions: [
+      "wav", "aif", "aiff", "aifc", "flac", "mp3", "ogg", "oga", "opus", "m4a",
+      "aac", "alac", "wma", "wv", "caf", "ape", "rex", "rx2", "w64", "au", "snd",
+    ] },
+    { name: "All files", extensions: ["*"] },
+  ],
+}));
 
 ipcMain.handle("reveal-path", (_e, target) => {
   if (target) shell.showItemInFolder(target);

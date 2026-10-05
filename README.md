@@ -7,7 +7,8 @@
 <p align="center"><b>Verified, deduplicated backups for your music projects — that you own.</b></p>
 
 <p align="center">
-  <a href="https://lazycreatives.github.io">Website &amp; downloads</a> ·
+  <a href="https://lazycreatives.github.io/#download"><b>Download</b></a> ·
+  <a href="https://github.com/LazyCreatives/lazycreatives-backups/releases">What's new</a> ·
   <a href="https://github.com/LazyCreatives/lazycreatives-uploader">Sibling tool: Uploader</a>
 </p>
 
@@ -44,6 +45,14 @@ behind-the-scenes work of making music off your plate. *Looks lazy. Works obsess
 - **Knows your exports.** Each project lists the songs exported from it, with a
   play button and a SoundCloud link once the sibling Uploader has posted it.
 
+## Download
+
+Free beta, with every feature unlocked. Installers for **Windows**, **Mac (Apple
+Silicon)** and **Linux** are on the [Releases page](https://github.com/LazyCreatives/lazycreatives-backups/releases/latest)
+and at [lazycreatives.github.io](https://lazycreatives.github.io/#download). They aren't
+signed yet, so the first launch shows an "unknown developer" warning; see
+[docs/PACKAGING.md](docs/PACKAGING.md) or the website for how to open it on each system.
+
 ## Supported DAWs
 
 | DAW | Format | Status |
@@ -71,7 +80,11 @@ Backups land per-DAW on your destination:
 …one folder per DAW in the same layout
 ```
 
-## Architecture
+---
+
+## For developers
+
+### How it's built
 
 An **Electron** shell + React/TypeScript renderer over a **Python/FastAPI**
 sidecar that does all the file/parse/backup/verify work.
@@ -90,7 +103,7 @@ backend/    ablebackup/ — the engine
 Adding a DAW = one adapter (discover + parse-to-FileRefs) + one registry line; the
 engine, dedup, verify, catalog and relink are reused unchanged.
 
-## Develop / run
+### Run it from source
 
 Prereqs: Node 20.19+ (or 22.12+), Python 3.11+.
 
@@ -102,17 +115,9 @@ cd backend && python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 cd ../electron && npm install && npm start
 ```
 
-## Tests
+### Tests
 
 ```bash
 cd backend  && .venv/bin/python -m pytest        # backend tests
 cd electron && npm test                          # renderer tests
 ```
-
-## Status
-
-Free beta, with every feature unlocked. Installers for Windows, Mac (Apple Silicon)
-and Linux are built automatically for each release; download them from
-[lazycreatives.github.io](https://lazycreatives.github.io/). They aren't signed yet,
-so the first launch shows an "unknown developer" warning; see
-[docs/PACKAGING.md](docs/PACKAGING.md) for how to open it on each system.

@@ -21,6 +21,13 @@ contextBridge.exposeInMainWorld("ablebackup", {
   updateStatus: () => ipcRenderer.invoke("update-status"),
   checkForUpdates: () => ipcRenderer.invoke("update-check"),
   applyUpdate: () => ipcRenderer.invoke("update-apply"),
+  whatsNew: () => ipcRenderer.invoke("whats-new"),
+  // Back/forward from the mouse's side buttons (see nav.ts).
+  onNavCommand: (cb) => {
+    const h = (_e, dir) => cb(dir);
+    ipcRenderer.on("nav-command", h);
+    return () => ipcRenderer.removeListener("nav-command", h);
+  },
   onUpdateStatus: (cb) => {
     const h = (_e, s) => cb(s);
     ipcRenderer.on("update-status", h);

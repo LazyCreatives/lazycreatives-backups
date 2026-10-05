@@ -15,6 +15,17 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.1.8 (5 October 2026)
+
+### New
+- **Back and forward with your mouse's side buttons.** The extra buttons on the side of a mouse now go back to the last page and forward again, like a web browser. On the keyboard it's Alt + left/right arrow on Windows and Linux, and Cmd + [ or ] on a Mac. Nothing happens while you're typing in a box.
+- **Lists remember where you were.** Open a project from the Library, Home or Dig and go back, and the list is scrolled to the same spot with the same search, filters and sort, and the project you opened lights up for a moment. Works in both looks.
+- **See what's new after an update.** The update message lists what changed in the new version, and the first time the app opens after updating it shows a short "What's new" list. Open it again any time from **What's new** in Settings, under Updates.
+
+### Better
+- The update button now says **Restart the app**, and the message makes clear that only the app restarts, never your computer.
+- **Runs on a newer app engine** with the latest security and speed fixes. Everything looks and works the same, and file pickers still open in the folder you last used. On a Mac it needs macOS 13 (Ventura) or newer.
+
 ## 0.1.7 (3 October 2026)
 
 ### New

@@ -12,6 +12,7 @@ describe("Check for updates row", () => {
     const d = describeUpdate({ current: "0.1.6", state: "ready", latest: "0.1.7", action: "restart" });
     expect(d.text).toBe("0.1.7 is ready to install");
     expect(d.button).toBe("restart");
+    expect(d.note).toContain("not your computer");
   });
 
   it("offers the download page when the app can't replace itself (Mac)", () => {

@@ -433,15 +433,130 @@ label.field > span { font-weight: 500; }
 /* "Version / Check for updates" row in Settings (components/UpdateCheck.tsx). */
 .updcheck { display: grid; gap: 6px; }
 .updcheck__row {
-  display: grid; grid-template-columns: 120px minmax(0, 1fr) 170px; align-items: center; column-gap: 14px;
+  display: grid; grid-template-columns: 120px minmax(0, 1fr) 280px; align-items: center; column-gap: 14px;
   min-height: 44px; padding: 0 6px 0 14px; border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--surface);
 }
 .updcheck__ver { font-size: 13px; white-space: nowrap; }
 .updcheck__ver .mono { color: var(--text); font-weight: 600; }
 .updcheck__state { justify-self: start; min-width: 0; }
-.updcheck__act { justify-self: end; }
+.updcheck__act { justify-self: end; display: flex; gap: 6px; }
 .updcheck__note { margin: 0 0 0 2px; font-size: 12.5px; }
 [data-look="crate"] .updcheck__row { border-left: 3px solid var(--accent); border-radius: 0; }
 [data-look="crate"] .updcheck__ver .mono { color: var(--accent); }
 [data-look="sleeve"] .updcheck__row { border-radius: var(--radius-lg); min-height: 52px; }
+
+/* The next version's what's-new list under the row, once one is out. */
+.updcheck__next { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.updcheck__nexthead {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 6px 6px 6px 14px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600;
+}
+.updcheck__nextrow {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; column-gap: 12px;
+  min-height: 34px; padding: 0 14px; border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.updcheck__nextrow:last-child { border-bottom: none; }
+.updcheck__nexttitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.updcheck__nextmore { padding: 7px 14px; font-size: 12.5px; }
+[data-look="crate"] .updcheck__next { border-left: 3px solid var(--accent); border-radius: 0; }
+[data-look="crate"] .updcheck__nextrow:nth-child(odd) { background: rgba(255, 255, 255, 0.018); }
+[data-look="sleeve"] .updcheck__next { border-radius: var(--radius-lg); }
+
+/* "What's new in <version>" panel (components/WhatsNew.tsx). One row per change,
+   in fixed columns: number, New / Better / Fixed tag, then the change itself. */
+.wnew__scrim {
+  position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 24px;
+  background: rgba(6, 8, 11, 0.62); animation: wnewFade var(--dur-base) ease both;
+}
+.wnew {
+  width: min(600px, 100%); max-height: calc(100vh - 48px); display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop); animation: wnewIn var(--dur-slow) var(--ease-glide) both;
+}
+@keyframes wnewFade { from { opacity: 0; } }
+@keyframes wnewIn { from { transform: translateY(10px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .wnew, .wnew__scrim { animation: none; } }
+.wnew__head {
+  display: flex; align-items: center; gap: 16px; padding: 18px 18px 16px 20px; border-bottom: 1px solid var(--border);
+}
+.wnew__heading { flex: 1; min-width: 0; }
+.wnew__heading .eyebrow { margin-bottom: 2px; }
+.wnew__heading h2 { margin: 0; font-size: 19px; }
+.wnew__ver { color: var(--accent); font-weight: 600; }
+.wnew__close {
+  align-self: flex-start; display: inline-grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0;
+  border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--surface-2);
+  color: var(--text-dim); cursor: pointer; font-size: 13px; line-height: 1;
+}
+.wnew__close:hover { color: var(--text); border-color: var(--accent); }
+.wnew__list { overflow: auto; flex: 1; }
+.wnew__row {
+  display: grid; grid-template-columns: 34px 64px minmax(0, 1fr); align-items: baseline; column-gap: 12px;
+  padding: 11px 20px; border-bottom: 1px solid var(--border);
+}
+.wnew__row:last-child { border-bottom: none; }
+.wnew__no { color: var(--text-faint); font-size: 12px; }
+.wnew__tag {
+  justify-self: start; padding: 1px 7px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase; border: 1px solid transparent; white-space: nowrap;
+}
+.wnew__tag--new { color: var(--accent); background: var(--accent-soft); border-color: rgba(134, 179, 211, 0.3); }
+.wnew__tag--better { color: var(--accent-2); background: var(--ok-soft); border-color: rgba(108, 203, 143, 0.3); }
+.wnew__tag--fixed { color: var(--warn); background: var(--warn-soft); border-color: rgba(231, 176, 74, 0.3); }
+.wnew__text { display: grid; gap: 3px; min-width: 0; }
+.wnew__text strong { font-weight: 600; color: var(--text); }
+.wnew__text span { color: var(--text-dim); font-size: 12.5px; line-height: 1.55; }
+.wnew__text span strong { color: var(--text); font-weight: 600; }
+.wnew__foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 14px 18px 14px 20px; border-top: 1px solid var(--border); font-size: 12.5px;
+}
+
+/* Crate: a track list. Square corners, a blue edge, alternating row shading and a
+   colour mark per kind on the left of each row. */
+[data-look="crate"] .wnew { border-radius: 0; border-left: 3px solid var(--accent); }
+[data-look="crate"] .wnew__head { background: var(--surface-2); }
+[data-look="crate"] .wnew__row { position: relative; }
+[data-look="crate"] .wnew__row:nth-child(even) { background: rgba(255, 255, 255, 0.022); }
+[data-look="crate"] .wnew__row::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent);
+}
+[data-look="crate"] .wnew__row--better::before { background: var(--accent-2); }
+[data-look="crate"] .wnew__row--fixed::before { background: var(--warn); }
+[data-look="crate"] .wnew__foot { background: var(--surface-2); }
+
+/* Sleeve: the back of a record. A record with the version on its label, and the
+   changes listed like a track list by side (A new, B better, C fixed). */
+[data-look="sleeve"] .wnew { border-radius: 14px; width: min(640px, 100%); }
+[data-look="sleeve"] .wnew__head { padding: 20px 20px 18px; gap: 18px; }
+.wnew__disc {
+  position: relative; width: 74px; height: 74px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center;
+  background:
+    radial-gradient(circle, var(--accent) 0 19px, transparent 19.5px),
+    repeating-radial-gradient(circle, #16191d 0 2px, #0f1114 2px 4px);
+  box-shadow: 0 0 0 1px var(--border-strong), 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.wnew__disc span { color: var(--accent-ink); font-size: 10.5px; font-weight: 700; }
+[data-look="sleeve"] .wnew__heading h2 { font-size: 21px; }
+[data-look="sleeve"] .wnew__list { padding: 6px 12px; }
+[data-look="sleeve"] .wnew__row { padding: 11px 10px; border-radius: var(--radius-lg); border-bottom: 1px solid var(--border); }
+[data-look="sleeve"] .wnew__row:hover { background: var(--row-hover); }
+[data-look="sleeve"] .wnew__no { color: var(--accent); font-weight: 600; }
+[data-look="sleeve"] .wnew__tag { border-radius: 999px; }
+
+/* Back to a list: the row or cover you opened glows for a moment (see nav.ts). */
+@keyframes nav-came-from {
+  0%, 45% { box-shadow: inset 0 0 0 2px var(--accent); background-color: var(--accent-soft); }
+  100% { box-shadow: inset 0 0 0 2px transparent; }
+}
+.nav-came-from { animation: nav-came-from 2s ease-out; }
+/* a cover card: a ring around the card, since the cover art fills it */
+@keyframes nav-came-from-card {
+  0%, 45% { outline: 3px solid var(--accent); outline-offset: 3px; }
+  100% { outline: 3px solid transparent; outline-offset: 3px; }
+}
+.sleeve.nav-came-from, [data-look="sleeve"] .nav-came-from:not(.row) { animation: nav-came-from-card 2s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .nav-came-from { animation: none; box-shadow: inset 0 0 0 2px var(--accent); }
+}
