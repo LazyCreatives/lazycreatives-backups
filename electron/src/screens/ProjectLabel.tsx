@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { CopyButton } from "../components/Desktop";
 import { makeApi } from "../api";
 import type { LibraryItem, Snapshot, SnapshotDiff } from "../types";
 import { Button } from "../components/Button";
@@ -8,6 +9,7 @@ import { parseStamp } from "./Crate/types";
 import { Cover } from "../components/Cover";
 import { PlayButton, SongWave } from "../components/Player";
 import { coverColor, useLook } from "../look";
+import { EmptyState } from "../components/SlothSpot";
 import "../label.css";
 
 const api = makeApi();
@@ -180,7 +182,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, tabs, actions }: {
             ))}
           </ul>
         </>
-      ) : <div className="empty"><div className="empty__title">No history yet</div>Back the project up and its story starts here.</div>
+      ) : <EmptyState pose="napping" title="No history yet">Back the project up and its story starts here.</EmptyState>
     ) },
   ];
   const active = allTabs.find((t) => t.key === tab) ?? allTabs[0];
@@ -203,9 +205,11 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, tabs, actions }: {
   const songMeta = { title: song?.name ?? "", project: item.name, genre: item.genre };
   const tint = coverColor(item.genre, item.name);
   const statusText = warn > 0 ? <span className="warn-text">{warn} sample{warn === 1 ? "" : "s"} missing</span>
+    : item.changed ? <span className="accent-text"><span className="dot dot--accent" /> changed since its last backup</span>
     : item.backed_up ? <span className="ok-text"><span className="dot dot--ok" /> safe, opens</span>
     : <span className="faint">not backed up yet</span>;
   const statusChip = warn > 0 ? <span className="fact-chip fact-chip--warn">{warn} sample{warn === 1 ? "" : "s"} missing</span>
+    : item.changed ? <span className="fact-chip fact-chip--changed" title="Saved since its last backup; back it up to keep this version">● Changed since backup</span>
     : item.backed_up ? <span className="fact-chip fact-chip--ok">● Safe, opens</span>
     : <span className="fact-chip">Not backed up yet</span>;
 
@@ -226,6 +230,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, tabs, actions }: {
               {song && <PlayButton path={song.path} title={song.name} meta={songMeta} size={48} className="playbtn--big" />}
               <Button variant="primary" onClick={onOpenInDaw}>Open in {dawLabel(item.daw)}</Button>
               <Button variant="ghost" onClick={onReveal}><Icon name="folder" size={15} />Show in folder</Button>
+              <CopyButton text={item.path} what="project path" size={15} className="copybtn--big" />
               {actions}
             </div>
           </div>
@@ -247,6 +252,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, tabs, actions }: {
             </div>
             <div className="page-head__actions">
               <Button variant="ghost" onClick={onReveal}><Icon name="folder" size={15} />Show in folder</Button>
+              <CopyButton text={item.path} what="project path" size={15} className="copybtn--big" />
               <Button variant="ghost" onClick={onOpenInDaw}>Open in {dawLabel(item.daw)}</Button>
               {actions}
             </div>

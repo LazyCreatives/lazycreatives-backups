@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { openMenu, toast } from "../components/Desktop";
+import { baseName, copyText } from "../desktop";
 import { makeApi } from "../api";
 import type { ExportRow, LibraryItem, ProjectExports as Data } from "../types";
 import { Button } from "../components/Button";
@@ -80,7 +82,14 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
     if (p) run(() => api.setExportFolders([...(folders?.folders ?? []), p]));
   }
   function removeFolder(p: string) {
-    run(() => api.setExportFolders((folders?.folders ?? []).filter((f) => f !== p)));
+    const before = folders?.folders ?? [];
+    run(() => api.setExportFolders(before.filter((f) => f !== p)));
+    toast(`Stopped looking for songs in ${baseName(p)}.`, { label: "Undo", onClick: () => run(() => api.setExportFolders(before)) });
+  }
+  // "Not from this project": drop the song here, with a way back.
+  function unlink(path: string, name: string) {
+    run(() => api.unlinkExport(path, item.project_id));
+    toast(`Removed ${name} from this project.`, { label: "Undo", onClick: () => run(() => api.linkExport(path, item.project_id)) });
   }
   // A folder Backups found by itself: remember not to look there again.
   function ignoreFound(p: string) {
@@ -88,6 +97,9 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
   }
 
   const rows = data?.exports ?? [];
+  // The SoundCloud column only takes room when a song is actually on SoundCloud.
+  const linked = rows.some((e) => e.upload?.url) || (data?.uploads_elsewhere ?? []).some((u) => u.url);
+  const cols = `row cols song-cols${linked ? "" : " song-cols--nolink"}`;
   const lookIn = [...(folders?.folders ?? []), ...(folders?.found_folders ?? []), ...(folders?.uploader_folders ?? [])];
 
   return (
@@ -110,54 +122,60 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
 
       {(rows.length > 0 || (data?.uploads_elsewhere ?? []).length > 0) && (
         <div className="table">
-        <div className="row cols cols-head song-cols" aria-hidden>
-          <span /><span>Song</span><span className="col-num">Exported</span><span className="col-num">Size</span><span>SoundCloud</span><span />
+        <div className={`${cols} cols-head`} aria-hidden>
+          <span /><span>Song</span><span className="col-num">Exported</span><span className="col-num">Size</span>{linked && <span>SoundCloud</span>}<span />
         </div>
       {rows.map((e) => (
-        <div key={e.path} className="row cols song-cols">
+        <div key={e.path} className={cols} onContextMenu={(ev) => openMenu(ev, [
+          ...(e.upload?.url ? [
+            { label: "Open on SoundCloud", onClick: () => bridge()?.openExternal?.(e.upload!.url) },
+            { label: "Copy SoundCloud link", onClick: () => { copyText(e.upload!.url!); } }, "-" as const] : []),
+          ...(e.exists ? [{ label: "Show the file", onClick: () => bridge()?.revealPath?.(e.path) }] : []),
+          { label: "Copy file path", onClick: () => { copyText(e.path); } },
+        ])}>
           {e.exists ? <PlayButton path={e.path} title={e.name} meta={songMeta(e.name)} /> : <span />}
           <div style={{ minWidth: 0 }}>
-            <div className="col-trunc" title={`${e.path}\n${HOW[e.match]}`}>{e.name}</div>
+            <div className="song-name" title={`${e.path}\n${HOW[e.match]}`}>{e.name}</div>
             {e.exists
               ? <SongWave path={e.path} meta={songMeta(e.name)} height={20} />
               : <div className="sub col-trunc" style={{ margin: 0, fontSize: 11.5 }}>File has been moved or deleted</div>}
           </div>
           <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{e.exists ? fmtWhen(e.mtime) : "—"}</div>
           <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{e.exists ? fmtSize(e.size ?? 0) : "—"}</div>
-          <div className="col-end">
+          {linked && <div className="col-end">
             {e.upload?.url && (
               <button type="button" className="pill pill--ok linkpill"
                 title={`Uploaded as "${e.upload.title}"`} onClick={() => bridge()?.openExternal?.(e.upload!.url)}>
                 On SoundCloud <Icon name="external" size={12} />
               </button>
             )}
-          </div>
+          </div>}
           <div className="song-actions">
             <button className="iconbtn" title="Show the file" aria-label={`Show ${e.name}`}
               onClick={() => bridge()?.revealPath?.(e.path)} style={{ visibility: e.exists ? "visible" : "hidden" }}><Icon name="folder" /></button>
             <button className="iconbtn" disabled={busy}
               title="Not from this project: remove it here and don't match it again"
               aria-label={`${e.name} is not from this project`}
-              onClick={() => run(() => api.unlinkExport(e.path, item.project_id))}><Icon name="close" /></button>
+              onClick={() => unlink(e.path, e.name)}><Icon name="close" /></button>
           </div>
         </div>
       ))}
 
       {(data?.uploads_elsewhere ?? []).map((u) => (
-        <div key={u.url ?? u.title} className="row cols song-cols">
+        <div key={u.url ?? u.title} className={cols}>
           <span />
           <div>
-            <div className="col-trunc">{u.title}</div>
+            <div className="song-name">{u.title}</div>
             <div className="sub col-trunc" style={{ margin: 0, fontSize: 11.5 }}>On SoundCloud · the file has since moved</div>
           </div>
           <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>—</div>
           <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>—</div>
-          <div className="col-end">
+          {linked && <div className="col-end">
             {u.url && (
               <button type="button" className="pill pill--ok linkpill"
                 onClick={() => bridge()?.openExternal?.(u.url)}>On SoundCloud <Icon name="external" size={12} /></button>
             )}
-          </div>
+          </div>}
           <div className="song-actions" />
         </div>
       ))}

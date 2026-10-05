@@ -24,13 +24,14 @@ from ablebackup.catalog import Catalog
 from ablebackup.scheduler import BackupScheduler
 from ablebackup.service import (
     _build_locator,
-    CLOUD_PROVIDERS, CloudConnectSession, build_overview, cloud_disconnect,
+    CLOUD_FOLDER_SUBDIR, CLOUD_PROVIDERS, CloudConnectSession, cloud_folders, build_overview, cloud_disconnect,
     default_timestamp, full_disk_access_ok, pool_cache_age, rclone_available,
     backfill_genres, project_genres, rclone_remotes, refresh_pool_cache,
     resolve_scan_roots, restore_snapshot, run_backup, safe_remote_name, scan_summary,
     share_snapshot, snapshot_diff,
 )
 from ablebackup.scanner import scan_one
+from ablebackup.suggest import suggested_folders
 from ablebackup.verifier import verify_snapshot
 
 
@@ -162,6 +163,12 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     def cloud_providers():
         return {"providers": [{"key": k, "label": v["label"]} for k, v in CLOUD_PROVIDERS.items()]}
 
+    @app.get("/api/cloud/folders", dependencies=[Depends(require_token)])
+    def cloud_folders_found():
+        """Dropbox / Google Drive / iCloud / OneDrive folders on this computer, so
+        the first-run screen can offer them as places to keep backups."""
+        return {"folders": cloud_folders(), "subdir": CLOUD_FOLDER_SUBDIR}
+
     @app.post("/api/cloud/connect", dependencies=[Depends(require_token)])
     def cloud_connect(req: CloudConnectRequest):
         """Begin a browser OAuth sign-in for a cloud provider (e.g. Google Drive).
@@ -233,6 +240,16 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         app.state.scheduler.set_interval(0)  # automatic backup is Pro-only
         return {"tier": "free", "features": entitlement.features_for("free")}
 
+    def _make_dest(dest: str) -> None:
+        """Create a new backups folder inside one that exists (e.g. "Lazy Creatives
+        Backups" in Dropbox). Never creates a missing drive or its parents."""
+        d = Path(dest) if dest and os.path.isabs(dest) else None
+        if d and not d.exists() and d.parent.is_dir():
+            try:
+                d.mkdir()
+            except OSError:
+                pass  # shown as "can't reach this folder" on Home
+
     @app.get("/api/settings", dependencies=[Depends(require_token)])
     def get_settings() -> Config:
         saved = app.state.catalog.get_setting("config")
@@ -242,9 +259,16 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     def put_settings(config: Config) -> Config:
         if config.interval_minutes > 0 and not _allows("scheduled"):
             config.interval_minutes = 0  # automatic backup is Pro-only
+        _make_dest(config.dest)
         app.state.catalog.set_setting("config", config.model_dump())
         app.state.scheduler.set_interval(config.interval_minutes)
         return config
+
+    @app.get("/api/setup/suggested-folders", dependencies=[Depends(require_token)])
+    def setup_suggested_folders():
+        """The usual project folders on this computer, with how many projects each
+        holds, for the first-run screen to offer as ready-ticked rows."""
+        return suggested_folders()
 
     def _resolve_sources(supplied):
         if supplied:
@@ -469,7 +493,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         saved = app.state.catalog.get_setting("config") or {}
         dest = req.dest or saved.get("dest", "")
         if not dest:
-            raise HTTPException(status_code=400, detail="no destination configured")
+            raise HTTPException(status_code=400, detail="Backups are off. Choose where to keep them in Settings first.")
         timestamp = req.timestamp or default_timestamp()
         # Free tier: Ableton only, and no auto-relink of missing samples.
         als_paths = req.als_paths

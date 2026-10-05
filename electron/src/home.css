@@ -12,6 +12,10 @@
 /* ── shared by both looks ── */
 .warn-line { display: inline-flex; align-items: center; gap: 7px; color: var(--warn); font-size: 13px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .warn-line--error { color: var(--danger); }
+.warn-line--changed { color: var(--accent); }
+/* the narrow Sleeve cards wrap the status rather than cutting it short */
+.needcard .warn-line { white-space: normal; overflow: visible; align-items: flex-start; line-height: 1.35; }
+.needcard .warn-line .dot { margin-top: 5px; }
 
 /* ── Crate: ring on the left, "needs a look" rows and latest songs on the right ── */
 .home-deck { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 24px; align-items: start; margin-bottom: 24px; }
@@ -77,3 +81,15 @@
 .needcard__body .col-act { justify-content: flex-start; }
 @media (max-width: 1150px) { .recent-shelf { grid-template-columns: repeat(4, minmax(0, 1fr)); } .recent-shelf > :nth-child(n+5) { display: none; } }
 @media (max-width: 950px) { .home-hero { grid-template-columns: 1fr; } }
+
+/* Pinned and recently worked on: Crate rows (stripe · cover · name · saved · state) */
+.recent-cols { --cols: 4px 36px minmax(0, 1fr) 170px 120px; }
+.recent-name { display: flex; align-items: center; gap: 6px; }
+.recent-star, .pin-badge { color: var(--warn); display: inline-flex; flex-shrink: 0; }
+.recent-when { font-size: 12px; text-align: right; white-space: nowrap; }
+.recent-state { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); white-space: nowrap; }
+/* Sleeve: a small star on a pinned cover */
+.pin-badge {
+  position: absolute; left: 10px; top: 10px; width: 24px; height: 24px; border-radius: 999px;
+  display: grid; place-items: center; background: rgba(10, 12, 15, 0.72);
+}

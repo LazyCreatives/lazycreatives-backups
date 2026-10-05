@@ -269,8 +269,8 @@ input[type="checkbox"]:checked {
 }
 input[type="checkbox"]:disabled { opacity: 0.35; cursor: default; }
 select { cursor: pointer; padding-right: 28px; }
-label.field { display: grid; gap: 6px; font-size: 12.5px; color: var(--text-dim); margin-bottom: 14px; }
-label.field > span { font-weight: 500; }
+label.field, div.field { display: grid; gap: 6px; font-size: 12.5px; color: var(--text-dim); margin-bottom: 14px; }
+label.field > span, div.field > span { font-weight: 500; }
 .search { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: #111316; color: var(--text-faint); }
 .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .search input { flex: 1; height: 32px; border: 0; background: transparent; padding: 0; box-shadow: none; }
@@ -333,10 +333,11 @@ label.field > span { font-weight: 500; }
 .info:hover::after, .info:focus::after { opacity: 1; }
 
 /* ---- calm motion: fades only ---- */
-.view-enter { animation: lcFade var(--dur-base) ease both; }
+.view-enter { animation: lcRise 260ms var(--ease-glide) both; }
 .tile--enter, .scanrow--enter, .celebrate { animation: lcFade var(--dur-base) ease both; transform: none; }
 .celebrate::before { display: none; }
 @keyframes lcFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lcRise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
@@ -560,3 +561,153 @@ label.field > span { font-weight: 500; }
 @media (prefers-reduced-motion: reduce) {
   .nav-came-from { animation: none; box-shadow: inset 0 0 0 2px var(--accent); }
 }
+
+/* Everyday desktop pieces (components/Desktop.tsx): the right-click menu, copy
+   buttons, the bar of little messages, the drop zone and the shortcuts list. */
+.ctxmenu {
+  position: fixed; z-index: 200; min-width: 200px; max-width: 320px; padding: 4px; display: grid; gap: 1px;
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop); animation: ctxIn var(--dur-quick) var(--ease-lazy) both;
+}
+@keyframes ctxIn { from { opacity: 0; transform: translateY(-3px); } }
+.ctxmenu__item {
+  border: none; background: transparent; color: var(--text); cursor: pointer; text-align: left;
+  padding: 7px 10px; border-radius: var(--radius); font: inherit; font-size: 13px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ctxmenu__item:hover:not(:disabled), .ctxmenu__item:focus-visible { background: var(--surface-3); outline: none; }
+.ctxmenu__item:disabled { opacity: 0.45; cursor: not-allowed; }
+.ctxmenu__item--danger { color: var(--danger); }
+.ctxmenu__sep { height: 1px; margin: 3px 6px; background: var(--border); }
+[data-look="crate"] .ctxmenu { border-radius: 0; border-left: 3px solid var(--accent); padding: 0; gap: 0; }
+[data-look="crate"] .ctxmenu__item { border-radius: 0; padding: 8px 12px; }
+[data-look="crate"] .ctxmenu__item:nth-child(even):not(:hover):not(:focus-visible) { background: rgba(255, 255, 255, 0.022); }
+[data-look="crate"] .ctxmenu__sep { margin: 0; background: var(--border-strong); }
+[data-look="sleeve"] .ctxmenu { border-radius: 12px; padding: 6px; }
+[data-look="sleeve"] .ctxmenu__item { border-radius: 8px; }
+
+.copybtn { flex-shrink: 0; color: var(--text-faint); }
+.copybtn:hover { color: var(--text); }
+.copybtn--done, .copybtn--done:hover { color: var(--accent-2); }
+/* beside full-size buttons: the same height and frame as a ghost button */
+.copybtn--big { width: 34px; height: 34px; background: var(--surface-2); border: 1px solid var(--border-strong); color: var(--text-dim); }
+.copybtn--big:hover { border-color: var(--border-interactive); }
+/* a path with its copy button beside it */
+.pathline { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.pathline > :first-child { min-width: 0; }
+
+.toast {
+  position: fixed; z-index: 150; left: 50%; bottom: 84px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; max-width: min(560px, calc(100vw - 48px));
+  padding: 9px 10px 9px 14px; font-size: 13px; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop); animation: toastIn var(--dur-base) var(--ease-glide) both;
+}
+.toast > svg { color: var(--accent-2); flex-shrink: 0; }
+.toast__text { min-width: 0; }
+.toast__btn {
+  border: 1px solid var(--border-interactive); background: transparent; color: var(--accent); cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: var(--radius); white-space: nowrap;
+}
+.toast__btn:hover { border-color: var(--accent); }
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, 8px); } }
+[data-look="crate"] .toast { border-radius: 0; border-left: 3px solid var(--accent-2); }
+[data-look="crate"] .toast__btn { border-radius: 0; }
+[data-look="sleeve"] .toast { border-radius: 999px; padding-left: 16px; }
+[data-look="sleeve"] .toast__btn { border-radius: 999px; }
+
+.dropzone {
+  position: fixed; inset: 0; z-index: 180; display: grid; place-items: center; padding: 28px; pointer-events: none;
+  background: rgba(6, 8, 11, 0.7); animation: wnewFade var(--dur-quick) ease both;
+}
+.dropzone__box {
+  width: min(520px, 100%); padding: 40px 28px; display: grid; justify-items: center; gap: 8px; text-align: center;
+  border: 2px dashed var(--accent); border-radius: var(--radius-lg); background: var(--accent-soft); color: var(--accent);
+}
+.dropzone__title { font-family: var(--display); font-size: 30px; letter-spacing: 0.02em; color: var(--text); }
+.dropzone__hint { font-size: 13px; color: var(--text-dim); }
+[data-look="crate"] .dropzone__box { border-radius: 0; border-style: solid; border-width: 0 0 0 4px; background: var(--surface-2); }
+[data-look="sleeve"] .dropzone__box { border-radius: 18px; }
+
+.keys__list { overflow: auto; }
+.keys__row {
+  display: grid; grid-template-columns: 210px minmax(0, 1fr); align-items: center; column-gap: 14px;
+  padding: 10px 20px; border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.keys__row:last-child { border-bottom: none; }
+.keys__keys { display: flex; gap: 6px; flex-wrap: wrap; }
+.keys__what { color: var(--text-dim); }
+kbd {
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--text); white-space: nowrap;
+  padding: 2px 7px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px; background: var(--surface-2);
+}
+[data-look="crate"] .keys__row:nth-child(even) { background: rgba(255, 255, 255, 0.022); }
+[data-look="crate"] kbd { border-radius: 2px; }
+[data-look="sleeve"] .keys__list { padding: 6px 12px; }
+[data-look="sleeve"] .keys__row { padding: 10px; }
+[data-look="sleeve"] kbd { border-radius: 999px; padding: 2px 9px; }
+
+/* "Are you sure?" box (Desktop.tsx askConfirm): a small panel in the app's look. */
+.confirm { width: min(440px, 100%); }
+.confirm__body { padding: 20px 20px 6px; display: grid; gap: 8px; }
+.confirm__body h2 { margin: 0; font-size: 17px; line-height: 1.3; text-wrap: balance; }
+.confirm__body p { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 1.55; }
+.confirm__foot { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 20px 18px; }
+.confirm--danger .btn--danger { border-color: rgba(230, 111, 106, 0.55); }
+[data-look="crate"] .confirm { border-left-color: var(--accent); }
+[data-look="crate"] .confirm--danger { border-left-color: var(--danger); }
+[data-look="crate"] .confirm .btn { border-radius: 0; }
+[data-look="sleeve"] .confirm { border-radius: 14px; width: min(440px, 100%); }
+[data-look="sleeve"] .confirm .btn { border-radius: 999px; }
+
+/* Empty and error screens (SlothSpot.tsx): the sloth in a soft spot, a title, the
+   next step and maybe a button. Swap in the drawing per pose once it arrives. */
+.slothspot {
+  display: grid; place-items: center; margin: 0 auto 14px; border-radius: 50%; flex-shrink: 0;
+  background: radial-gradient(closest-side, var(--accent-soft), transparent);
+  border: 1px dashed var(--border-strong);
+}
+.slothspot img { width: 64%; height: auto; opacity: 0.92; }
+.slothspot--tangled { background: radial-gradient(closest-side, var(--danger-soft), transparent); }
+.slothspot--thumbs-up { background: radial-gradient(closest-side, var(--ok-soft), transparent); }
+.empty--sloth { display: grid; justify-items: center; gap: 2px; }
+.empty__body { max-width: 46ch; line-height: 1.55; }
+.empty__action { margin-top: 14px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+[data-look="crate"] .slothspot { border-radius: 4px; }
+
+/* ---- 0.1.9 polish: styled dropdowns, rounder Sleeve corners, covers dealt in ---- */
+select {
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23949AA5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center; background-size: 14px;
+}
+@supports (appearance: base-select) {
+  select { appearance: base-select; display: inline-flex; align-items: center; }
+  select::picker-icon { display: none; }
+  select::picker(select) {
+    appearance: base-select; margin-top: 4px; padding: 4px; min-width: anchor-size(width);
+    background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-pop); color: var(--text);
+    opacity: 0; transform: translateY(-4px);
+    transition: opacity 140ms var(--ease-glide), transform 140ms var(--ease-glide), display 140ms allow-discrete, overlay 140ms allow-discrete;
+  }
+  select:open::picker(select) { opacity: 1; transform: none; }
+  @starting-style { select:open::picker(select) { opacity: 0; transform: translateY(-4px); } }
+  select option {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--radius);
+    font: 13px var(--font); cursor: pointer; background: transparent; color: var(--text);
+  }
+  select option:hover, select option:focus-visible { background: var(--accent-soft); outline: none; }
+  select option:checked { color: var(--accent); font-weight: 600; }
+  select option::checkmark { content: ""; }
+}
+[data-look="sleeve"] { --radius: 8px; --radius-lg: 14px; }
+[data-look="sleeve"] .sleeve__art .cover { border-radius: 0; }
+.sleeves > * { animation: lcRise 320ms var(--ease-glide) both; }
+.sleeves > :nth-child(2) { animation-delay: 25ms; } .sleeves > :nth-child(3) { animation-delay: 50ms; }
+.sleeves > :nth-child(4) { animation-delay: 75ms; } .sleeves > :nth-child(5) { animation-delay: 100ms; }
+.sleeves > :nth-child(6) { animation-delay: 125ms; } .sleeves > :nth-child(7) { animation-delay: 150ms; }
+.sleeves > :nth-child(8) { animation-delay: 175ms; } .sleeves > :nth-child(n+9) { animation-delay: 200ms; }
+.sleeve { transition: border-color .15s, transform .2s var(--ease-glide), box-shadow .2s var(--ease-glide); }
+.sleeve:hover { box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35); }
+@media (prefers-reduced-motion: reduce) { .sleeves > * { animation: none; } select::picker(select) { transition: none; } }

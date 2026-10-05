@@ -146,6 +146,11 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
 
     # The project file itself (.als, .flp, …). In portable mode the adapter rewrites
     # it so external samples resolve from inside the snapshot, using `placement`.
+    # A folder project (Logic package) has no single file: everything inside it was
+    # placed above as refs, keeping the package's layout.
+    if scan.project_path.is_dir():
+        return _commit(scan, files, total_size, missing, use_hardlinks, portable,
+                       layout, timestamp, temp_dir, final_dir, claim_dir)
     proj_src = scan.project_path
     tmp_proj = None
     if portable:
@@ -167,7 +172,14 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
     total_size += sz
     placed[scan.project_path.name] = proj_digest
     record(scan.project_path.name, proj_digest, sz, str(scan.project_path), True, False)
+    return _commit(scan, files, total_size, missing, use_hardlinks, portable,
+                   layout, timestamp, temp_dir, final_dir, claim_dir)
 
+
+def _commit(scan: ProjectScan, files: list[dict], total_size: int, missing: list[str],
+            use_hardlinks: bool, portable: bool, layout: str, timestamp: str,
+            temp_dir: Path, final_dir: Path, claim_dir: Path) -> BackupResult:
+    """Write the manifest and swap the finished snapshot into place."""
     file_count = len(files)
     relinked_count = sum(1 for f in files if f["relinked"])
     manifest = {

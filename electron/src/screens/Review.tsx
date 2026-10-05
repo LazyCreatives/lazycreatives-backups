@@ -8,6 +8,7 @@ import { Info } from "../components/Info";
 import { fmtSize } from "../format";
 import { Cover } from "../components/Cover";
 import { useLook } from "../look";
+import { EmptyState } from "../components/SlothSpot";
 import { useGenres } from "../useGenres";
 
 const api = makeApi();
@@ -32,7 +33,7 @@ export function Review({ pending, onStarted, onCancel }: {
     return (
       <>
         <PageHeader title="Review backup" />
-        <div className="empty">Nothing picked yet. Go back and pick some projects first.</div>
+        <EmptyState pose="empty-crate" title="Nothing picked yet">Go back and tick the projects to back up.</EmptyState>
         <Button variant="ghost" onClick={onCancel}>Back</Button>
       </>
     );

@@ -1,4 +1,6 @@
 import json
+import os
+import time
 import sqlite3
 import threading
 from pathlib import Path
@@ -71,6 +73,25 @@ CREATE INDEX IF NOT EXISTS idx_exports_project ON exports(project_id);
 """
 
 
+def _changed_since_backup(d: dict) -> bool:
+    """Has the project been saved since its last backup? Uses the project file's
+    current save time (read live, so an edit shows without a re-scan) against the
+    time recorded at its last backup; older catalogs fall back to the backup's own
+    timestamp."""
+    mtime = d.get("mtime") or 0
+    try:
+        mtime = os.stat(d["path"]).st_mtime
+    except (OSError, KeyError, TypeError):
+        pass
+    base = d.get("backed_mtime")
+    if base is None:
+        try:  # "2026-10-05_1213" in local time, minute resolution
+            base = time.mktime(time.strptime(d["last_backup"], "%Y-%m-%d_%H%M")) + 60
+        except (TypeError, ValueError):
+            return False
+    return mtime > base + 1
+
+
 class Catalog:
     def __init__(self, db_path: Path):
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -99,7 +120,10 @@ class Catalog:
         # discovered: genre + metadata columns added after that table shipped
         dcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(discovered)")}
         for col, typ in {"genre": "TEXT", "genre_emoji": "TEXT", "bpm": "REAL",
-                         "tracks": "INTEGER", "plugins": "TEXT"}.items():
+                         "tracks": "INTEGER", "plugins": "TEXT",
+                         # the project file's save time when it was last backed up
+                         # (or found identical to its last backup)
+                         "backed_mtime": "REAL"}.items():
             if col not in dcols:
                 self.conn.execute(f"ALTER TABLE discovered ADD COLUMN {col} {typ}")
 
@@ -296,6 +320,14 @@ class Catalog:
             self.conn.commit()
         return len(rows)
 
+    def mark_backed(self, project_id: str, mtime: float) -> None:
+        """Remember the project file's save time as of a backup that captured it (or
+        found it identical to the last one), so later edits show as changed."""
+        with self._lock:
+            self.conn.execute("UPDATE discovered SET backed_mtime = ? WHERE project_id = ?",
+                              (mtime, project_id))
+            self.conn.commit()
+
     def library(self) -> list[dict]:
         """Every discovered project + its backed-up status (latest backup time and
         snapshot count), derived by matching snapshots on project_id OR name so both
@@ -315,6 +347,7 @@ class Catalog:
         for r in rows:
             d = dict(r)
             d["backed_up"] = d["last_backup"] is not None
+            d["changed"] = d["backed_up"] and _changed_since_backup(d)
             try:  # stored as a JSON array; serve a real list
                 d["plugins"] = json.loads(d["plugins"]) if d.get("plugins") else []
             except (TypeError, ValueError):

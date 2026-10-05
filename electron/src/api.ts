@@ -1,4 +1,4 @@
-import type { Config, ProjectExports, Entitlement, JobStatus, LibraryItem, Overview, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, VerifyResult } from "./types";
+import type { CloudFolder, Config, SuggestedFolder, ProjectExports, Entitlement, JobStatus, LibraryItem, Overview, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, VerifyResult } from "./types";
 
 function base() {
   const port = (window as any).ablebackup?.port ?? "8753";
@@ -26,6 +26,8 @@ export function makeApi() {
   return {
     async getSettings(): Promise<Config> { return req("GET", "/api/settings"); },
     async saveSettings(c: Config): Promise<Config> { return req("PUT", "/api/settings", c); },
+    // First run: the usual project folders on this computer, most projects first.
+    async suggestedFolders(): Promise<SuggestedFolder[]> { return req("GET", "/api/setup/suggested-folders"); },
     async scan(sources?: string[], findMissing = false): Promise<ProjectSummary[]> {
       return (await req("POST", "/api/scan", { sources, find_missing: findMissing })).projects;
     },
@@ -80,6 +82,10 @@ export function makeApi() {
       return req("POST", "/api/share", { snapshot_id: snapshotId, target });
     },
     async rclone(): Promise<{ available: boolean; remotes: string[] }> { return req("GET", "/api/rclone"); },
+    // Dropbox / Google Drive / iCloud / OneDrive folders on this computer (path null = not found).
+    async cloudFolders(): Promise<{ folders: CloudFolder[]; subdir: string }> {
+      return req("GET", "/api/cloud/folders");
+    },
     async cloudProviders(): Promise<{ key: string; label: string }[]> {
       return (await req("GET", "/api/cloud/providers")).providers;
     },

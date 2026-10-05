@@ -88,6 +88,7 @@
   border: 1px solid var(--border-strong); background: var(--surface); white-space: nowrap;
 }
 .fact-chip--ok { color: var(--accent-2); border-color: rgba(108, 203, 143, 0.4); }
+.fact-chip--changed { color: var(--accent); border-color: rgba(134, 179, 211, 0.4); }
 .fact-chip--warn { color: var(--warn); border-color: rgba(231, 176, 74, 0.4); }
 .deck {
   display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 18px; align-items: center;
@@ -113,6 +114,7 @@
 .proj-hero__actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 .proj-hero .playbtn--big { background: var(--text); border-color: var(--text); color: var(--bg); }
 .ok-text { color: var(--accent-2); display: inline-flex; align-items: center; gap: 5px; }
+.accent-text { color: var(--accent); display: inline-flex; align-items: center; gap: 5px; }
 @media (max-width: 1040px) {
   .deck-head { grid-template-columns: 96px minmax(0, 1fr); }
   .deck-head .cover { width: 96px; height: 96px; }

@@ -8,7 +8,8 @@ from typing import Callable, Optional
 from xml.etree.ElementTree import ParseError
 
 from ablebackup.daws.base import empty_meta, parse_with_meta
-from ablebackup.daws.registry import DAW_REGISTRY, adapter_for_path
+from ablebackup.daws.registry import (DAW_REGISTRY, adapter_for_path, ignored_file,
+                                      package_extensions)
 from ablebackup.models import FileRef, ProjectScan
 from ablebackup.resolver import resolve_refs
 
@@ -61,7 +62,8 @@ def find_projects_progress(roots: list[Path], progress: ProgressCb = None,
     offer an elevated scan — otherwise a users/entire scan finishes fast with nothing
     new and looks broken. If `stats` is given it gets {skipped_dirs, skipped_examples}."""
     from ablebackup.daws.base import _keep_dirs
-    exts = tuple(sorted({e.lower() for a in DAW_REGISTRY for e in a.extensions}))
+    pkg_exts = package_extensions()
+    exts = tuple(sorted({e.lower() for a in DAW_REGISTRY for e in a.extensions} - set(pkg_exts)))
     skip: set[str] = set()
     for a in DAW_REGISTRY:
         skip |= a.skip_dirs()
@@ -79,10 +81,14 @@ def find_projects_progress(roots: list[Path], progress: ProgressCb = None,
 
     for root in roots:
         for dirpath, dirnames, filenames in os.walk(root, onerror=_on_err):
-            dirnames[:] = _keep_dirs(dirnames, skip)
+            # Folder projects (Logic's .logicx packages) count as one project each
+            # and are never walked into.
+            pkgs = [d for d in dirnames if d.lower().endswith(pkg_exts)] if pkg_exts else []
+            out.extend(Path(dirpath) / d for d in pkgs)
+            dirnames[:] = _keep_dirs([d for d in dirnames if d not in pkgs], skip)
             dirs_seen += 1
             for fn in filenames:
-                if fn.lower().endswith(exts):
+                if fn.lower().endswith(exts) and not ignored_file(Path(dirpath) / fn):
                     out.append(Path(dirpath) / fn)
             if progress and dirs_seen % 250 == 0:
                 progress({"type": "scan_searching", "dirs": dirs_seen,
@@ -148,12 +154,20 @@ def _resolve_parsed(project_path: Path, raw_refs: list[FileRef], locate,
     stat = project_path.stat()
     refs = resolve_refs(raw_refs, project_dir, locate=locate, overrides=overrides)
     meta = meta or empty_meta()
+    mtime, size = stat.st_mtime, stat.st_size
+    if project_path.is_dir():
+        # A folder project (Logic package): its files are refs (counted there), and
+        # it was last saved when the newest file inside it changed.
+        size = 0
+        inner = [r.mtime for r in refs if r.exists and r.resolved_path is not None
+                 and project_path in r.resolved_path.parents]
+        mtime = max(inner, default=mtime)
     return ProjectScan(
         project_path=project_path,
         name=adapter.project_name(project_path),
         project_dir=project_dir,
-        mtime=stat.st_mtime,
-        size=stat.st_size,
+        mtime=mtime,
+        size=size,
         daw_id=adapter.daw_id,
         project_id=project_id(project_path),
         refs=refs,

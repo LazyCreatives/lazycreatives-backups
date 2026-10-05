@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 function argValue(flag) {
   const a = process.argv.find((x) => x.startsWith(flag + "="));
@@ -27,6 +27,17 @@ contextBridge.exposeInMainWorld("ablebackup", {
     const h = (_e, dir) => cb(dir);
     ipcRenderer.on("nav-command", h);
     return () => ipcRenderer.removeListener("nav-command", h);
+  },
+  // Everyday desktop helpers (see desktop.js / src/desktop.ts).
+  copyText: (text) => ipcRenderer.invoke("copy-text", text),
+  setProgress: (value) => ipcRenderer.invoke("set-progress", value),
+  pathKinds: (paths) => ipcRenderer.invoke("path-kinds", paths),
+  relaunch: () => ipcRenderer.invoke("relaunch-app"),
+  pathForFile: (file) => { try { return webUtils.getPathForFile(file) || ""; } catch { return ""; } },
+  onMenuCommand: (cb) => {
+    const h = (_e, cmd) => cb(cmd);
+    ipcRenderer.on("menu-command", h);
+    return () => ipcRenderer.removeListener("menu-command", h);
   },
   onUpdateStatus: (cb) => {
     const h = (_e, s) => cb(s);

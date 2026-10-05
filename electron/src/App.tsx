@@ -8,17 +8,27 @@ import { Library } from "./screens/Library";
 import { Dig } from "./screens/Dig";
 import { LcBrand } from "./components/LcBrand";
 import { FirstBackupModal } from "./components/FirstBackupModal";
-import { WhatsNewHost } from "./components/WhatsNew";
+import { WhatsNewHost, openWhatsNew } from "./components/WhatsNew";
+import { ConfirmHost, ContextMenuHost, DropZone, ShortcutsPanel, ToastHost, toast } from "./components/Desktop";
+import { baseName, folderOf, isInside, keep, recall, useDesktopCommands, useEscapeToClose, useFileDrop, useIconProgress, type Dropped } from "./desktop";
 import { makeApi } from "./api";
 import { useLiveProgress } from "./useProgress";
 import type { Config, ProjectSummary } from "./types";
-import { PlayerBar } from "./components/Player";
+import { PlayerBar, togglePlaying } from "./components/Player";
+import { EmptyState } from "./components/SlothSpot";
 import { useBackForwardInput, useNav, type Place } from "./nav";
 
 const api = makeApi();
 
 export type Tab = "home" | "library" | "dig" | "settings";
 export type FlowStep = "scan" | "review" | "progress";
+const TABS: Tab[] = ["home", "library", "dig", "settings"];
+const LAST_PAGE = "lc-last-page";
+
+// Project files Backups knows; dropping one adds the folder it sits in. A Logic
+// project is a folder that Finder shows as one file, so it counts as a project too.
+const PROJECT_FILE = /\.(als|flp|rpp|dawproject|aup3|aup|song)$/i;
+const PROJECT_PACKAGE = /\.(logicx|logic)\/?$/i;
 
 export interface PendingBackup {
   als_paths: string[];
@@ -28,15 +38,18 @@ export interface PendingBackup {
   findMissing: boolean;
 }
 
+// Set up once there are project folders. Where backups go can stay empty: people
+// who only want to browse skip it on the first-run screen ("backups off").
 function isConfigured(c: Config): boolean {
-  return c.sources.length > 0 && !!c.dest;
+  return c.sources.length > 0;
 }
 
 export default function App() {
   const [cfg, setCfg] = useState<Config | null | "error">(null);
   // Where you are: a tab, maybe an open project or crate on it, maybe a backup flow
   // step on top. Kept as a back/forward history (side mouse buttons, Alt+arrows).
-  const nav = useNav<Place & { tab: Tab; flow?: FlowStep | null }>({ tab: "home" });
+  // The app opens on the page it was closed on.
+  const nav = useNav<Place & { tab: Tab; flow?: FlowStep | null }>({ tab: recall<Tab>(LAST_PAGE, "home", (v) => TABS.includes(v as Tab)) });
   useBackForwardInput(nav.back, nav.forward);
   const { tab } = nav.place;
   const flow = nav.place.flow ?? null;
@@ -56,6 +69,54 @@ export default function App() {
   const [activeJob, setActiveJob] = useState<string | null>(null);
   const [showFirstBackup, setShowFirstBackup] = useState(false);
   const live = useLiveProgress();
+  const [showKeys, setShowKeys] = useState(false);
+  const [settingsKey, setSettingsKey] = useState(0);  // bumped to reload Settings after a drop
+  const [scanLibraryNow, setScanLibraryNow] = useState(false);  // first run with backups skipped
+  useEffect(() => { keep(LAST_PAGE, tab); }, [tab]);
+
+  // Keyboard shortcuts and the menu bar (see desktop.ts).
+  useDesktopCommands((cmd) => {
+    if (cmd === "settings") setTab("settings");
+    else if (cmd === "back") nav.back();
+    else if (cmd === "forward") nav.forward();
+    else if (cmd === "play") togglePlaying();
+    else if (cmd === "whats-new") openWhatsNew();
+    else if (cmd === "shortcuts") setShowKeys(true);
+  });
+  // Escape closes an open project or crate.
+  useEscapeToClose(sub && !flow ? closeSub : null);
+
+  // How far a backup (or the reading part of a scan) has got, on the dock / taskbar icon.
+  const b = live.backup, sc = live.scan;
+  useIconProgress(
+    b.active ? (b.total ? (b.completed + b.skipped + b.errors) / b.total : 0)
+      : sc.active && sc.phase === "parsing" && sc.total ? sc.done / sc.total
+      : null,
+  );
+
+  // Drop a folder (or a project file) on the window to add it to the folders Backups looks in.
+  async function addDropped(items: Dropped[]) {
+    if (!cfg || cfg === "error") return;
+    const folders = [...new Set(items.flatMap((d) =>
+      d.kind === "folder" && PROJECT_PACKAGE.test(d.path) ? [folderOf(d.path.replace(/[\\/]+$/, ""))]
+        : d.kind === "folder" ? [d.path] : d.kind === "file" && PROJECT_FILE.test(d.path) ? [folderOf(d.path)] : []))];
+    if (!folders.length) { toast("Drop a project folder (or a project file) to add it."); return; }
+    const fresh = folders.filter((f) => !isInside(f, cfg.sources));
+    if (!fresh.length) {
+      toast(folders.length === 1 ? `Backups already looks in ${baseName(folders[0])}.` : "Backups already looks in those folders.");
+      return;
+    }
+    try {
+      const saved = await api.saveSettings({ ...cfg, sources: [...cfg.sources, ...fresh] });
+      setCfg(saved);
+      setSettingsKey((k) => k + 1);
+      toast(fresh.length === 1 ? `Added ${baseName(fresh[0])} to your project folders.` : `Added ${fresh.length} project folders.`,
+        { label: "Scan now", onClick: () => setFlow("scan") });
+    } catch {
+      toast("Couldn't add that folder. Try Add folder in Settings.");
+    }
+  }
+  const dragging = useFileDrop(addDropped, !!cfg && cfg !== "error" && isConfigured(cfg));
 
   // Was the app already set up when it opened? Only then can "What's new" show
   // on a first run of this version (a fresh install has nothing new to show).
@@ -119,14 +180,20 @@ export default function App() {
   if (cfg === "error") {
     return (
       <div className="splash">
-        <div className="card" style={{ borderColor: "var(--danger)", color: "var(--danger)", maxWidth: 380 }}>
-          Couldn't reach the backup service.
-        </div>
+        <EmptyState pose="tangled" title="Backups couldn't start its engine"
+          action={<button className="btn btn--primary" onClick={() => (window as any).ablebackup?.relaunch?.()}>Restart the app</button>}>
+          The part of the app that does the backing up didn't answer. Restarting the app usually fixes it; your backups are safe. If it keeps happening, use Help, Report a problem.
+        </EmptyState>
       </div>
     );
   }
   if (!isConfigured(cfg)) {
-    return <Setup onDone={(c) => { setCfg(c); nav.go({ tab: "home", flow: "scan" }, { replace: true }); }} />;
+    return <Setup onDone={(c, skipped) => {
+      setCfg(c);
+      // Skipped backups: straight to the Library, finding projects to browse.
+      if (skipped) { setScanLibraryNow(true); nav.go({ tab: "library" }, { replace: true }); }
+      else nav.go({ tab: "home", flow: "scan" }, { replace: true });
+    }} />;
   }
 
   const busy = live.scan.active || live.backup.active;
@@ -137,7 +204,7 @@ export default function App() {
         onNavigate={(t) => setTab(t)} />
       <div className="main">
         <div className="content">
-          <div key={flow ?? tab} className="view-enter">
+          <div key={flow ?? (tab === "settings" ? `settings-${settingsKey}` : tab)} className="view-enter">
           {flow ? (
             <BackupFlow
               step={flow}
@@ -164,6 +231,7 @@ export default function App() {
             />
           ) : tab === "library" ? (
             <Library scan={live.scan} openProject={sub}
+              scanOnOpen={scanLibraryNow} onScanStarted={() => setScanLibraryNow(false)}
               onOpen={(id) => setTab("library", id)} onClose={closeSub} />
           ) : tab === "dig" ? (
             <Dig openCrate={sub} onOpenCrate={(key) => setTab("dig", key)} onCloseCrate={closeSub}
@@ -176,6 +244,11 @@ export default function App() {
       </div>
       <PlayerBar />
       <WhatsNewHost setUp={setUpAtOpen.current === true} />
+      <ContextMenuHost />
+      <ToastHost />
+      <ConfirmHost />
+      <DropZone show={dragging} title="Drop to add" hint="Drop a project folder to add it to the folders Backups looks in." />
+      {showKeys && <ShortcutsPanel onClose={() => setShowKeys(false)} />}
       {showFirstBackup && (
         <FirstBackupModal
           completed={live.backup.completed}

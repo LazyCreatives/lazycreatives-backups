@@ -4,7 +4,7 @@
 
 <h1 align="center">Lazy Creatives — Backups</h1>
 
-<p align="center"><b>Verified, deduplicated backups for your music projects — that you own.</b></p>
+<p align="center"><b>Every music project you've made, in one place to browse — plus verified backups that you own.</b></p>
 
 <p align="center">
   <a href="https://lazycreatives.github.io/#download"><b>Download</b></a> ·
@@ -13,10 +13,14 @@
 </p>
 
 Point it at your project folders and it finds every session (Ableton, FL Studio,
-Reaper, Audacity, plus Bitwig and Studio One through their DAWproject export),
+Logic Pro, Studio One, Reaper, Audacity, plus Bitwig through its DAWproject export),
 follows each one's samples, copies complete de-duplicated snapshots to your own
 NAS/drive, then **re-reads and re-hashes every file to prove the backup actually
 opens**. No account, and no cloud unless you choose one — you own the storage.
+
+Not ready to back up? Skip that step and just **browse**: every project in one
+list whatever app made it, searchable by name, tempo or genre, with the songs you
+exported ready to play. Turn backups on later, to a drive, NAS, Dropbox or Google Drive.
 
 > Cloud DAW-sync tools can't make these claims structurally. This can.
 
@@ -27,6 +31,7 @@ behind-the-scenes work of making music off your plate. *Looks lazy. Works obsess
 
 ## Why
 
+- **See everything you've made.** One library of every project on your computer, from every music app, with covers, tempo, genre and the songs you exported. Backing up is optional.
 - **Your samples never go missing.** It resolves every referenced sample, and if
   one isn't where the project points, it relinks the *right* file from your
   library (verified by recorded size, not just filename — so it never silently
@@ -38,7 +43,7 @@ behind-the-scenes work of making music off your plate. *Looks lazy. Works obsess
 - **Space-efficient.** A content-addressed pool + hardlinks mean each dated
   snapshot is a full, openable project but only costs the bytes that changed.
 - **Only snapshots when something changed** — no redundant history.
-- **Multi-DAW.** Ableton, FL Studio, Reaper, Audacity and DAWproject today; more by adding one adapter.
+- **Multi-DAW.** Ableton, FL Studio, Logic Pro, Studio One, Reaper, Audacity and DAWproject today; more by adding one adapter.
 - **Offsite copies, optional.** Mirror every backup to a second drive, a synced
   folder, or Google Drive / Dropbox / OneDrive with a one-click sign-in (rclone
   ships inside the installers, nothing extra to install).
@@ -61,8 +66,9 @@ signed yet, so the first launch shows an "unknown developer" warning; see
 | FL Studio | `.flp` (binary) | ✅ via a dependency-free clean-room reader (works across FL versions) |
 | Reaper | `.rpp` (text) | ✅ full — also reads tempo, tracks and effects |
 | Audacity | `.aup3` (SQLite), `.aup` (XML) | ✅ — old `.aup` backups can't be made portable, and the app says so |
-| Bitwig / Studio One | `.dawproject` (export file) | ✅ via the shared DAWproject export; native files not read yet |
-| Logic | — | not yet |
+| Studio One / Fender Studio Pro | `.song` (zip of XML) | ✅ full — Windows and Mac; follows the song's Media folder even after a move, reads tempo, key, tracks and plug-ins; skips History autosaves |
+| Bitwig (and Studio One exports) | `.dawproject` (export file) | ✅ via the shared DAWproject export |
+| Logic Pro | `.logicx` / `.logic` project (Mac package) | ✅ — the whole package plus audio it uses from elsewhere; reads tempo and tracks, not plugin names |
 
 ## How it works
 
@@ -92,7 +98,7 @@ sidecar that does all the file/parse/backup/verify work.
 ```
 electron/   desktop shell + UI (Setup → Home → Library → Dig → Settings)
 backend/    ablebackup/ — the engine
-  daws/         per-DAW adapters (Ableton, FL Studio, Reaper, Audacity, DAWproject) behind one registry
+  daws/         per-DAW adapters (Ableton, FL Studio, Logic Pro, Studio One, Reaper, Audacity, DAWproject) behind one registry
   scanner       discover + resolve projects (dispatches by file type)
   resolver      resolve sample refs to disk; relink missing from libraries
   backup_engine dedup pool, hardlinks, atomic snapshots, manifest

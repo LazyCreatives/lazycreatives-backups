@@ -9,7 +9,7 @@ const CHECKOUT_URL = "https://lazycreatives.lemonsqueezy.com/checkout";
 
 // Keep in step with FEATURES["pro"] in backend/ablebackup/entitlement.py.
 const PRO_PERKS = [
-  "FL Studio, Reaper and Audacity projects, plus Bitwig and Studio One via their DAWproject export",
+  "FL Studio, Logic Pro, Studio One, Reaper and Audacity projects, plus Bitwig via its DAWproject export",
   "Automatic scheduled backups",
   "Auto-find missing samples",
   "Restore or share any backup",

@@ -3,8 +3,9 @@
 import type { LibraryItem } from "./types";
 import { fuzzyScore } from "./fuzzy";
 import { dawLabel } from "./format";
+import { keep, recall } from "./desktop";
 
-export type StatusFilter = "all" | "safe" | "missing" | "none";
+export type StatusFilter = "all" | "safe" | "changed" | "missing" | "none";
 export type SongFilter = "any" | "has" | "soundcloud" | "nosong";
 
 export interface LibFilters {
@@ -29,6 +30,7 @@ export const BPM_BANDS: { key: string; label: string; lo: number; hi: number }[]
 
 export function itemStatus(it: LibraryItem): Exclude<StatusFilter, "all"> {
   if (it.missing_count > 0) return "missing";
+  if (it.changed) return "changed";
   return it.backed_up ? "safe" : "none";
 }
 
@@ -70,11 +72,15 @@ export function applyFilters(items: LibraryItem[], f: LibFilters, skipStatus = f
   return scored.map((s) => s.it);
 }
 
-// Kept for as long as the app is open, so leaving the Library and coming back
-// keeps what you picked. Not saved to disk on purpose.
-let remembered: LibFilters = NO_FILTERS;
+// Kept so leaving the Library and coming back keeps what you picked. The filters are
+// also saved for the next time the app opens; the search text is not, so the list
+// never opens half-empty because of something typed last week.
+const FILTERS_KEY = "lc-library-filters";
+const isFilters = (v: unknown) => !!v && typeof v === "object"
+  && (Object.keys(NO_FILTERS) as (keyof LibFilters)[]).every((k) => typeof (v as any)[k] === typeof NO_FILTERS[k]);
+let remembered: LibFilters = { ...recall<LibFilters>(FILTERS_KEY, NO_FILTERS, isFilters), q: "" };
 export function rememberedFilters(): LibFilters { return remembered; }
-export function rememberFilters(f: LibFilters) { remembered = f; }
+export function rememberFilters(f: LibFilters) { remembered = f; keep(FILTERS_KEY, { ...f, q: "" }); }
 
 // ── sorting the Crate table by its column headings ──
 export type SortKey = "name" | "song" | "bpm" | "status" | "backup";
@@ -84,7 +90,7 @@ export interface LibSort { key: SortKey; dir: 1 | -1 }
 // what needs you first, newest backup first. A second click reverses it.
 export const FIRST_DIR: Record<SortKey, 1 | -1> = { name: 1, song: 1, bpm: 1, status: 1, backup: -1 };
 
-const STATUS_RANK = { missing: 0, none: 1, safe: 2 } as const;
+const STATUS_RANK = { missing: 0, none: 1, changed: 2, safe: 3 } as const;
 
 function sortValue(it: LibraryItem, key: SortKey): string | number | null {
   switch (key) {
@@ -109,6 +115,10 @@ export function sortItems(items: LibraryItem[], sort: LibSort | null): LibraryIt
     .map((x) => x.it);
 }
 
-let rememberedSortValue: LibSort | null = null;
+// The sort order, saved for the next time the app opens too.
+const SORT_KEY = "lc-library-sort";
+const isSort = (v: unknown) => v === null
+  || (!!v && typeof v === "object" && (v as any).key in FIRST_DIR && ((v as any).dir === 1 || (v as any).dir === -1));
+let rememberedSortValue: LibSort | null = recall<LibSort | null>(SORT_KEY, null, isSort);
 export function rememberedSort(): LibSort | null { return rememberedSortValue; }
-export function rememberSort(s: LibSort | null) { rememberedSortValue = s; }
+export function rememberSort(s: LibSort | null) { rememberedSortValue = s; keep(SORT_KEY, s); }

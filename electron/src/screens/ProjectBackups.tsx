@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { CopyButton } from "../components/Desktop";
 import { makeApi } from "../api";
 import type { Snapshot, VerifyResult, SnapshotFile, SnapshotFilesResult, SnapshotDiff } from "../types";
 import { Button } from "../components/Button";
@@ -11,7 +12,9 @@ import { osWords } from "../platform";
 const api = makeApi();
 function reveal(p?: string) { if (p) (window as any).ablebackup?.revealPath?.(p); }
 function openInDaw(p?: string) { if (p) (window as any).ablebackup?.openProject?.(p); }
-const PROJECT_EXT = /\.(als|flp|rpp|dawproject|aup3|aup)$/i;
+const PROJECT_EXT = /\.(als|flp|rpp|dawproject|aup3|aup|song)$/i;
+// A Logic project is a folder (package) at the top of the backup: "Song.logicx/…".
+const PACKAGE_TOP = /^([^/]+\.(logicx|logic))\//i;
 
 function FileGroup({ label, files, snapDir, open, toggle, showSource }: {
   label: string; files: SnapshotFile[]; snapDir?: string;
@@ -224,8 +227,10 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
               {(() => {
                 // the snapshot's own project file (root-level, project extension)
                 const proj = files?.files.find((f) => !f.logical_path.includes("/") && PROJECT_EXT.test(f.logical_path));
-                return sel.dir && proj
-                  ? <Button size="sm" variant="ghost" onClick={() => openInDaw(`${sel.dir}/${proj.logical_path}`)}
+                const pkg = proj ? null : files?.files.map((f) => PACKAGE_TOP.exec(f.logical_path)?.[1]).find(Boolean);
+                const target = proj?.logical_path ?? pkg;
+                return sel.dir && target
+                  ? <Button size="sm" variant="ghost" onClick={() => openInDaw(`${sel.dir}/${target}`)}
                       title="Open this backed-up version in its DAW">Open this version</Button>
                   : null;
               })()}
@@ -335,7 +340,10 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
                   <div key={m} className="row cols miss-cols miss-cols--short">
                     <div className="miss-file">
                       <div className="miss-name" title={m}>{m.split("/").pop()}</div>
-                      <div className="miss-path mono" title={m}>{m}</div>
+                      <div className="pathline">
+                        <div className="miss-path mono" title={m}>{m}</div>
+                        <CopyButton text={m} what="where it should be" size={13} />
+                      </div>
                     </div>
                     {projectPath
                       ? <Button size="sm" variant="ghost" onClick={() => pointToFile(m)} disabled={fixing !== null}

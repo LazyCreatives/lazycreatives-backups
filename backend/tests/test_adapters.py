@@ -11,7 +11,7 @@ def test_registry_routes_als_to_ableton():
 
 
 def test_registry_returns_none_for_unknown_extension():
-    assert adapter_for_path(Path("/music/song.logicx")) is None  # not supported
+    assert adapter_for_path(Path("/music/song.cpr")) is None  # Cubase: not supported
     assert adapter_for_id("nope") is None
 
 

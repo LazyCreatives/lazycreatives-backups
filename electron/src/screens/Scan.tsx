@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SlothMascot } from "../components/SlothMascot";
 import type { CSSProperties } from "react";
 import { makeApi } from "../api";
 import type { ProjectSummary } from "../types";
@@ -14,6 +13,7 @@ import { fmtSize, dawLabel } from "../format";
 import { Cover } from "../components/Cover";
 import { Icon } from "../components/Icon";
 import { coverColor, useLook } from "../look";
+import { EmptyState } from "../components/SlothSpot";
 import { useGenres } from "../useGenres";
 
 const api = makeApi();
@@ -172,8 +172,8 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
         </div>
       )}
 
-      {!projects && !scanning && <div className="empty"><div className="empty__icon"><SlothMascot label="Ready to scan" /></div>Hit “Scan now” to discover projects in your source folders.</div>}
-      {projects && projects.length === 0 && !scanning && <div className="empty"><div className="empty__icon"><SlothMascot label="No projects found" /></div>No projects found. Check your folders in Settings.</div>}
+      {!projects && !scanning && <EmptyState pose="searching" title="Ready when you are">Press Scan now to find the projects in your folders.</EmptyState>}
+      {projects && projects.length === 0 && !scanning && <EmptyState pose="empty-crate" title="No projects found">Check the project folders in Settings, or drop a project folder onto this window.</EmptyState>}
 
       {hasProjects && (
         <>

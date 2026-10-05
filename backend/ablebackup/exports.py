@@ -36,6 +36,9 @@ _SKIP_DIRS = {"samples", "backup", "backups", "ableton project info", "recorded"
               "processed", "freeze", "consolidate", "imported", "sliced audio",
               "stems", "audio files", "media", "peaks"}
 _MAX_DEPTH = 2  # project root + one or two levels (e.g. "Exports/2026")
+# Logic Pro project packages: a folder Finder shows as one file, holding the project's
+# own recordings. Never a place finished songs are saved.
+_PACKAGE_SUFFIXES = (".logicx", ".logic")
 
 
 def normalize(name: str) -> str:
@@ -158,6 +161,8 @@ def _audio_files(root: Path, max_depth: int, skip_samples: bool,
                 continue
             try:
                 if e.is_dir(follow_symlinks=False):
+                    if name.lower().endswith(_PACKAGE_SUFFIXES):
+                        continue
                     if depth < max_depth and not (skip_samples and name.lower() in _SKIP_DIRS):
                         walk(Path(e.path), depth + 1)
                 elif e.is_file() and Path(name).suffix.lower() in AUDIO_EXTS:
@@ -429,7 +434,8 @@ def find_export_folders(catalog, reach: "_Reach | None" = None,
             return
         for e in entries:
             name = e.name
-            if name.startswith(".") or name.lower() in _SKIP_DIRS or name == "Library":
+            if name.startswith(".") or name.lower() in _SKIP_DIRS or name == "Library" \
+                    or name.lower().endswith(_PACKAGE_SUFFIXES):
                 continue
             rp = _resolve(Path(e.path))
             if rp in seen:

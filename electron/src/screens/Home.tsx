@@ -7,6 +7,8 @@ import { Icon } from "../components/Icon";
 import { Cover } from "../components/Cover";
 import { PlayButton, SongWave, type SongMeta } from "../components/Player";
 import { genreColor, useLook } from "../look";
+import { usePins } from "../pins";
+import { EmptyState } from "../components/SlothSpot";
 import "../home.css";
 
 const api = makeApi();
@@ -27,6 +29,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   const [doneFlash, setDoneFlash] = useState(false);
   const [fixing, setFixing] = useState<Set<string>>(new Set());
   const [look] = useLook();
+  const pins = usePins();
 
   const load = () => {
     api.overview().then(setOv).catch(() => setErr(true));
@@ -96,11 +99,18 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
     if (dir) fixOne(it, dir);
   }
 
-  if (err) return <div className="card" style={{ borderColor: "var(--danger)", color: "var(--danger)" }}>Couldn't reach the backup service.</div>;
+  if (err) return (
+    <EmptyState pose="tangled" title="Backups lost touch with its engine"
+      action={<button className="btn btn--primary" onClick={() => (window as any).ablebackup?.relaunch?.()}>Restart the app</button>}>
+      The part of the app that does the backing up stopped answering. Restarting the app usually fixes it; your backups are safe.
+    </EmptyState>
+  );
   if (!ov) return <p className="sub">Waking the sloth…</p>;
 
-  const verified = items.filter((i) => i.backed_up).length;
-  const waiting = items.length - verified;
+  // Saved in the DAW since its last backup: backed up, but not this version.
+  const changedItems = items.filter((i) => i.backed_up && i.changed && i.missing_count === 0);
+  const notYet = items.filter((i) => !i.backed_up).length;
+  const waiting = notYet + changedItems.length;
   const warnItems = items.filter((i) => i.missing_count > 0);
   // One "needs a look" number everywhere: projects missing samples (backed up or not)
   // plus any whose last backup failed.
@@ -108,36 +118,53 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   const lookCount = warnItems.length
     + new Set(ov.attention.filter((a) => a.kind === "error" && !warnNames.has(a.project_name)).map((a) => a.project_name)).size;
   const savedPct = ov.logical_size > 0 ? Math.round((ov.saved_bytes / ov.logical_size) * 100) : 0;
-  const okCount = items.filter((i) => i.backed_up && i.missing_count === 0).length;
+  const okCount = items.filter((i) => i.backed_up && !i.changed && i.missing_count === 0).length;
   const lookItems = items.filter((i) => i.missing_count > 0);
   const newCount = items.filter((i) => !i.backed_up && i.missing_count === 0).length;
   const failed = ov.attention.filter((a) => a.kind === "error" && !warnNames.has(a.project_name));
 
+  // No backup folder yet: the person skipped backups to just browse.
+  const off = !ov.nas.path;
   // Plain facts, one headline. The numbers are real, never vague.
-  const title = doneFlash
+  const title = off
+    ? (items.length === 0 ? "Let's find your projects." : `${items.length} ${items.length === 1 ? "project" : "projects"}, ready to browse.`)
+    : doneFlash
     ? (backup.errors > 0 ? `Backed up ${backup.completed}, ${backup.errors} failed.` : `Backed up and checked ${backup.completed} ${backup.completed === 1 ? "project" : "projects"}.`)
     : working ? (kick && !backup.active ? "Looking for projects…" : `Backing up ${backup.completed} of ${backup.total || "…"}…`)
     : items.length === 0 ? "Let's find your projects."
-    : `${verified} of ${items.length} projects are safe.`;
-  const sub = working
+    : `${okCount} of ${items.length} projects are safe.`;
+  const sub = off
+    ? "Backups are off for now. Turn them on whenever you like and every project gets a checked copy."
+    : working
     ? (backup.current ? `Now: ${backup.current}. Every file is read back and the copy is opened to prove it works.` : "Every file is read back and the copy is opened to prove it works.")
     : items.length === 0
     ? "Press the button and Backups will look through your project folders."
-    : lookCount > 0
-    ? `Every backed-up project was re-opened and loads. ${lookCount} ${lookCount === 1 ? "needs" : "need"} a look below.`
+    : lookCount > 0 || changedItems.length > 0
+    ? `Every backed-up project was re-opened and loads. ${[
+        changedItems.length > 0 ? `${changedItems.length} changed since ${changedItems.length === 1 ? "its" : "their"} last backup` : "",
+        lookCount > 0 ? `${lookCount} ${lookCount === 1 ? "needs" : "need"} a look` : "",
+      ].filter(Boolean).join(", ")} below.`
     : "Every backed-up project was re-opened and loads without errors.";
-  const eyebrow = ov.last_run
+  const eyebrow = off ? "Backups off" : ov.last_run
     ? `Last backup ${fmtDate(ov.last_run)} · ${ov.schedule.enabled
         ? `next ${ov.schedule.next_run ? fmtClock(ov.schedule.next_run) : fmtInterval(ov.schedule.interval_minutes)}`
         : "next: when you say so"}`
     : "No backups yet";
   const pct = backup.total > 0 ? Math.round((backup.completed / backup.total) * 100) : 0;
-  const total = okCount + lookItems.length + newCount;
+  const total = okCount + changedItems.length + lookItems.length + newCount;
   const spaceSaved = ov.pool_known ? fmtSize(ov.saved_bytes) + (savedPct > 0 ? ` · ${savedPct}%` : "") : "…";
   const meta = (it: LibraryItem): SongMeta | undefined =>
     it.latest_export ? { title: it.latest_export.name, project: it.name, genre: it.genre } : undefined;
   const subLine = (it: LibraryItem) => [it.genre, it.bpm ? `${Math.round(it.bpm)} BPM` : "", dawLabel(it.daw)].filter(Boolean).join(" · ");
-  const recent = [...items].sort((a, b) => b.mtime - a.mtime).slice(0, 6);
+  // Pinned projects first (in pin order), then the most recently saved, six in all.
+  const pinnedItems = pins.map((id) => items.find((i) => i.project_id === id)).filter((i): i is LibraryItem => !!i);
+  const recent = [...pinnedItems, ...[...items].filter((i) => !pins.includes(i.project_id)).sort((a, b) => b.mtime - a.mtime)]
+    .slice(0, Math.max(6, pinnedItems.length));
+  const recentTitle = pinnedItems.length ? "Pinned and recently worked on" : "Recently worked on";
+  const savedWhen = (it: LibraryItem) => {
+    const d = new Date(it.mtime * 1000), p2 = (n: number) => String(n).padStart(2, "0");
+    return fmtDate(`${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}`);
+  };
   const songs = items.filter((i) => i.latest_export).sort((a, b) => b.latest_export!.mtime - a.latest_export!.mtime).slice(0, 6);
   const byName = new Map(items.map((i) => [i.name, i]));
 
@@ -151,12 +178,19 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
         </p>
       </div>
       <div className="page-head__actions">
+        {off ? <>
+          <button className="btn" onClick={onOpenHistory}>Browse the library</button>
+          <button className="btn btn--primary" onClick={onOpenSettings}>Turn on backups</button>
+        </> : <>
         {look === "crate" && !ov.schedule.enabled && <button className="btn" onClick={onOpenSettings}>Set a schedule</button>}
         <button className="btn btn--primary" onClick={backItUp} disabled={working || !ov.nas.reachable}
           title={ov.nas.reachable ? "Find every project and back it up, checked" : "Choose where backups go in Settings first"}>
-          {working ? "Backing up…" : waiting > 0 ? `Back up ${waiting} ${waiting === 1 ? "project" : "projects"}` : "Back up now"}
+          {working ? "Backing up…"
+            : waiting > 0 && notYet === 0 ? `Back up the ${waiting} changed`
+            : waiting > 0 ? `Back up ${waiting} ${waiting === 1 ? "project" : "projects"}` : "Back up now"}
         </button>
         {look === "sleeve" && !ov.schedule.enabled && <button className="btn" onClick={onOpenSettings}>Set a schedule</button>}
+        </>}
       </div>
     </>
   );
@@ -177,19 +211,31 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
       </span>
     );
   };
+  const backupButton = (it: LibraryItem) => {
+    const busy = fixing.has(it.project_id);
+    return (
+      <span className="col-act" onClick={(e) => e.stopPropagation()}>
+        <button className="btn btn--sm" onClick={() => fixOne(it)} disabled={busy}>{busy ? "Backing up…" : "Back up"}</button>
+      </span>
+    );
+  };
   const needsHead = (
     <div className="section__head">
       <h2>Needs a look</h2>
       <button className="linkbtn" onClick={onOpenHistory}>Open the library</button>
     </div>
   );
-  const hasNeeds = lookItems.length > 0 || failed.length > 0;
+  const hasNeeds = changedItems.length > 0 || lookItems.length > 0 || failed.length > 0;
+  const edited = (it: LibraryItem) => {
+    return `Saved ${savedWhen(it)}, after its last backup`;
+  };
 
   const foot = (
     <footer className="home-foot">
       <span title={ov.nas.path} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-        <span className={`dot${ov.nas.reachable ? " dot--ok" : " dot--error"}`} />
-        {ov.nas.reachable ? "Backup drive connected" : "Backup drive not found"}
+        <span className={`dot${off ? "" : ov.nas.reachable ? " dot--ok" : " dot--error"}`} />
+        {off ? <>Backups off. <button className="linkbtn" onClick={onOpenSettings}>Choose where they go</button></>
+          : ov.nas.reachable ? "Backup drive connected" : "Backup drive not found"}
         {ov.nas.path ? <span className="faint mono" style={{ fontSize: 12 }}>{shortPath(ov.nas.path)}</span> : null}
       </span>
       <span className="mono faint" style={{ fontSize: 12 }}>
@@ -211,13 +257,15 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
           <div className="home-hero__bar" aria-label="Where your projects stand">
             <div className="statusbar statusbar--fat" aria-hidden="true">
               {okCount > 0 && <span style={{ flex: okCount, background: "var(--accent-2)" }} />}
+              {changedItems.length > 0 && <span style={{ flex: changedItems.length, background: "var(--accent)" }} />}
               {lookItems.length > 0 && <span style={{ flex: lookItems.length, background: "var(--warn)" }} />}
               {newCount > 0 && <span style={{ flex: newCount, background: "var(--idle)" }} />}
             </div>
             <div className="home-hero__legend">
               <button className="linkbtn" onClick={onOpenHistory}><b>{okCount}</b> safe</button>
+              {changedItems.length > 0 && <button className="linkbtn" onClick={onOpenHistory}><b>{changedItems.length}</b> changed</button>}
               <button className="linkbtn" onClick={onOpenHistory}><b>{lookCount}</b> need a look</button>
-              <button className="linkbtn" onClick={onOpenHistory}><b>{waiting}</b> not yet</button>
+              <button className="linkbtn" onClick={onOpenHistory}><b>{notYet}</b> not yet</button>
             </div>
             <div className="home-hero__saved">Space saved by sharing files <span className="mono">{spaceSaved}</span></div>
           </div>
@@ -228,7 +276,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
       {recent.length > 0 && (
         <section className="section">
           <div className="section__head">
-            <h2>Recently worked on</h2>
+            <h2>{recentTitle}</h2>
             <button className="linkbtn" onClick={onOpenHistory}>Open the library</button>
           </div>
           <div className="recent-shelf">
@@ -239,6 +287,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenProject(it.name); } }}>
                   <div className="sleeve__art">
                     <Cover name={it.name} genre={it.genre} />
+                    {pins.includes(it.project_id) && <span className="pin-badge" title="Pinned"><Icon name="starFilled" size={13} /></span>}
                     {it.latest_export && m &&
                       <PlayButton path={it.latest_export.path} title={it.latest_export.name} meta={m} size={34} className="sleeve__play" />}
                   </div>
@@ -257,6 +306,17 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
         <section className="section">
           {needsHead}
           <div className="needcards">
+            {changedItems.map((it) => (
+              <div key={"c" + it.project_id} className="needcard" data-nav-key={it.name} role="button" tabIndex={0} onClick={() => onOpenProject(it.name)}
+                onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(it.name); }}>
+                <Cover name={it.name} genre={it.genre} label={false} />
+                <div className="needcard__body">
+                  <div className="sleeve__name" title={it.name}>{it.name}</div>
+                  <div className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Changed since backup</div>
+                  {backupButton(it)}
+                </div>
+              </div>
+            ))}
             {lookItems.map((it) => (
               <div key={it.project_id} className="needcard" data-nav-key={it.name} role="button" tabIndex={0} onClick={() => onOpenProject(it.name)}
                 onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(it.name); }}>
@@ -295,6 +355,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   const R = 70, C = 2 * Math.PI * R;
   const arcs = [
     { n: okCount, color: "var(--accent-2)" },
+    { n: changedItems.length, color: "var(--accent)" },
     { n: lookItems.length, color: "var(--warn)" },
     { n: newCount, color: "var(--idle)" },
   ];
@@ -318,13 +379,14 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
                 at += len;
                 return el;
               })}
-              <text x="90" y="92" textAnchor="middle" className="ring__big">{verified}</text>
+              <text x="90" y="92" textAnchor="middle" className="ring__big">{okCount}</text>
               <text x="90" y="116" textAnchor="middle" className="ring__small">of {items.length} safe</text>
             </svg>
             <div className="ring__legend">
               <button className="ring__row" onClick={onOpenHistory}><span className="dot dot--ok" />Backed up, opens<b>{okCount}</b></button>
+              {changedItems.length > 0 && <button className="ring__row" onClick={onOpenHistory}><span className="dot dot--accent" />Changed since backup<b>{changedItems.length}</b></button>}
               <button className="ring__row" onClick={onOpenHistory}><span className="dot dot--warn" />Need a look<b>{lookCount}</b></button>
-              <button className="ring__row" onClick={onOpenHistory}><span className="dot" />Not backed up<b>{waiting}</b></button>
+              <button className="ring__row" onClick={onOpenHistory}><span className="dot" />Not backed up<b>{notYet}</b></button>
               <div className="ring__row ring__row--quiet">Space saved by sharing files<b>{spaceSaved}</b></div>
             </div>
           </section>
@@ -334,6 +396,19 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
               {needsHead}
               {hasNeeds ? (
                 <div className="table table--crate">
+                  {changedItems.map((it) => (
+                    <div key={"c" + it.project_id} data-nav-key={it.name} className="row cols needs-cols" role="button" tabIndex={0}
+                      onClick={() => onOpenProject(it.name)} onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(it.name); }}>
+                      <span className="stripe" style={{ background: genreColor(it.genre) }} />
+                      <Cover name={it.name} genre={it.genre} size={36} />
+                      <span style={{ minWidth: 0 }}>
+                        <div className="col-trunc" style={{ fontWeight: 500 }}>{it.name}</div>
+                        <div className="lib-sub">{subLine(it)}</div>
+                      </span>
+                      <span className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Changed since backup</span>
+                      {backupButton(it)}
+                    </div>
+                  ))}
                   {lookItems.map((it) => (
                     <div key={it.project_id} data-nav-key={it.name} className="row cols needs-cols" role="button" tabIndex={0}
                       onClick={() => onOpenProject(it.name)} onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(it.name); }}>
@@ -365,6 +440,37 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
                 <div className="allgood"><span className="dot dot--ok" />Nothing needs a look. Every backed-up project opens.</div>
               )}
             </section>
+
+            {recent.length > 0 && (
+              <section className="section">
+                <div className="section__head">
+                  <h2>{recentTitle}</h2>
+                  <button className="linkbtn" onClick={onOpenHistory}>Open the library</button>
+                </div>
+                <div className="table table--crate">
+                  {recent.slice(0, pinnedItems.length > 4 ? pinnedItems.length : 4).map((it) => {
+                    const pinned = pins.includes(it.project_id);
+                    const st = it.missing_count > 0 ? ["dot--warn", `${it.missing_count} missing`]
+                      : it.changed ? ["dot--accent", "Changed"] : it.backed_up ? ["dot--ok", "Safe"] : ["", "Not backed up"];
+                    return (
+                      <div key={"r" + it.project_id} data-nav-key={it.name} className="row cols recent-cols" role="button" tabIndex={0}
+                        onClick={() => onOpenProject(it.name)} onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(it.name); }}>
+                        <span className="stripe" style={{ background: genreColor(it.genre) }} />
+                        <Cover name={it.name} genre={it.genre} size={36} />
+                        <span style={{ minWidth: 0 }}>
+                          <div className="col-trunc recent-name" style={{ fontWeight: 500 }}>
+                            {pinned && <span className="recent-star" title="Pinned"><Icon name="starFilled" size={12} /></span>}{it.name}
+                          </div>
+                          <div className="lib-sub">{subLine(it)}</div>
+                        </span>
+                        <span className="mono faint recent-when">{savedWhen(it)}</span>
+                        <span className="recent-state"><span className={`dot ${st[0]}`} />{st[1]}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             {songs.length > 0 && (
               <section className="section">

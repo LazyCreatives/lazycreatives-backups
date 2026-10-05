@@ -44,6 +44,8 @@ export function dawLabel(daw?: string): string {
     : daw === "reaper" ? "RPR"
     : daw === "dawproject" ? "DP"
     : daw === "audacity" ? "AUD"
+    : daw === "logic" ? "Logic"
+    : daw === "studioone" ? "Studio One"
     : daw === "ableton" ? "Live" : "DAW";
 }
 

@@ -1,4 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { CopyButton, openMenu, toast } from "../components/Desktop";
+import { baseName, copyText } from "../desktop";
 import { makeApi } from "../api";
 import type { Config, Overview } from "../types";
 import { Button } from "../components/Button";
@@ -13,6 +15,7 @@ import { UpdateCheck } from "../components/UpdateCheck";
 import { useEntitlement } from "../entitlement";
 import { fmtInterval, fmtClock, fmtSize } from "../format";
 import { osWords } from "../platform";
+import { useCloudFolders } from "../components/DestChoices";
 
 const api = makeApi();
 
@@ -44,6 +47,7 @@ export function Sources() {
   const words = osWords();
   const canSchedule = allows("scheduled");
   const canCloud = allows("cloud_backup");
+  const cloud = useCloudFolders();
 
   function refreshNextRun() {
     api.overview().then((o) => setNextRun(o.schedule.next_run ?? null)).catch(() => {});
@@ -51,7 +55,7 @@ export function Sources() {
   function load() {
     setLoadError(false);
     api.getSettings()
-      .then((c) => { setCfg(c); setLoaded(true); })
+      .then((c) => { lastSaved.current = JSON.stringify(c); setCfg(c); setLoaded(true); })
       .catch(() => setLoadError(true));
   }
   useEffect(() => {
@@ -77,7 +81,11 @@ export function Sources() {
     const dir = await (window as any).ablebackup.pickFolder();
     if (dir && !libraries.includes(dir)) setCfg({ ...cfg, libraries: [...libraries, dir] });
   }
-  function removeLibrary(l: string) { setCfg({ ...cfg, libraries: libraries.filter((x) => x !== l) }); }
+  function removeLibrary(l: string) {
+    setCfg((c) => ({ ...c, libraries: (c.libraries ?? []).filter((x) => x !== l) }));
+    toast(`Removed ${baseName(l)} from your sample folders.`, { label: "Undo",
+      onClick: () => setCfg((c) => ({ ...c, libraries: [...(c.libraries ?? []).filter((x) => x !== l), l] })) });
+  }
   async function pickDest() {
     const dir = await (window as any).ablebackup.pickFolder();
     if (dir) setCfg({ ...cfg, dest: dir });
@@ -87,7 +95,11 @@ export function Sources() {
     const dir = await (window as any).ablebackup.pickFolder();
     if (dir && dir !== cfg.dest && !mirrors.includes(dir)) setCfg({ ...cfg, mirrors: [...mirrors, dir] });
   }
-  function removeMirror(m: string) { setCfg({ ...cfg, mirrors: mirrors.filter((x) => x !== m) }); }
+  function removeMirror(m: string) {
+    setCfg((c) => ({ ...c, mirrors: (c.mirrors ?? []).filter((x) => x !== m) }));
+    toast(`Stopped copying backups to ${baseName(m)}.`, { label: "Undo",
+      onClick: () => setCfg((c) => ({ ...c, mirrors: [...(c.mirrors ?? []).filter((x) => x !== m), m] })) });
+  }
   function addRemote(name: string) {
     const dest = `${name}:LazyCreatives-Backups`;
     setCfg((c) => {
@@ -136,19 +148,35 @@ export function Sources() {
     }, 1500);
   }
   function removeSource(s: string) {
-    setCfg({ ...cfg, sources: cfg.sources.filter((x) => x !== s) });
+    setCfg((c) => ({ ...c, sources: c.sources.filter((x) => x !== s) }));
+    toast(`Removed ${baseName(s)} from your project folders.`, { label: "Undo",
+      onClick: () => setCfg((c) => ({ ...c, sources: [...c.sources.filter((x) => x !== s), s] })) });
   }
-  async function save() {
+
+  // Changes save by themselves a moment after you make them; no Save button to forget.
+  const lastSaved = useRef<string>("");
+  const savedTimer = useRef<number | undefined>(undefined);
+  useEffect(() => {
     if (!loaded) return;  // never overwrite stored settings with an un-loaded default
-    setSaveError(null);
-    try {
-      const next = await api.saveSettings({ ...cfg, interval_minutes: Math.max(0, cfg.interval_minutes) });
-      setCfg(next); setSaved(true); setTimeout(() => setSaved(false), 1500);
-      refreshNextRun();
-    } catch (e: any) {
-      setSaveError(e.message || "Save failed");
-    }
-  }
+    const body = { ...cfg, interval_minutes: Math.max(0, cfg.interval_minutes) };
+    const json = JSON.stringify(body);
+    if (json === lastSaved.current) return;
+    const t = window.setTimeout(async () => {
+      setSaveError(null);
+      try {
+        const next = await api.saveSettings(body);
+        lastSaved.current = JSON.stringify(next);
+        setCfg((c) => (JSON.stringify(c) === json ? next : c));  // keep newer edits made meanwhile
+        setSaved(true);
+        window.clearTimeout(savedTimer.current);
+        savedTimer.current = window.setTimeout(() => setSaved(false), 1800);
+        refreshNextRun();
+      } catch (e: any) {
+        setSaveError(e.message ? `Couldn't save that change: ${e.message}` : "Couldn't save that change. Try again.");
+      }
+    }, 500);
+    return () => window.clearTimeout(t);
+  }, [cfg, loaded]);
 
   if (loadError) {
     return (
@@ -168,10 +196,9 @@ export function Sources() {
       <PageHeader
         title="Settings"
         subtitle="Where to find your projects, and where to keep the backups."
-        actions={<>
-          {saved && <span className="pill pill--ok">Saved</span>}
-          <Button onClick={save} disabled={!loaded}>Save settings</Button>
-        </>}
+        actions={saved
+          ? <span className="pill pill--ok" role="status">Saved</span>
+          : <span className="faint settings-autosave">Changes save by themselves</span>}
       />
 
       {saveError && <div className="banner banner--warn"><Icon name="alert" className="banner__icon" />{saveError}</div>}
@@ -205,11 +232,14 @@ export function Sources() {
       </SetRow>
 
       <SetGroup n="03" title="Where backups go" />
-      <SetRow title="Backup drive" help="The folder on your own drive or NAS where backups are kept. You own every copy.">
+      <SetRow title="Backup drive" help="The folder where backups are kept: your own drive or NAS, or a Dropbox or Google Drive folder. You own every copy.">
         <div className="drive">
           <Icon name="disc" size={22} className="drive__icon" />
           <div className="drive__main">
-            <span className="mono col-trunc drive__path" title={cfg.dest}>{cfg.dest || "No folder chosen yet"}</span>
+            <span className="pathline">
+              <span className="mono col-trunc drive__path" title={cfg.dest}>{cfg.dest || "No folder chosen yet"}</span>
+              {cfg.dest && <CopyButton text={cfg.dest} what="folder path" size={13} />}
+            </span>
             {ov && ov.nas.total_bytes > 0 ? (
               <>
                 <div className="drive__bar" aria-hidden>
@@ -226,6 +256,16 @@ export function Sources() {
           </div>
           <Button variant="ghost" onClick={pickDest} disabled={!loaded}>{cfg.dest ? "Change…" : "Choose…"}</Button>
         </div>
+        {cloud.folders.some((f) => f.path) && (
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+            <span className="faint" style={{ fontSize: 12.5 }}>Or use</span>
+            {cloud.folders.filter((f) => f.path).map((f) => {
+              const d = cloud.destFor(f.path!);
+              return <button key={f.key} className={`chip${cfg.dest === d ? " chip--on" : ""}`} disabled={!loaded}
+                onClick={() => setCfg({ ...cfg, dest: d })}>{f.label}</button>;
+            })}
+          </div>
+        )}
       </SetRow>
 
       <SetRow title={<>Second copy{!canCloud && <ProBadge label="STUDIO" />}</>}
@@ -344,7 +384,14 @@ function FolderTable({ paths, loaded, empty, onRemove, icon = "folder" }: {
       {paths.map((p) => (
         <div key={p} className="row cols">
           <Icon name={icon} size={15} className="faint" />
-          <span className="mono col-trunc" style={{ fontSize: 12.5, color: "var(--text-dim)" }} title={p}>{p}</span>
+          <span className="pathline" onContextMenu={(e) => openMenu(e, [
+            { label: `Show in ${osWords().fileManager}`, onClick: () => (window as any).ablebackup?.revealPath?.(p) },
+            { label: "Copy folder path", onClick: () => { copyText(p); } },
+            "-", { label: "Remove", onClick: () => onRemove(p), danger: true },
+          ])}>
+            <span className="mono col-trunc" style={{ fontSize: 12.5, color: "var(--text-dim)" }} title={p}>{p}</span>
+            <CopyButton text={p} what="folder path" size={13} />
+          </span>
           <span className="col-act"><Button variant="quiet" size="sm" onClick={() => onRemove(p)}>Remove</Button></span>
         </div>
       ))}

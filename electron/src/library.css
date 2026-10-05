@@ -9,14 +9,58 @@
 }
 
 .lib-row { padding-right: 14px; }
-/* stripe · play · cover · name · latest song · BPM · backup · last backup · main button · menu */
-.lib-cols { --cols: 4px 28px 36px minmax(0, 1fr) minmax(120px, 190px) 44px 128px 118px 72px 32px; }
-.lib-cols--nosongs { --cols: 4px 28px 36px minmax(0, 1fr) 150px 44px 128px 118px 72px 32px; }
+/* tick · stripe · play · cover · name · latest song · BPM · backup · last backup · main button · menu */
+.lib-cols { --cols: 18px 4px 28px 36px minmax(0, 1fr) minmax(120px, 190px) 44px 128px 118px 72px 32px; }
+.lib-cols--nosongs { --cols: 18px 4px 28px 36px minmax(0, 1fr) 150px 44px 128px 118px 72px 32px; }
 .lib-cols.cols-head { padding-right: 14px; }
 @media (max-width: 1100px) {
-  .lib-cols, .lib-cols--nosongs { --cols: 4px 28px 36px minmax(0, 1fr) 0 44px 128px 118px 72px 32px; }
-  .lib-cols > :nth-child(5) { visibility: hidden; }
+  .lib-cols, .lib-cols--nosongs { --cols: 18px 4px 28px 36px minmax(0, 1fr) 0 44px 128px 118px 72px 32px; }
+  .lib-cols > :nth-child(6) { visibility: hidden; }
 }
+.lib-tickcell { display: flex; align-items: center; justify-content: center; }
+.lib-tick { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+/* ticks stay quiet until you point at a row or have ticked something */
+.lib-row .lib-tick { opacity: 0; transition: opacity var(--dur-fast) ease; }
+.lib-row:hover .lib-tick, .lib-row .lib-tick:focus-visible, .lib-row .lib-tick:checked,
+.table--picking .lib-row .lib-tick { opacity: 1; }
+.lib-row--picked { background: var(--accent-soft) !important; }
+.lib-namerow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+
+/* pin star: shows on hover, stays lit once pinned */
+.pinbtn {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; flex-shrink: 0; padding: 0;
+  border: none; background: transparent; color: var(--text-faint); cursor: pointer; border-radius: 4px;
+  opacity: 0; transition: opacity var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.lib-row:hover .pinbtn, .sleeve:hover .pinbtn, .pinbtn:focus-visible, .pinbtn--on { opacity: 1; }
+.pinbtn:hover { color: var(--text); }
+.pinbtn--on { color: var(--warn); }
+.pinbtn--on:hover { color: var(--warn); }
+.sleeve__acts { display: inline-flex; align-items: center; gap: 2px; }
+
+/* Sleeve: a tick in the cover's top-left corner */
+.sleeve__tick { position: absolute; left: 10px; top: 10px; opacity: 0; transition: opacity var(--dur-fast) ease; }
+.sleeve:hover .sleeve__tick, .sleeve--picking .sleeve__tick, .sleeve__tick:focus-within { opacity: 1; }
+.sleeve__tick .lib-tick { width: 18px; height: 18px; }
+.sleeve--selected { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* the bar that appears once something is ticked */
+.pickbar {
+  position: sticky; bottom: 14px; z-index: 30; margin-top: 18px; width: fit-content; max-width: 100%;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px 8px 16px;
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop); margin-inline: auto; animation: pickIn var(--dur-base) var(--ease-glide) both;
+}
+@keyframes pickIn { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .pickbar { animation: none; } }
+.pickbar__n { font-size: 13px; color: var(--text-dim); margin-right: 4px; }
+.pickbar__n b { color: var(--text); }
+.pickbar .btn { display: inline-flex; align-items: center; gap: 6px; }
+.pickbar__clear { font-size: 13px; padding: 0 6px; }
+[data-look="crate"] .pickbar { border-radius: 0; border-left: 3px solid var(--accent); }
+[data-look="crate"] .pickbar .btn { border-radius: 0; }
+[data-look="sleeve"] .pickbar { border-radius: 999px; }
+[data-look="sleeve"] .pickbar .btn { border-radius: 999px; }
 .lib-sub { color: var(--text-faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib-state { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); min-width: 0; }
 .lib-row[role="button"] { cursor: pointer; }
@@ -52,6 +96,13 @@
 
 /* "Songs from this project": play · song · exported · size · SoundCloud · actions */
 .song-cols { --cols: 28px minmax(0, 1fr) 104px 60px 124px 64px; }
+/* no song is on SoundCloud yet: that column's room goes to the song name */
+.song-cols--nolink { --cols: 28px minmax(0, 1fr) 104px 60px 64px; }
+/* long export names wrap onto a second line instead of being cut short */
+.song-name {
+  overflow-wrap: anywhere; line-height: 1.3; margin-bottom: 3px;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
 .linkpill { border: 0; cursor: pointer; padding: 0; font: inherit; font-size: 12.5px; }
 .linkpill:hover { color: var(--text); }
 .linkpill svg { vertical-align: -1px; }

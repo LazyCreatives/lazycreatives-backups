@@ -32,6 +32,9 @@ const PATHS = {
   plus: "M12 5v14M5 12h14",
   link: "M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1",
   lock: "M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3",
+  copy: "M9 9h11v11H9V9ZM5 15H4V4h11v1",
+  star: "M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5Z",
+  starFilled: "M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5Z",
   disc: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z",
 } as const;
 
@@ -40,7 +43,7 @@ export type IconName = keyof typeof PATHS;
 export function Icon({ name, size = 16, className, title }: {
   name: IconName; size?: number; className?: string; title?: string;
 }) {
-  const filled = name === "play";
+  const filled = name === "play" || name === "starFilled";
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24"
       fill={filled ? "currentColor" : "none"} stroke="currentColor"

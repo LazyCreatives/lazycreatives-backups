@@ -5,7 +5,6 @@ import type { ScanProgress } from "../useProgress";
 import { Button } from "../components/Button";
 import { ProgressBar } from "../components/ProgressBar";
 import { fmtSize, fmtDate, dawLabel } from "../format";
-import { SlothMascot } from "../components/SlothMascot";
 import { ProjectBackups } from "./ProjectBackups";
 import { ProjectLabel } from "./ProjectLabel";
 import { ProjectExports } from "./ProjectExports";
@@ -17,6 +16,10 @@ import { Cover } from "../components/Cover";
 import { genreColor, useLook } from "../look";
 import { PageHeader } from "../components/PageHeader";
 import { BPM_BANDS, FIRST_DIR, NO_FILTERS, applyFilters, rememberSort, rememberedSort, sortItems, type LibSort, type SortKey, extraFilterCount, isFiltered, itemStatus, rememberFilters, rememberedFilters, type LibFilters, type StatusFilter } from "../libraryFilter";
+import { openMenu, type MenuItem } from "../components/Desktop";
+import { copyText, keep, recall } from "../desktop";
+import { pinnedFirst, setPins, togglePin, usePins } from "../pins";
+import { EmptyState } from "../components/SlothSpot";
 import "../library.css";
 
 const api = makeApi();
@@ -37,6 +40,7 @@ const IS_MAC = currentOs() === "mac";
 
 const DAW_NAMES: Record<string, string> = {
   ableton: "Ableton Live", flstudio: "FL Studio", reaper: "Reaper", dawproject: "DAWproject", audacity: "Audacity",
+  logic: "Logic Pro", studioone: "Studio One",
 };
 
 function ownerLabel(owner: string): string {
@@ -52,12 +56,13 @@ const revealPath = (p?: string) => { if (p) bridge()?.revealPath?.(p); };
 // "backed up", because a verified backup of a project with holes still needs you.
 // One row of the library table: the status column in plain words, then the last
 // backup date and the size on disk in their own columns so every row lines up.
-function statusLine(it: LibraryItem): { tone: "ok" | "warn" | "none"; text: string; when: string; size: string } {
+function statusLine(it: LibraryItem): { tone: "ok" | "warn" | "changed" | "none"; text: string; when: string; size: string } {
   const size = fmtSize(it.size);
   if (it.missing_count > 0) {
     const n = it.missing_count;
     return { tone: "warn", text: `${n} sample${n === 1 ? "" : "s"} missing`, when: it.backed_up ? fmtDate(it.last_backup) : "not backed up", size };
   }
+  if (it.changed) return { tone: "changed", text: "Changed", when: fmtDate(it.last_backup), size };
   if (it.backed_up) return { tone: "ok", text: "Verified", when: fmtDate(it.last_backup), size };
   return { tone: "none", text: "Not backed up yet", when: "—", size };
 }
@@ -91,19 +96,21 @@ function RowMenu({ items }: { items: { label: string; onClick: () => void; disab
 // Which owner groups are folded shut, kept while the app is open so the list looks
 // the same when you come back to it.
 let rememberedCollapsed: Record<string, boolean> = {};
-let rememberedScope = "home";
+// The scan reach is saved for the next time the app opens too.
+let rememberedScope = recall("lc-library-scope", "home", (v) => SCOPES.some((s) => s.key === v));
 
 // openProject: the project shown as its own page (its id, or its name when another
 // screen opened it), or null for the list. Opening and closing go through the app's
 // back/forward history, so the side mouse buttons step between list and project.
-export function Library({ scan, openProject, onOpen, onClose }: {
+export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false, onScanStarted }: {
   scan: ScanProgress; openProject?: string | null;
   onOpen: (projectId: string) => void; onClose: () => void;
+  scanOnOpen?: boolean; onScanStarted?: () => void;  // first run: find projects straight away
 }) {
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [scope, setScopeState] = useState(rememberedScope);
-  const setScope = (v: string) => { rememberedScope = v; setScopeState(v); };
+  const setScope = (v: string) => { rememberedScope = v; keep("lc-library-scope", v); setScopeState(v); };
   const [scanning, setScanning] = useState(false);
   const [fdaOk, setFdaOk] = useState(true);
   const [skipped, setSkipped] = useState(0);     // dirs the last scan couldn't read
@@ -131,6 +138,11 @@ export function Library({ scan, openProject, onOpen, onClose }: {
     api.library().then((r) => setItems(r.projects)).catch(() => {}).finally(() => setLoading(false));
   }
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (!scanOnOpen) return;
+    onScanStarted?.();
+    runScan("sources");
+  }, [scanOnOpen]);
 
   // Coming back from a project: make sure its owner group is open so its row shows.
   useEffect(() => {
@@ -139,11 +151,11 @@ export function Library({ scan, openProject, onOpen, onClose }: {
     if (hit && collapsed[hit.owner || "system"]) setCollapsed((c) => ({ ...c, [hit.owner || "system"]: false }));
   }, [openProject, items]);
 
-  async function runScan() {
+  async function runScan(where: string = scope) {
     setScanning(true); setErr(null);
     try {
       // scanMac handles every scope incl. "sources"; returns skipped-dir count + FDA.
-      const r = await api.scanMac(scope, true);
+      const r = await api.scanMac(where, true);
       setSkipped(r.skipped_dirs || 0);
       setFdaOk(r.full_disk_access);
       load();
@@ -166,6 +178,30 @@ export function Library({ scan, openProject, onOpen, onClose }: {
     } catch (e: any) { setErr(e.message || "Backup failed."); }
     finally {
       setBusy((s) => { const n = new Set(s); n.delete(item.project_id); return n; });
+      load();
+    }
+  }
+
+  // Back up several projects in one run (the changed ones, or the ticked ones).
+  const [changedBusy, setChangedBusy] = useState(false);
+  const backupChanged = () => backupMany(items.filter((i) => i.changed && i.missing_count === 0));
+  async function backupMany(targets: LibraryItem[]) {
+    if (!targets.length) return;
+    setChangedBusy(true); setErr(null);
+    setBusy((s) => new Set([...s, ...targets.map((t) => t.project_id)]));
+    try {
+      const { job_id } = await api.startBackup({
+        als_paths: targets.map((t) => t.path), portable: true, layout: "project_date", find_missing: true,
+      });
+      for (;;) {
+        const st = await api.jobStatus(job_id);
+        if (st.state === "done" || st.state === "error") break;
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+    } catch (e: any) { setErr(e.message || "Backup failed."); }
+    finally {
+      setBusy((s) => { const n = new Set(s); targets.forEach((t) => n.delete(t.project_id)); return n; });
+      setChangedBusy(false);
       load();
     }
   }
@@ -204,10 +240,17 @@ export function Library({ scan, openProject, onOpen, onClose }: {
   }
 
   const attentionCount = items.filter((i) => i.missing_count > 0).length;
-  const shown = useMemo(() => sortItems(applyFilters(items, filters), sort), [items, filters, sort]);
+  const changedItems = items.filter((i) => i.changed && i.missing_count === 0);
+  const pins = usePins();
+  const shown = useMemo(() => pinnedFirst(sortItems(applyFilters(items, filters), sort), pins), [items, filters, sort, pins]);
+  // Ticked projects, for doing one thing to several at once.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const togglePick = (id: string) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const pickedItems = items.filter((i) => picked.has(i.project_id));
+  const picking = picked.size > 0;
   // the status buttons count what the other filters leave, so the numbers add up
   const statusCounts = useMemo(() => {
-    const c: Record<StatusFilter, number> = { all: 0, safe: 0, missing: 0, none: 0 };
+    const c: Record<StatusFilter, number> = { all: 0, safe: 0, changed: 0, missing: 0, none: 0 };
     for (const it of applyFilters(items, filters, true)) { c.all++; c[itemStatus(it)]++; }
     return c;
   }, [items, filters]);
@@ -246,7 +289,7 @@ export function Library({ scan, openProject, onOpen, onClose }: {
         <ProjectLabel item={it}
           onOpenInDaw={() => openInDaw(it.path)}
           onReveal={() => revealPath(it.path)}
-          actions={!it.backed_up && (
+          actions={(!it.backed_up || it.changed) && (
             <Button disabled={busy.has(it.project_id)} onClick={() => backupOne(it)}>
               {busy.has(it.project_id) ? "Backing up…" : "Back up now"}
             </Button>
@@ -258,8 +301,7 @@ export function Library({ scan, openProject, onOpen, onClose }: {
             { key: "songs", label: "Songs", content: <ProjectExports item={it} onChanged={load} /> },
             { key: "backups", label: "Backups", count: it.snapshot_count, content: it.backed_up
               ? <ProjectBackups projectName={it.name} projectPath={it.path} onFixed={load} />
-              : <div className="empty"><div className="empty__title">No backups of this project yet</div>
-                  Use Back up now at the top and the first one shows here.</div> },
+              : <EmptyState pose="napping" title="No backups of this project yet">Press Back up now at the top and the first one shows here.</EmptyState> },
           ]} />
       </>
     );
@@ -269,11 +311,21 @@ export function Library({ scan, openProject, onOpen, onClose }: {
     <>
       <PageHeader title="Library"
         subtitle={<>{items.length} project{items.length === 1 ? "" : "s"} · {backedUp} backed up. Click one for its details and backups.</>}
-        actions={attentionCount > 0 ? (
-          <Button onClick={fixAll} disabled={fixingAll}
-            title="Back up every project with missing samples, searching your sample folders for them">
-            {fixingAll ? "Looking for samples…" : `Find missing samples (${attentionCount})`}
-          </Button>
+        actions={attentionCount > 0 || changedItems.length > 0 ? (
+          <>
+            {changedItems.length > 0 && (
+              <Button variant={attentionCount > 0 ? "ghost" : undefined} onClick={backupChanged} disabled={changedBusy}
+                title="Back up the projects you've saved since their last backup">
+                {changedBusy ? "Backing up…" : `Back up the ${changedItems.length} changed`}
+              </Button>
+            )}
+            {attentionCount > 0 && (
+              <Button onClick={fixAll} disabled={fixingAll}
+                title="Back up every project with missing samples, searching your sample folders for them">
+                {fixingAll ? "Looking for samples…" : `Find missing samples (${attentionCount})`}
+              </Button>
+            )}
+          </>
         ) : undefined} />
 
       <div className="lib-scan">
@@ -281,7 +333,7 @@ export function Library({ scan, openProject, onOpen, onClose }: {
         <select value={scope} onChange={(e) => setScope(e.target.value)} disabled={scanning}>
           {SCOPES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
-        <Button size="sm" onClick={runScan} disabled={scanning}>
+        <Button size="sm" onClick={() => runScan()} disabled={scanning}>
           {scanning ? "Scanning…" : "Scan now"}
         </Button>
         {showProgress && (
@@ -338,13 +390,13 @@ export function Library({ scan, openProject, onOpen, onClose }: {
             <label className="lib-search">
               <Icon name="search" size={15} />
               <input type="search" placeholder="Search projects, genres, songs…" value={filters.q}
-                aria-label="Search projects" spellCheck={false}
+                aria-label="Search projects" spellCheck={false} data-find
                 onChange={(e) => setFilters({ q: e.target.value })}
                 onKeyDown={(e) => { if (e.key === "Escape") setFilters({ q: "" }); }} />
               {filters.q && <button className="lib-search__x" aria-label="Clear search" onClick={() => setFilters({ q: "" })}><Icon name="close" size={13} /></button>}
             </label>
             <div className="seg" role="group" aria-label="Backup state">
-              {([["all", "All"], ["safe", "Safe"], ["missing", "Missing samples"], ["none", "Not backed up"]] as [StatusFilter, string][]).map(([k, label]) => (
+              {([["all", "All"], ["safe", "Safe"], ["changed", "Changed"], ["missing", "Missing samples"], ["none", "Not backed up"]] as [StatusFilter, string][]).map(([k, label]) => (
                 <button key={k} className={`seg__opt${filters.status === k ? " seg__opt--on" : ""}`} onClick={() => setFilters({ status: k })}>
                   {label} <span className="lib-find__n">{statusCounts[k]}</span>
                 </button>
@@ -390,18 +442,17 @@ export function Library({ scan, openProject, onOpen, onClose }: {
       {loading ? (
         <div className="empty">Loading your library…</div>
       ) : items.length === 0 ? (
-        <div className="empty">
-          <div className="empty__icon"><SlothMascot label="Nothing scanned yet" /></div>
-          Nothing scanned yet — pick a scope above and hit “Scan now”.
-        </div>
+        <EmptyState pose="empty-crate" title="No projects here yet"
+          action={<Button size="sm" onClick={() => runScan()} disabled={scanning}>{scanning ? "Scanning…" : "Scan now"}</Button>}>
+          Pick where to look above, then scan. Backups finds Ableton, FL Studio, Reaper and DAWproject projects.
+        </EmptyState>
       ) : shown.length === 0 ? (
-        <div className="empty">
-          <div className="empty__icon"><SlothMascot label={onlyMissing ? "All clear" : "Nothing found"} /></div>
-          {onlyMissing
-            ? <>Nothing needs a look — every project’s samples are accounted for.</>
-            : <>No projects match{filters.q.trim() ? <> “{filters.q.trim()}”</> : ""}.
-                <div style={{ marginTop: 12 }}><Button variant="ghost" size="sm" onClick={() => setFilters(null)}>Clear search and filters</Button></div></>}
-        </div>
+        onlyMissing
+          ? <EmptyState pose="thumbs-up" title="Nothing missing">Every project's samples are where they should be.</EmptyState>
+          : <EmptyState pose="searching" title={filters.q.trim() ? `No projects match “${filters.q.trim()}”` : "No projects match"}
+              action={<Button variant="ghost" size="sm" onClick={() => setFilters(null)}>Clear search and filters</Button>}>
+              Try fewer words or a different filter.
+            </EmptyState>
       ) : (
         owners.map((owner) => {
           const list = byOwner[owner];
@@ -409,26 +460,46 @@ export function Library({ scan, openProject, onOpen, onClose }: {
           const ownerBacked = list.filter((i) => i.backed_up).length;
           const rowProps = (it: LibraryItem) => {
             const working = busy.has(it.project_id);
-            const dawName = it.daw === "flstudio" ? "FL Studio" : it.daw === "ableton" ? "Ableton Live" : "its DAW";
+            const dawName = DAW_NAMES[it.daw ?? ""] ?? "its DAW";
             const openIt = () => onOpen(it.project_id);
             const action = it.missing_count > 0 ? (
               <Button variant="ghost" size="sm" disabled={working} onClick={(e) => { e.stopPropagation(); openIt(); }}
                 title="See which samples are missing and point me to them">Fix</Button>
-            ) : !it.backed_up ? (
+            ) : !it.backed_up || it.changed ? (
               <Button variant="ghost" size="sm" disabled={working} onClick={(e) => { e.stopPropagation(); backupOne(it); }}>Back up</Button>
             ) : (
               <Button variant="quiet" size="sm" onClick={(e) => { e.stopPropagation(); openInDaw(it.path); }}
                 title={`Open in ${dawName}`}>Open</Button>
             );
-            const menu = <RowMenu items={[
+            const items = [
               { label: `Open in ${dawName}`, onClick: () => openInDaw(it.path) },
               { label: "Show backups & details", onClick: openIt },
               { label: it.backed_up ? "Back up again" : "Back up", onClick: () => backupOne(it), disabled: working },
+              { label: pins.includes(it.project_id) ? "Unpin" : "Pin to the top", onClick: () => togglePin(it.project_id) },
               ...(it.missing_count > 0 ? [{ label: "Look for samples in a folder…", onClick: () => lookInFolder(it), disabled: working }] : []),
               { label: `Show in ${osWords().fileManager}`, onClick: () => revealPath(it.path) },
-            ]} />;
+            ];
+            const menu = <RowMenu items={items} />;
+            // right-click: the same actions, plus copying where the project lives
+            const onContextMenu = (e: React.MouseEvent) => openMenu(e, [
+              ...items.slice(0, 4), "-",
+              ...items.slice(4),
+              { label: "Copy project path", onClick: () => { copyText(it.path); } },
+            ] as MenuItem[]);
             const meta = it.latest_export ? { title: it.latest_export.name, project: it.name, genre: it.genre } : undefined;
-            return { working, openIt, action, menu, meta };
+            const isPin = pins.includes(it.project_id);
+            const star = (
+              <button type="button" className={`pinbtn${isPin ? " pinbtn--on" : ""}`} aria-pressed={isPin}
+                title={isPin ? "Pinned to the top. Click to unpin" : "Pin to the top"} aria-label={isPin ? `Unpin ${it.name}` : `Pin ${it.name}`}
+                onClick={(e) => { e.stopPropagation(); togglePin(it.project_id); }}>
+                <Icon name={isPin ? "starFilled" : "star"} size={14} />
+              </button>
+            );
+            const tick = (
+              <input type="checkbox" className="lib-tick" checked={picked.has(it.project_id)} aria-label={`Pick ${it.name}`}
+                onClick={(e) => e.stopPropagation()} onChange={() => togglePick(it.project_id)} />
+            );
+            return { working, openIt, action, menu, meta, onContextMenu, star, tick, isPin };
           };
           return (
             <div key={owner} style={{ marginBottom: 18 }}>
@@ -445,16 +516,18 @@ export function Library({ scan, openProject, onOpen, onClose }: {
                 <div className="sleeves">
                   {list.map((it) => {
                     const st = statusLine(it);
-                    const { working, openIt, menu, meta } = rowProps(it);
+                    const { working, openIt, menu, meta, onContextMenu, star, tick, isPin } = rowProps(it);
                     return (
-                      <div key={it.project_id} data-pid={it.project_id} data-nav-key={it.project_id} className="sleeve" role="button" tabIndex={0}
-                        onClick={openIt}
+                      <div key={it.project_id} data-pid={it.project_id} data-nav-key={it.project_id}
+                        className={`sleeve${picking ? " sleeve--picking" : ""}${picked.has(it.project_id) ? " sleeve--selected" : ""}${isPin ? " sleeve--pinned" : ""}`} role="button" tabIndex={0}
+                        onClick={openIt} onContextMenu={onContextMenu}
                         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openIt(); } }}>
                         <div className="sleeve__art">
                           <Cover name={it.name} genre={it.genre} />
+                          <span className="sleeve__tick">{tick}</span>
                           <span className="sleeve__badge">
-                            <span className={`dot ${st.tone === "ok" ? "dot--ok" : st.tone === "warn" ? "dot--warn" : ""}`} />
-                            {working ? "Backing up…" : st.tone === "ok" ? "Safe" : st.tone === "warn" ? `${it.missing_count} missing` : "Not backed up"}
+                            <span className={`dot ${st.tone === "ok" ? "dot--ok" : st.tone === "warn" ? "dot--warn" : st.tone === "changed" ? "dot--accent" : ""}`} />
+                            {working ? "Backing up…" : st.tone === "ok" ? "Safe" : st.tone === "warn" ? `${it.missing_count} missing` : st.tone === "changed" ? "Changed" : "Not backed up"}
                           </span>
                           {it.latest_export && meta &&
                             <PlayButton path={it.latest_export.path} title={it.latest_export.name} meta={meta} size={34} className="sleeve__play" />}
@@ -464,7 +537,7 @@ export function Library({ scan, openProject, onOpen, onClose }: {
                             <div className="sleeve__name" title={it.name}>{it.name}</div>
                             <div className="sleeve__sub">{[it.genre, it.bpm ? `${Math.round(it.bpm)} BPM` : "", dawLabel(it.daw)].filter(Boolean).join(" · ")}</div>
                           </div>
-                          {menu}
+                          <span className="sleeve__acts">{star}{menu}</span>
                         </div>
                       </div>
                     );
@@ -472,8 +545,13 @@ export function Library({ scan, openProject, onOpen, onClose }: {
                 </div>
               )}
               {!isCollapsed && look === "crate" && (
-                <div className="table table--crate">
+                <div className={`table table--crate${picking ? " table--picking" : ""}`}>
                   <div className={`row cols cols-head ${colsClass}`}>
+                    <span className="lib-tickcell">
+                      <input type="checkbox" className="lib-tick" aria-label="Pick every project shown"
+                        checked={list.length > 0 && list.every((i) => picked.has(i.project_id))}
+                        onChange={(e) => setPicked((s) => { const n = new Set(s); list.forEach((i) => e.target.checked ? n.add(i.project_id) : n.delete(i.project_id)); return n; })} />
+                    </span>
                     <span /><span /><span />
                     {([["name", "Project", ""], ["song", "Latest song", ""], ["bpm", "BPM", " col-num"], ["status", "Backup", ""], ["backup", "Last backup", " col-num"]] as [SortKey, string, string][]).map(([k, label, cls]) => {
                       const on = sort?.key === k;
@@ -489,26 +567,29 @@ export function Library({ scan, openProject, onOpen, onClose }: {
                   </div>
                   {list.map((it) => {
                     const st = statusLine(it);
-                    const { working, openIt, action, menu, meta } = rowProps(it);
+                    const { working, openIt, action, menu, meta, onContextMenu, star, tick, isPin } = rowProps(it);
                     return (
-                      <div key={it.project_id} data-pid={it.project_id} data-nav-key={it.project_id} className={`row cols lib-row ${colsClass}`} role="button" tabIndex={0}
-                        onClick={openIt}
+                      <div key={it.project_id} data-pid={it.project_id} data-nav-key={it.project_id}
+                        className={`row cols lib-row ${colsClass}${picked.has(it.project_id) ? " lib-row--picked" : ""}${isPin ? " lib-row--pinned" : ""}`} role="button" tabIndex={0}
+                        onClick={openIt} onContextMenu={onContextMenu}
                         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openIt(); } }}>
+                        <span className="lib-tickcell">{tick}</span>
                         <span className="stripe" style={{ background: genreColor(it.genre) }} />
                         {it.latest_export && meta
                           ? <PlayButton path={it.latest_export.path} title={it.latest_export.name} meta={meta} size={28} />
                           : <span className="playbtn-slot" aria-hidden />}
                         <Cover name={it.name} genre={it.genre} size={36} />
                         <div style={{ minWidth: 0 }} title={it.plugins?.length ? `Plugins: ${it.plugins.join(", ")}` : undefined}>
-                          <div className="lib-name">{it.name}</div>
+                          <div className="lib-namerow">{star}<span className="lib-name">{it.name}</span></div>
                           <div className="lib-sub">{[it.genre, dawLabel(it.daw), st.size].filter(Boolean).join(" · ")}</div>
                         </div>
                         {it.latest_export && meta
                           ? <SongWave path={it.latest_export.path} meta={meta} />
                           : <span className="lib-status">No song exported yet</span>}
                         <span className="lib-status col-num">{it.bpm ? Math.round(it.bpm) : "—"}</span>
-                        <span className={`lib-state${st.tone === "warn" ? " lib-status--warn" : st.tone === "ok" ? " lib-status--ok" : ""}`}>
-                          <span className={`dot ${st.tone === "ok" ? "dot--ok" : st.tone === "warn" ? "dot--warn" : ""}`} />
+                        <span className={`lib-state${st.tone === "warn" ? " lib-status--warn" : st.tone === "ok" ? " lib-status--ok" : ""}`}
+                          title={st.tone === "changed" ? "Saved since its last backup" : undefined}>
+                          <span className={`dot ${st.tone === "ok" ? "dot--ok" : st.tone === "warn" ? "dot--warn" : st.tone === "changed" ? "dot--accent" : ""}`} />
                           <span className="col-trunc">{working ? "Backing up…" : st.tone === "ok" ? "Safe" : st.text}</span>
                         </span>
                         <span className="lib-status col-num">{st.when}</span>
@@ -523,6 +604,28 @@ export function Library({ scan, openProject, onOpen, onClose }: {
           );
         })
       )}
+      {picking && (() => {
+        const allPinned = pickedItems.every((i) => pins.includes(i.project_id));
+        const missing = pickedItems.filter((i) => i.missing_count > 0);
+        return (
+          <div className="pickbar" role="toolbar" aria-label="Ticked projects">
+            <span className="pickbar__n"><b>{picked.size}</b> picked</span>
+            <Button size="sm" onClick={() => { backupMany(pickedItems); setPicked(new Set()); }} disabled={changedBusy}>
+              Back up {picked.size === 1 ? "this one" : `these ${picked.size}`}
+            </Button>
+            {missing.length > 0 && (
+              <Button size="sm" variant="ghost" onClick={() => { backupMany(missing); setPicked(new Set()); }} disabled={changedBusy}
+                title="Back these up while searching your sample folders for what's missing">
+                Find missing samples ({missing.length})
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => setPins(pickedItems.map((i) => i.project_id), !allPinned)}>
+              <Icon name={allPinned ? "star" : "starFilled"} size={13} /> {allPinned ? "Unpin" : "Pin to the top"}
+            </Button>
+            <button type="button" className="linkbtn pickbar__clear" onClick={() => setPicked(new Set())}>Clear</button>
+          </div>
+        );
+      })()}
     </>
   );
 }

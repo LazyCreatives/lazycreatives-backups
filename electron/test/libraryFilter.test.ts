@@ -45,6 +45,9 @@ describe("filters", () => {
     expect(names(applyFilters(ITEMS, { ...NO_FILTERS, status: "missing" }))).toEqual(["Deep Cut"]);
     expect(names(applyFilters(ITEMS, { ...NO_FILTERS, status: "safe" }))).toEqual(["Midnight Warehouse"]);
     expect(names(applyFilters(ITEMS, { ...NO_FILTERS, status: "none" }))).toEqual(["DNB NOT GOOD", "Sunrise"]);
+    const edited = [...ITEMS, item({ name: "Night Edit", backed_up: true, changed: true })];
+    expect(names(applyFilters(edited, { ...NO_FILTERS, status: "changed" }))).toEqual(["Night Edit"]);
+    expect(names(applyFilters(edited, { ...NO_FILTERS, status: "safe" }))).toEqual(["Midnight Warehouse"]);
     expect(names(applyFilters(ITEMS, { ...NO_FILTERS, daw: "flstudio" }))).toEqual(["Deep Cut"]);
     expect(names(applyFilters(ITEMS, { ...NO_FILTERS, genre: "House" }))).toEqual(["Deep Cut", "Sunrise"]);
     expect(names(applyFilters(ITEMS, { ...NO_FILTERS, bpm: "120" }))).toEqual(["Deep Cut", "Sunrise"]);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { CopyButton } from "../components/Desktop";
 import { makeApi } from "../api";
 import type { LibraryItem } from "../types";
 import { Button } from "../components/Button";
@@ -138,7 +139,10 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
                 <span className={`dot ${handPicked || m.recoverable ? "dot--ok" : probed ? "dot--warn" : ""}`} />
                 <div className="miss-file">
                   <div className="miss-name" title={m.name}>{m.name}</div>
-                  <div className="miss-path mono" title={m.expected_path}>{m.expected_path}</div>
+                  <div className="pathline">
+                    <div className="miss-path mono" title={m.expected_path}>{m.expected_path}</div>
+                    <CopyButton text={m.expected_path} what="where it should be" size={13} />
+                  </div>
                 </div>
                 <span className={`miss-badge col-trunc ${handPicked ? "pointed" : !probed ? "checking" : m.recoverable ? "found" : "lost"}`}>
                   {handPicked ? `Using ${handPicked.split(/[\\/]/).pop()}`

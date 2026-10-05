@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { VerifiedSeal } from "./VerifiedSeal";
 import { Button } from "./Button";
 
@@ -6,9 +7,14 @@ import { Button } from "./Button";
 export function FirstBackupModal({ completed, onHistory, onClose }: {
   completed: number; onHistory: () => void; onClose: () => void;
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <div className="modal__scrim" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <VerifiedSeal size={64} />
         <h2 style={{ margin: "14px 0 8px" }}>Your first backup is done 🎉</h2>
         <p className="sub" style={{ margin: 0, maxWidth: 400, lineHeight: 1.6 }}>

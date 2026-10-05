@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { SlothMascot } from "../components/SlothMascot";
 import type { BackupProgress } from "../useProgress";
 import { ProgressBar } from "../components/ProgressBar";
 import { PageHeader } from "../components/PageHeader";
@@ -13,6 +12,7 @@ import { Cover } from "../components/Cover";
 import { Icon } from "../components/Icon";
 import { coverColor, useLook } from "../look";
 import type { BackupItem } from "../useProgress";
+import { EmptyState } from "../components/SlothSpot";
 import { useGenres } from "../useGenres";
 
 const STATE_TEXT: Record<BackupItem["state"], string> = {
@@ -73,7 +73,7 @@ export function Backup({ progress: p, jobId }: { progress: BackupProgress; jobId
               <p className="sub" style={{ margin: "10px 0 0" }}>Start a new backup from Scan &amp; Back up.</p>
             </>
           ) : (
-            <div className="empty"><div className="empty__icon"><SlothMascot label="Napping — no backups yet" /></div>No backups yet. Start one from Scan &amp; Back up.</div>
+            <EmptyState pose="napping" title="No backups yet">Start one from Scan and back up.</EmptyState>
           )}
         </div>
       ) : (

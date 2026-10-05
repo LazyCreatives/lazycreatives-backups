@@ -5,6 +5,7 @@ const { startSidecar, stopSidecar, killGroup } = require("./sidecar");
 const { createTray } = require("./tray");
 const { isOpenAtLogin, setOpenAtLogin, initOpenAtLogin } = require("./startup");
 const { startUpdater } = require("./updater");
+const { windowStateOptions, installAppMenu, registerDesktopIpc, showWindow } = require("./desktop");
 
 const isDev = !!process.env.ABLEBACKUP_DEV;
 let win = null;
@@ -12,6 +13,15 @@ let sidecar = null;
 let tray = null;
 let isQuitting = false;
 let stopping = null; // set to the shutdown promise once a quit begins
+
+// Single-instance: opening the app again brings the running window forward rather
+// than starting a second copy (which would fight over the same catalog), as Uploader does.
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => showWindow(win));
+}
 
 function backendDir() {
   // dev: repo backend/. packaged: resourcesPath/backend (set up at packaging time).
@@ -31,8 +41,10 @@ const ICON = path.join(__dirname, "..", "build", "icon.png");
 const hasIcon = () => fs.existsSync(ICON);
 
 function createWindow() {
+  // Reopens at the size and place it was last closed at (see desktop.js).
+  const placement = windowStateOptions();
   win = new BrowserWindow({
-    width: 1100, height: 760, backgroundColor: "#0A0B0D",
+    ...placement.options, backgroundColor: "#0A0B0D",
     ...(hasIcon() ? { icon: ICON } : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -43,6 +55,7 @@ function createWindow() {
       ],
     },
   });
+  placement.track(win);
   if (process.platform === "darwin" && app.dock && hasIcon()) {
     try { app.dock.setIcon(ICON); } catch (err) { console.error("[main] dock icon:", err.message); }
   }
@@ -88,6 +101,8 @@ async function pick(options) {
   return picked;
 }
 
+registerDesktopIpc(() => win);
+
 ipcMain.handle("pick-folder", () => pick({ properties: ["openDirectory"] }));
 
 // Pick a single audio file — used by "Point to file…" to hand-map one missing sample
@@ -109,7 +124,8 @@ ipcMain.handle("reveal-path", (_e, target) => {
 
 // Open a project in its DAW (OS default app). Allowlisted to project extensions so
 // this channel can never be used to launch arbitrary files.
-const OPENABLE_PROJECT = /\.(als|flp|rpp|dawproject|aup3|aup)$/i;
+// Logic projects are folders (macOS packages) that open like a file.
+const OPENABLE_PROJECT = /\.(als|flp|rpp|dawproject|aup3|aup|logicx|logic|song)$/i;
 ipcMain.handle("open-project", (_e, target) => {
   if (typeof target === "string" && OPENABLE_PROJECT.test(target)) {
     return shell.openPath(target); // resolves to "" on success, error string otherwise
@@ -134,6 +150,7 @@ ipcMain.handle("get-open-at-login", () => isOpenAtLogin());
 ipcMain.handle("set-open-at-login", (_e, enabled) => setOpenAtLogin(enabled));
 
 app.whenReady().then(async () => {
+  if (!gotTheLock) return; // a copy is already running: it was brought forward
   try {
     // Packaged builds: lock the renderer down with a strict CSP (dev uses Vite HMR,
     // which a strict script-src would break, so only apply it when packaged).
@@ -171,8 +188,10 @@ app.whenReady().then(async () => {
     }
     sidecar = await startSidecar(sidecarOpts);
     createWindow();
+    installAppMenu({ appName: "LazyCreatives Backups", website: "https://lazycreatives.github.io/", getWindow: () => win });
     tray = createTray({
-      onShow: () => { win.show(); },
+      appName: "LazyCreatives Backups",
+      onShow: () => showWindow(win),
       onQuit: () => { isQuitting = true; app.quit(); },
     });
     initOpenAtLogin();

@@ -314,6 +314,89 @@ class CloudConnectSession:
                 pass
 
 
+# --- cloud-synced folders: Dropbox / Google Drive / iCloud / OneDrive apps -------
+# Backing up into the folder a sync app watches is the simplest cloud backup: no
+# sign-in here, the app on this computer uploads it. We only look in the places
+# each app puts its folder by default; the first-run screen lets people pick it
+# themselves when it lives somewhere else.
+CLOUD_FOLDER_SUBDIR = "Lazy Creatives Backups"
+
+
+def _first_dir(paths) -> str | None:
+    for p in paths:
+        try:
+            if p and Path(p).is_dir():
+                return str(p)
+        except OSError:
+            continue
+    return None
+
+
+def _globbed(base: Path, pattern: str, inner: str = "") -> list[Path]:
+    try:
+        hits = sorted(base.glob(pattern)) if base.is_dir() else []
+    except OSError:
+        return []
+    return [h / inner if inner else h for h in hits]
+
+
+def _dropbox_paths(home: Path, env: dict) -> list:
+    # The Dropbox app writes where its folder is to info.json (personal and business).
+    out: list = []
+    for info in (home / ".dropbox" / "info.json",
+                 Path(env.get("APPDATA", "")) / "Dropbox" / "info.json" if env.get("APPDATA") else None,
+                 Path(env.get("LOCALAPPDATA", "")) / "Dropbox" / "info.json" if env.get("LOCALAPPDATA") else None):
+        if not info:
+            continue
+        try:
+            data = json.loads(info.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for kind in ("personal", "business"):
+            path = (data.get(kind) or {}).get("path")
+            if path:
+                out.append(Path(path))
+    out += _globbed(home / "Library" / "CloudStorage", "Dropbox*")
+    out.append(home / "Dropbox")
+    return out
+
+
+def _gdrive_paths(home: Path, env: dict) -> list:
+    out: list = _globbed(home / "Library" / "CloudStorage", "GoogleDrive-*", "My Drive")
+    out += [home / "Google Drive" / "My Drive", home / "Google Drive", home / "My Drive"]
+    if os.name == "nt":  # Drive for desktop shows up as its own drive letter (G: by default)
+        out += [Path(f"{letter}:\\") / "My Drive" for letter in "GDEFHIJKLMNOPQRSTUVWXYZ"]
+    return out
+
+
+def _icloud_paths(home: Path, env: dict) -> list:
+    return [home / "Library" / "Mobile Documents" / "com~apple~CloudDocs", home / "iCloudDrive"]
+
+
+def _onedrive_paths(home: Path, env: dict) -> list:
+    out: list = [Path(env[k]) for k in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial") if env.get(k)]
+    out += _globbed(home / "Library" / "CloudStorage", "OneDrive*")
+    out.append(home / "OneDrive")
+    return out
+
+
+CLOUD_FOLDER_APPS: list[tuple[str, str, Callable]] = [
+    ("dropbox", "Dropbox", _dropbox_paths),
+    ("gdrive", "Google Drive", _gdrive_paths),
+    ("icloud", "iCloud Drive", _icloud_paths),
+    ("onedrive", "OneDrive", _onedrive_paths),
+]
+
+
+def cloud_folders(home: Path | None = None, env: dict | None = None) -> list[dict]:
+    """Each cloud app's synced folder on this computer, or path None when it isn't
+    found (the app isn't installed, or its folder is somewhere unusual)."""
+    home = home or Path.home()
+    env = os.environ if env is None else env
+    return [{"key": key, "label": label, "path": _first_dir(finder(home, env))}
+            for key, label, finder in CLOUD_FOLDER_APPS]
+
+
 def cloud_disconnect(name: str) -> bool:
     """Forget a configured rclone remote (drops the local token/config). Returns
     whether rclone reported success."""
@@ -357,8 +440,21 @@ def mirror_snapshot(snapshot_dir: Path, base: Path, mirrors: list) -> tuple[int,
     return ok, failed
 
 
+def _logic_snapshot_tempo(snapshot_dir: Path) -> float | None:
+    """The tempo saved in a backed-up Logic package (read from its MetaData.plist)."""
+    from ablebackup.daws.logic import read_package
+    pkg = next((p for p in snapshot_dir.iterdir()
+                if p.is_dir() and p.suffix.lower() in (".logicx", ".logic")), None)
+    if pkg is None:
+        return None
+    try:
+        return read_package(pkg)[1].get("tempo")
+    except (OSError, ValueError):
+        return None
+
+
 def _genre_for_snapshot(snapshot_dir, project_name: str) -> dict:
-    """Guess a snapshot's genre from its .als tempo + gathered sample names + name."""
+    """Guess a snapshot's genre from its saved tempo + gathered sample names + name."""
     from ablebackup.als_parser import read_tempo
     from ablebackup.genre import guess_genre
 
@@ -366,16 +462,22 @@ def _genre_for_snapshot(snapshot_dir, project_name: str) -> dict:
     bpm = None
     names: list[str] = []
     if d and d.is_dir():
-        als = next(iter(d.glob("*.als")), None)  # tempo is Ableton-only
+        als = next(iter(d.glob("*.als")), None)
         if als:
             bpm = read_tempo(als)
         mf = d / "manifest.json"
         if mf.is_file():
             try:
-                names = [Path(f["logical_path"]).name
-                         for f in json.loads(mf.read_text()).get("files", [])]
+                manifest = json.loads(mf.read_text())
+                names = [Path(f["logical_path"]).name for f in manifest.get("files", [])]
             except (OSError, ValueError):
-                pass
+                manifest = {}
+            if bpm is None and manifest.get("daw") == "logic":
+                bpm = _logic_snapshot_tempo(d)
+            if bpm is None and manifest.get("daw") == "studioone":
+                from ablebackup.daws.studioone import read_tempo as song_tempo
+                song = next(iter(d.glob("*.song")), None)
+                bpm = song_tempo(song) if song else None
     return guess_genre(project_name, bpm, names)
 
 
@@ -782,6 +884,7 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
         if last_sigs.get(p.project_id) == signature:
             # Identical to the last successful backup — don't make a redundant snapshot.
             skipped_count += 1
+            catalog.mark_backed(p.project_id, p.mtime)
             _emit(progress, {"type": "project_skipped", "index": i, "project_name": p.name})
             continue
         # Per-DAW destination root, so FL and Ableton backups stay separate.
@@ -817,6 +920,8 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
             verified=1 if v["ok"] else 0, verified_at=timestamp,
             project_id=p.project_id, daw=p.daw_id,
         )
+        if status != "error":
+            catalog.mark_backed(p.project_id, p.mtime)
         ok_count += 1
         if mirrors:  # also copy this snapshot offsite (cloud/2nd drive)
             mok, mfail = mirror_snapshot(result.snapshot_dir, base, [str(m) for m in mirrors])

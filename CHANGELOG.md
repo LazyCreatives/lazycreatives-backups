@@ -13,7 +13,37 @@ How to keep this up to date:
   The checks on pull requests fail if the app's version has no section here.
 -->
 
-## Unreleased
+## 0.1.9 (5 October 2026)
+
+### New
+- **Skip backup for now.** The first-run screen has a "Skip backup for now" button for people who just want to browse their projects. The app opens straight on the Library, finds your projects, and keeps backups off until you turn them on in Settings. Works in both looks.
+- **Dropbox and Google Drive on the first-run screen.** Choosing where backups go now lists Dropbox, Google Drive, iCloud Drive and OneDrive next to your own drive or NAS. Folders found on your computer are one click; otherwise "Find folder…" lets you point at it. Backups go into a "Lazy Creatives Backups" folder inside it. Settings offers the same folders.
+- **Pin your favourites.** Star a project to keep it at the top of the Library and on Home.
+- **Pick several at once.** Tick projects in the Library to back them up, find their missing samples or pin them in one go.
+- **Spots projects you changed since the last backup.** A project you saved in your music app after its last backup now shows as "Changed" instead of "Safe", on Home, in the Library (with its own filter) and on the project page, with a button to back up just the changed ones.
+- **Undo.** Removing a folder or a song from a project shows a short message with an Undo button.
+- **Studio One songs are found and backed up.** Backups now spots your Studio One (Fender Studio Pro) songs on Windows and Mac, backs up each song with its recordings and any audio it uses from elsewhere, shows tempo, tracks and plug-ins, links the songs in its Mixdown folder, flags audio that has gone missing, and leaves autosaves out. Works in both looks.
+- **Logic Pro projects are found and backed up.** Backups now spots Logic projects on your Mac, backs up the whole project with its recordings and any audio it uses from elsewhere, shows tempo and tracks, links its bounces, and flags audio that has gone missing. Works in both looks.
+- **Right-click menus.** Right-click a project or a song for its everyday actions in one place: open it in your music app, show it in its folder, back it up, copy its path, or open and copy its SoundCloud link. Works in both looks.
+- **Keyboard shortcuts.** Cmd + F (Ctrl + F on Windows and Linux) jumps to the search box, Cmd + , (Ctrl + ,) opens Settings, Space plays or pauses the song in the player, and Esc closes the open project or crate. Help, Keyboard shortcuts lists them all.
+- **A proper menu bar.** File, Edit, View, Window and Help menus, with the shortcuts listed next to each item, What's new, the website and Report a problem.
+- **Drag and drop.** Drop a project folder (or a project file) onto the window to add it to the folders Backups looks in.
+- **Copy buttons.** One click copies a folder path, a project's path, or where a missing sample should be.
+- **Progress on the app icon.** While a backup runs, the dock (Mac) or taskbar (Windows) icon fills up to show how far it has got.
+
+### Better
+- **Settings save themselves.** Every change in Settings is saved straight away and a small "Saved" appears; there is no Save button to forget.
+- **Picks up where you left off.** The app reopens at the same size and place on screen, on the page you closed it on, with your sort order and filters as you left them.
+- **Tray menu.** The tray / menu bar icon now reads "Open LazyCreatives Backups" and "Quit LazyCreatives Backups", the same in both apps.
+- **Only one copy runs.** Opening Backups again while it is already running brings its window forward instead of starting a second copy.
+- **A friendlier welcome.** First-time setup now lets you pick your look straight away, finds your usual project folders for you to tick, and shows both halves of the app side by side: browsing every project and backing them up. Works in both looks.
+- **Friendlier empty pages.** When a list is empty or something goes wrong, the sloth shows up with a short line and a button for the next step, such as Scan now or Restart the app.
+- **Smoother and rounder.** Pages glide in, dropdowns match the app's look, covers settle into place one after another, and the Sleeve look has softer corners.
+
+### Fixed
+- **Home counts honestly.** The headline no longer counts a project that needs a look as safe.
+- **Sleeve Home.** "1 sample missing" on a narrow card is no longer cut short.
+- **Long song names fit.** On a project's Songs tab, long export names now show in full (wrapping onto a second line) instead of being cut short. The empty SoundCloud column only appears once a song is on SoundCloud.
 
 ## 0.1.8 (5 October 2026)
 

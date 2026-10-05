@@ -17,6 +17,8 @@ export interface Config {
   libraries: string[];
   mirrors?: string[];  // offsite/cloud destinations (Studio)
 }
+// A usual project folder found on this computer (first-run setup).
+export interface SuggestedFolder { path: string; label: string; count: number; }
 export interface Snapshot {
   id: number;
   project_name: string;
@@ -97,6 +99,7 @@ export interface LibraryItem {
   last_backup: string | null;
   snapshot_count: number;
   backed_up: boolean;
+  changed?: boolean;           // saved in the DAW since its last backup
   export_count?: number;       // song renders linked to this project
   latest_export?: { path: string; name: string; mtime: number; uploaded: boolean } | null;
 }
@@ -177,4 +180,11 @@ export interface BackupOptions {
   label?: string;
   portable?: boolean;
   layout?: "project_date" | "date_project";
+}
+
+// A cloud app's synced folder (Dropbox, Google Drive, …); path is null when not found.
+export interface CloudFolder {
+  key: string;
+  label: string;
+  path: string | null;
 }

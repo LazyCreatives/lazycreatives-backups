@@ -47,6 +47,14 @@ export function toggle(path: string, meta?: SongMeta) {
   a.play().catch(() => set({ playing: false, error: "Couldn't play this file" }));
 }
 
+// The Space bar: pause, or carry on with whatever is in the player bar. False when
+// nothing is loaded, so the key is left alone.
+export function togglePlaying(): boolean {
+  if (!state.path) return false;
+  toggle(state.path, state.meta ?? undefined);
+  return true;
+}
+
 export function seek(fraction: number) {
   if (audio && state.duration) audio.currentTime = fraction * state.duration;
 }
