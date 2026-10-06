@@ -13,7 +13,7 @@ from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from ablebackup import entitlement, exports, tidy, waveform
+from ablebackup import entitlement, exports, markers, tidy, waveform
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
 from ablebackup.api.schemas import (
@@ -508,6 +508,14 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         if not _known_song(path):
             raise HTTPException(status_code=404, detail="not a linked export")
         return {"peaks": waveform.peaks(path)}
+
+    @app.get("/api/project/markers", dependencies=[Depends(require_token)])
+    def project_markers(path: str):
+        """The markers (locators, cues) saved in one project, in seconds, for showing on
+        its song's waveform. Only projects in the library are read."""
+        if path not in {r.get("path") for r in app.state.catalog.library()}:
+            raise HTTPException(status_code=404, detail="not a project in the library")
+        return {"markers": markers.read_markers(path)}
 
     @app.get("/api/project/missing", dependencies=[Depends(require_token)])
     def project_missing(path: str, find: bool = False):

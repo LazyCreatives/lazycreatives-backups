@@ -8,6 +8,8 @@ function argValue(flag) {
 contextBridge.exposeInMainWorld("ablebackup", {
   token: argValue("--ablebackup-token"),
   port: argValue("--ablebackup-port"),
+  // "vibrancy" (Mac), "mica" (Windows 11) or "none": see windowMaterial in desktop.js.
+  material: argValue("--lc-material") || "none",
   pickFolder: () => ipcRenderer.invoke("pick-folder"),
   pickFile: () => ipcRenderer.invoke("pick-file"),
   revealPath: (target) => ipcRenderer.invoke("reveal-path", target),
@@ -34,6 +36,8 @@ contextBridge.exposeInMainWorld("ablebackup", {
   openAppMenu: (x, y) => ipcRenderer.invoke("open-app-menu", x, y),
   pathKinds: (paths) => ipcRenderer.invoke("path-kinds", paths),
   relaunch: () => ipcRenderer.invoke("relaunch-app"),
+  // Light or dark (Settings > Look): the window and title strip follow it (desktop.js).
+  setTheme: (choice, theme) => ipcRenderer.invoke("set-theme", choice, theme),
   pathForFile: (file) => { try { return webUtils.getPathForFile(file) || ""; } catch { return ""; } },
   onMenuCommand: (cb) => {
     const h = (_e, cmd) => cb(cmd);
@@ -44,5 +48,16 @@ contextBridge.exposeInMainWorld("ablebackup", {
     const h = (_e, s) => cb(s);
     ipcRenderer.on("update-status", h);
     return () => ipcRenderer.removeListener("update-status", h);
+  },
+  // The narrow window beside the music program (see companion.js).
+  openCompanion: () => ipcRenderer.invoke("companion-open"),
+  closeCompanion: () => ipcRenderer.invoke("companion-close"),
+  companionPinned: () => ipcRenderer.invoke("companion-pinned"),
+  setCompanionPinned: (on) => ipcRenderer.invoke("companion-pin", on),
+  showMain: (cmd) => ipcRenderer.invoke("companion-show-main", cmd),
+  onCompanionCommand: (cb) => {
+    const h = (_e, cmd) => cb(cmd);
+    ipcRenderer.on("companion-command", h);
+    return () => ipcRenderer.removeListener("companion-command", h);
   },
 });

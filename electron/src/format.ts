@@ -28,7 +28,7 @@ export function fmtDate(ts: string | null | undefined): string {
   if (!ts) return "—";
   const dt = parseStamp(ts);
   if (!dt) return ts;
-  const time = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const time = dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const now = new Date();
   if (sameDay(dt, now)) return `Today ${time}`;
   const yesterday = new Date(now);
@@ -40,21 +40,21 @@ export function fmtDate(ts: string | null | undefined): string {
 }
 
 export function dawLabel(daw?: string): string {
-  return daw === "flstudio" ? "FL"
-    : daw === "reaper" ? "RPR"
-    : daw === "dawproject" ? "DP"
-    : daw === "audacity" ? "AUD"
-    : daw === "logic" ? "Logic"
+  return daw === "flstudio" ? "FL Studio"
+    : daw === "reaper" ? "Reaper"
+    : daw === "dawproject" ? "DAWproject"
+    : daw === "audacity" ? "Audacity"
+    : daw === "logic" ? "Logic Pro"
     : daw === "studioone" ? "Studio One"
     : daw === "bitwig" ? "Bitwig"
-    : daw === "ableton" ? "Live" : "DAW";
+    : daw === "ableton" ? "Ableton" : "Music app";
 }
 
 export function fmtClock(iso?: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
 // When the next backup runs: "today 03:05 PM", "tomorrow 03:05 PM" or "Oct 7, 03:05 PM".
@@ -62,7 +62,7 @@ export function fmtNext(iso?: string | null, now: Date = new Date()): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
-  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   if (sameDay(d, now)) return `today ${time}`;
   const tomorrow = new Date(now);
   tomorrow.setDate(now.getDate() + 1);
@@ -99,4 +99,30 @@ export function shortPath(p: string, keep = 2): string {
   const parts = p.split(/[/\\]/).filter(Boolean);
   if (parts.length <= keep) return p;
   return "…/" + parts.slice(-keep).join("/");
+}
+
+// A plain calendar date (and optionally the time), in the computer's own date and
+// clock format: "7 Oct 2026" or "Oct 7, 2026", "14:05" or "2:05 PM". Takes a Date,
+// epoch milliseconds, or null. Use this rather than naming a locale on a screen.
+export function fmtDay(when: Date | number | null | undefined, opts: { time?: boolean; year?: boolean } = {}): string {
+  if (when === null || when === undefined || when === 0) return "—";
+  const d = typeof when === "number" ? new Date(when) : when;
+  if (isNaN(d.getTime())) return "—";
+  const o: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" };
+  if (opts.year !== false) o.year = "numeric";
+  if (opts.time) { o.hour = "numeric"; o.minute = "2-digit"; }
+  return d.toLocaleString([], o);
+}
+
+// A count with the computer's own digit grouping: 2441 -> "2,441" (or "2 441"). Use it
+// for every count that can reach the thousands (projects, songs, backups, files).
+export function fmtCount(n: number | null | undefined): string {
+  if (n === null || n === undefined || !isFinite(n)) return "—";
+  return Math.round(n).toLocaleString();
+}
+
+// A count for a tight spot (a status cell, a badge): past `max` it reads "999+".
+// Put the exact number in a title next to it.
+export function fmtCap(n: number, max = 999): string {
+  return n > max ? `${fmtCount(max)}+` : fmtCount(n);
 }

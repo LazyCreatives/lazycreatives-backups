@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { IS_COMPANION } from "./companion";
 import { TitleBar } from "./components/Desktop";
 import { EntitlementProvider } from "./entitlement";
 // Bundled fonts so the app looks the same on every computer.
@@ -13,6 +14,8 @@ import "@fontsource/bebas-neue";
 import "./lazy-ui.css";  // shared look (same file in Uploader)
 import "./theme.css";    // Backups-only bits
 import "./flow.css";     // the step-by-step backup screens
+import "./companion.css"; // the narrow window and its sidebar button; after the shared styles so it wins ties
+import { Companion } from "./screens/Companion";
 
 // Surface uncaught renderer errors to the console (forwarded to the run log by main.js).
 window.addEventListener("error", (e) =>
@@ -24,7 +27,8 @@ createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <TitleBar />
     <EntitlementProvider>
-      <App />
+      {/* #companion: the narrow window beside the music program (see companion.js) */}
+      {IS_COMPANION ? <Companion /> : <App />}
     </EntitlementProvider>
   </React.StrictMode>
 );

@@ -1,5 +1,6 @@
 import type { ProjectRow, LibraryItem } from "../../types";
 import { coverColor } from "../../look";
+import { itemStatus } from "../../libraryFilter";
 
 // Crate-digger data contract — a pure projection over the catalog (/api/projects).
 export type Daw = "ableton" | "flstudio" | "reaper" | "dawproject" | "audacity" | "logic" | "studioone" | "bitwig" | "unknown";
@@ -20,6 +21,7 @@ export interface Project {
   verified: boolean;        // proxy: has a backup (refine to snapshot.verified later)
   snapshots: number;
   missing: number;          // samples the last scan couldn't find (crate trust layer)
+  status?: "safe" | "changed" | "missing" | "none";  // the same state the Library and Home count
   latest?: { path: string; name: string } | null;  // newest song exported from it, if any
   exports?: number;
 }
@@ -89,6 +91,7 @@ export function toProjectFromLibrary(it: LibraryItem): Project {
     verified: !!it.backed_up,
     snapshots: it.snapshot_count ?? 0,
     missing: it.missing_count ?? 0,
+    status: itemStatus(it),
     latest: it.latest_export ? { path: it.latest_export.path, name: it.latest_export.name } : null,
     exports: it.export_count ?? 0,
   };

@@ -13,6 +13,57 @@ How to keep this up to date:
   The checks on pull requests fail if the app's version has no section here.
 -->
 
+## Unreleased
+
+## 0.2.0 (6 October 2026)
+
+### New
+- **Light mode.** Pick Dark, Light or Match my computer in Settings, under Look; both looks come in paper-light too.
+- **A narrow window** that sits beside your music program: the project you're working on, whether it's safe, and a Back up now button for it, always on top if you like (View > Narrow window, or Ctrl+Shift+N / Cmd+Shift+N).
+- **Right-click menus.** Right-click a project on Home to open it, back it up, pin it, show it in its folder or copy its path; right-click a backup on a project page to check it, restore it or share it. Text boxes get Cut, Copy, Paste and spelling fixes.
+- **Point at the waveform** in the player to see the time, and drag to scrub through the song.
+- **Glass sidebar** on a Mac (frosted) and Windows 11 (tinted by your wallpaper). Older Windows and Linux stay solid.
+- **Ctrl+1, 2, 3… (Cmd on a Mac)** jump to that page in the sidebar.
+- **A worn printed sleeve** on the big cover of a project page.
+- **Rate your projects** with one to five marks, in the Library and from the right-click menu. Pick flames, hearts, records or dots in Settings, and sort the Library by rating.
+- **Crate colours.** Give any genre your own colour from the genre box or by right-clicking a crate in Dig; every stripe, cover and crate of that genre follows it.
+- **Row height** in the Crate look's Library: compact, comfortable or tall (a bigger waveform), remembered for next time.
+- **Smart crates.** Save any search and filters in the Library as a smart crate. It sits over the list and in Dig, and fills itself as projects change.
+- **Find anything with Ctrl+K (Cmd+K on a Mac)**, or the box under the app name: jump to a page, project, genre or smart crate, or back up, switch look and more.
+- **Browse by Genre, then Year, then Project** in the Crate look's Library (the columns button). In the Sleeve look the same choices sit over the covers as chips.
+- **Your collection** at the bottom of Home: every project in figures, by genre, music app and year. In the Sleeve look it reads like a record's liner notes.
+- **More like this** in Dig: press it on any record to see the closest projects in your library by tempo, genre, key and how their songs sound. It listens to your exported songs on your computer; nothing is sent anywhere.
+- **Dig in 3D.** The records now stand in a wooden crate, and the one you flip to is pulled up in front of it.
+- **Preview on hover.** Switch it on in the Library or Dig, then point at a project (or flip to a record in Dig) to hear a few seconds of its newest song. Up and Down move through the list.
+- **Markers on the song.** A project page shows the markers (locators) saved in Ableton, REAPER and DAWproject files along its newest song's waveform; click one to jump there.
+- **A bigger project page in the Sleeve look:** the cover takes the left half and the tempo, tracks and backups are printed big.
+- **Filter by year last saved and by rating** in the Library.
+
+### Better
+- **Calmer pop-up notes.** Up to three stack up instead of replacing each other, pointing at them holds them, and Home's numbers roll to their new value.
+- **Smoother, quicker movement** across the app, and hover effects only with a mouse.
+- **Big libraries and long names fit.** Smaller windows drop the least needed Library columns instead of squashing them, Home shows 8 changed projects with a "Show all" link, big numbers read 123,456, cut-off names show in full when you point at them, and a very long project name no longer stretches the project page.
+- **Clearer Dig.** Crate names use the same lettering as the rest of the app, the arrows are proper buttons with a reminder that the arrow keys flip and Enter opens, and in Sleeve the record you flip to shows its genre, tempo and music app as tags under its name. Ctrl+F (Cmd+F on a Mac) jumps to the search box, and an empty crate shows the sloth with a hint. Both looks.
+- **Music apps called by their names.** Lists and project pages say Ableton, FL Studio, Reaper and Logic Pro instead of short codes like "Live" or "RPR".
+- **Same words, same times everywhere.** "Changed since last backup" is used throughout, times follow your computer's clock (no more "08:19 PM"), and the last and next backup now sit in a quiet line under the heading on Home.
+- **Clearer lines between rows.** Every list and table in both looks has clearer row lines and control edges, so rows are easier to tell apart.
+- **Same words everywhere.** Missing samples always reads "Find missing samples", the Library's open button says which music app it opens ("Open in Ableton"), and the counts on Home, Library and Dig now agree.
+- **Tidier Library columns.** The colour stripe comes first, as in Uploader, and the Project heading lines up with the names.
+- **Plainer headings.** Small headings are in ordinary letters instead of spaced capitals (the Crate deck readout keeps its capitals).
+- **Easier with the keyboard.** Enter on a button inside a row now presses that button, the ··· menu works with the arrow keys, pop-ups keep the keyboard inside them, and the left and right arrows skip through the song in the player.
+- **Faster big libraries.** The Library only draws the projects on screen, so thousands of projects open and scroll smoothly.
+- **Dates and times** follow your computer's settings on every screen.
+- **Dig crates show how full they are.** A crate holds up to eight covers, packed tighter as it fills, and in Sleeve a bigger box set is a thicker box.
+- **Calmer covers.** Pointing at a cover slides it aside so its record peeks out, instead of the card lifting; covers deal in once per session, not on every visit, and the glow behind Sleeve Home is gone.
+- **Pop-ups fade out** when they close instead of vanishing in one frame.
+- **Plainer headings.** The Sleeve welcome and the backup screen use the app's normal lettering; the poster font stays for the app name and big project names.
+
+### Fixed
+- **Pop-up boxes sit in the middle of the window** in the Sleeve look; on some pages they slipped down and could run off the bottom.
+- **A failed backup's note shows a warning mark**, not a green tick.
+- **Failed backups now say so.** If backing up one project, finding its samples or checking it again fails, you get a plain message with Try again. The finished screen no longer shows "Backed up and checked" when some projects failed; it lists them with the reason and a "Try these again" button.
+- **A library that can't be read** now says so instead of looking empty.
+
 ## 0.1.11 (6 October 2026)
 
 ### Better

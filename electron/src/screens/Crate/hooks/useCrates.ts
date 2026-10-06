@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { Project, CrateGroup, GroupBy, CrateSort } from "../types";
 import { SLOTH_BLUE, dawDisplay, genreOf, parseStamp } from "../types";
-import { genreColor } from "../../../look";
+import { genreColor, genreColorsVersion } from "../../../look";
 
 const DAY = 86400000;
 const daysSince = (s: string, now: number) => {
@@ -59,5 +59,6 @@ export function groupCrates(
 }
 
 export function useCrates(projects: Project[], by: GroupBy, sort: CrateSort, search: string): CrateGroup[] {
-  return useMemo(() => groupCrates(projects, by, sort, search), [projects, by, sort, search]);
+  const colours = genreColorsVersion();  // a crate colour you picked
+  return useMemo(() => groupCrates(projects, by, sort, search), [projects, by, sort, search, colours]);
 }

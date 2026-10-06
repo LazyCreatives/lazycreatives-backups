@@ -2,8 +2,9 @@
 // on each project: its DAW, genre, BPM, backup state and latest song.
 import type { LibraryItem } from "./types";
 import { fuzzyScore } from "./fuzzy";
-import { dawLabel } from "./format";
+import { dawLabel, fmtCount } from "./format";
 import { keep, recall } from "./desktop";
+import { ratingOf } from "./marks";
 
 export type StatusFilter = "all" | "safe" | "changed" | "missing" | "none";
 export type SongFilter = "any" | "has" | "soundcloud" | "nosong";
@@ -15,9 +16,16 @@ export interface LibFilters {
   genre: string;   // "" = any
   bpm: string;     // "" = any, else a BPM_BANDS key
   song: SongFilter;
+  year: string;    // "" = any, else the year it was last saved ("2025")
+  rated: number;   // 0 = any, else at least this many marks
 }
 
-export const NO_FILTERS: LibFilters = { q: "", status: "all", daw: "", genre: "", bpm: "", song: "any" };
+export const NO_FILTERS: LibFilters = { q: "", status: "all", daw: "", genre: "", bpm: "", song: "any", year: "", rated: 0 };
+
+// The year a project was last saved, as text ("2025"), or "" when unknown.
+export function yearOf(it: Pick<LibraryItem, "mtime">): string {
+  return it.mtime ? String(new Date(it.mtime * 1000).getFullYear()) : "";
+}
 
 export const BPM_BANDS: { key: string; label: string; lo: number; hi: number }[] = [
   { key: "lt100", label: "Under 100", lo: 0, hi: 100 },
@@ -34,13 +42,32 @@ export function itemStatus(it: LibraryItem): Exclude<StatusFilter, "all"> {
   return it.backed_up ? "safe" : "none";
 }
 
+// How many projects are in each state. Home, the Library and Dig all count with
+// this, so their numbers always agree.
+export type StatusCounts = Record<Exclude<StatusFilter, "all">, number> & { all: number };
+export function countStatuses(items: Pick<LibraryItem, "missing_count" | "changed" | "backed_up">[]): StatusCounts {
+  const c: StatusCounts = { all: 0, safe: 0, changed: 0, missing: 0, none: 0 };
+  for (const it of items) { c.all++; c[itemStatus(it as LibraryItem)]++; }
+  return c;
+}
+
+// One line for the Library heading: "28 safe · 3 changed · 3 missing samples · 2 not backed up yet".
+export function statusSummary(c: StatusCounts): string {
+  return [
+    `${fmtCount(c.safe)} safe`,
+    c.changed ? `${fmtCount(c.changed)} changed` : "",
+    c.missing ? `${fmtCount(c.missing)} missing samples` : "",
+    c.none ? `${fmtCount(c.none)} not backed up yet` : "",
+  ].filter(Boolean).join(" · ");
+}
+
 export function isFiltered(f: LibFilters): boolean {
-  return f.q.trim() !== "" || f.status !== "all" || !!f.daw || !!f.genre || !!f.bpm || f.song !== "any";
+  return f.q.trim() !== "" || f.status !== "all" || extraFilterCount(f) > 0;
 }
 
 // Everything but the search box and status (which has its own counted buttons).
 export function extraFilterCount(f: LibFilters): number {
-  return [f.daw, f.genre, f.bpm, f.song !== "any" ? f.song : ""].filter(Boolean).length;
+  return [f.daw, f.genre, f.bpm, f.song !== "any" ? f.song : "", f.year, f.rated].filter(Boolean).length;
 }
 
 /** Projects that pass the filters (ignoring status when `skipStatus`), best search match first. */
@@ -51,7 +78,7 @@ export function applyFilters(items: LibraryItem[], f: LibFilters, skipStatus = f
   items.forEach((it, i) => {
     if (!skipStatus && f.status !== "all" && itemStatus(it) !== f.status) return;
     if (f.daw && (it.daw || "") !== f.daw) return;
-    if (f.genre && (it.genre || "") !== f.genre) return;
+    if (f.genre && (f.genre === "-" ? !!it.genre : (it.genre || "") !== f.genre)) return;  // "-": no genre yet
     if (band) {
       const b = it.bpm ? Math.round(it.bpm) : null;
       if (b == null || b < band.lo || b >= band.hi) return;
@@ -59,6 +86,8 @@ export function applyFilters(items: LibraryItem[], f: LibFilters, skipStatus = f
     if (f.song === "has" && !it.latest_export) return;
     if (f.song === "soundcloud" && !it.latest_export?.uploaded) return;
     if (f.song === "nosong" && it.latest_export) return;
+    if (f.year && yearOf(it) !== f.year) return;
+    if (f.rated && ratingOf(it.project_id) < f.rated) return;
     let score = 1;
     if (q) {
       // the project's own name counts double, so it beats a genre or song hit
@@ -76,19 +105,20 @@ export function applyFilters(items: LibraryItem[], f: LibFilters, skipStatus = f
 // also saved for the next time the app opens; the search text is not, so the list
 // never opens half-empty because of something typed last week.
 const FILTERS_KEY = "lc-library-filters";
+// (filters saved by an older version lack the newer ones: those start at "any")
 const isFilters = (v: unknown) => !!v && typeof v === "object"
-  && (Object.keys(NO_FILTERS) as (keyof LibFilters)[]).every((k) => typeof (v as any)[k] === typeof NO_FILTERS[k]);
-let remembered: LibFilters = { ...recall<LibFilters>(FILTERS_KEY, NO_FILTERS, isFilters), q: "" };
+  && (Object.keys(NO_FILTERS) as (keyof LibFilters)[]).every((k) => !(k in (v as any)) || typeof (v as any)[k] === typeof NO_FILTERS[k]);
+let remembered: LibFilters = { ...NO_FILTERS, ...recall<Partial<LibFilters>>(FILTERS_KEY, NO_FILTERS, isFilters), q: "" };
 export function rememberedFilters(): LibFilters { return remembered; }
 export function rememberFilters(f: LibFilters) { remembered = f; keep(FILTERS_KEY, { ...f, q: "" }); }
 
 // ── sorting the Crate table by its column headings ──
-export type SortKey = "name" | "song" | "bpm" | "status" | "backup";
+export type SortKey = "name" | "song" | "bpm" | "status" | "backup" | "rating";
 export interface LibSort { key: SortKey; dir: 1 | -1 }
 
 // The way each column sorts on its first click: names A to Z, slowest first,
-// what needs you first, newest backup first. A second click reverses it.
-export const FIRST_DIR: Record<SortKey, 1 | -1> = { name: 1, song: 1, bpm: 1, status: 1, backup: -1 };
+// what needs you first, newest backup first, best rated first. A second click reverses it.
+export const FIRST_DIR: Record<SortKey, 1 | -1> = { name: 1, song: 1, bpm: 1, status: 1, backup: -1, rating: -1 };
 
 const STATUS_RANK = { missing: 0, none: 1, changed: 2, safe: 3 } as const;
 
@@ -99,6 +129,7 @@ function sortValue(it: LibraryItem, key: SortKey): string | number | null {
     case "bpm": return it.bpm ? Math.round(it.bpm) : null;
     case "status": return STATUS_RANK[itemStatus(it)];
     case "backup": return it.last_backup || null;
+    case "rating": return ratingOf(it.project_id) || null;
   }
 }
 
@@ -127,12 +158,24 @@ export function rememberSort(s: LibSort | null) { rememberedSortValue = s; keep(
 // "See what we gathered" after a first backup, or a count on Home such as "3 safe".
 // Search and the other filters are cleared so nothing left over from earlier hides
 // the projects the button promised.
-export interface LibraryView { status: StatusFilter; newestFirst?: boolean }
+export interface LibraryView { status: StatusFilter; newestFirst?: boolean; filters?: Partial<LibFilters> }
 export function viewFor(v: LibraryView, sort: LibSort | null): { filters: LibFilters; sort: LibSort | null } {
   return {
-    filters: { ...NO_FILTERS, status: v.status },
+    filters: { ...NO_FILTERS, ...v.filters, status: v.status },
     sort: v.newestFirst ? { key: "backup", dir: -1 } : sort,
   };
 }
 // What "See what we gathered" opens: every project, the ones just backed up on top.
 export const JUST_BACKED_UP: LibraryView = { status: "all", newestFirst: true };
+
+// A name for a smart crate made from its filters: "House · 120–129 BPM · Not backed up".
+export function describeFilters(f: LibFilters, dawName: (d: string) => string = (d) => d): string {
+  const band = BPM_BANDS.find((b) => b.key === f.bpm);
+  const status: Record<StatusFilter, string> = { all: "", safe: "Safe", changed: "Changed", missing: "Missing samples", none: "Not backed up" };
+  const song: Record<SongFilter, string> = { any: "", has: "Has a song", soundcloud: "On SoundCloud", nosong: "No song yet" };
+  const parts = [
+    f.q.trim() ? `“${f.q.trim()}”` : "", f.genre === "-" ? "No genre yet" : f.genre, f.year, band ? `${band.label} BPM` : "",
+    f.daw ? dawName(f.daw) : "", f.rated ? `${f.rated}+ rated` : "", status[f.status], song[f.song],
+  ].filter(Boolean);
+  return parts.slice(0, 3).join(" · ") || "Everything";
+}

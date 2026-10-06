@@ -6,6 +6,8 @@ import { makeApi } from "../api";
 import type { LibraryItem, TidyDone, TidyGroup, TidyOptions, TidyPlan, TidyRow } from "../types";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
+import { useDialogFocus } from "../components/a11y";
+import { useLeave } from "../components/Desktop";
 import "../tidy.css";
 
 const api = makeApi();
@@ -23,9 +25,10 @@ function extOf(name: string, kind: TidyRow["kind"]): string {
   return dot > 0 ? name.slice(dot) : "";
 }
 
-export function TidyNames({ items, onClose, onDone }: {
+export function TidyNames({ items, onClose: close, onDone }: {
   items: LibraryItem[]; onClose: () => void; onDone: (r: TidyDone) => void;
 }) {
+  const [leaving, onClose] = useLeave(close);
   const [names, setNames] = useState<Record<string, string>>({});
   const [style, setStyle] = useState<"v" | "v0">("v");
   const [numbers, setNumbers] = useState<"keep" | "order">("keep");
@@ -69,16 +72,19 @@ export function TidyNames({ items, onClose, onDone }: {
   const count = plan?.count ?? 0;
   const many = groups.length > 1;
   const title = many ? `${groups.length} songs` : groups[0]?.name ?? items[0]?.name ?? "";
+  // keyboard focus stays in the window while it's open and goes back where it was after
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  useDialogFocus(boxRef);
 
   return (
-    <div className="wnew__scrim" onClick={() => !busy && onClose()}>
-      <div className="wnew tidy" role="dialog" aria-modal="true" aria-labelledby="tidy-title" onClick={(e) => e.stopPropagation()}>
+    <div className="wnew__scrim" data-leaving={leaving || undefined} onClick={() => !busy && onClose()}>
+      <div ref={boxRef} className="wnew tidy" role="dialog" aria-modal="true" aria-labelledby="tidy-title" onClick={(e) => e.stopPropagation()}>
         <header className="wnew__head">
           <div className="wnew__heading">
             <div className="eyebrow">Tidy names</div>
             <h2 id="tidy-title" className="col-trunc">{title}</h2>
           </div>
-          <button type="button" className="wnew__close" aria-label="Close" onClick={onClose} disabled={busy}>✕</button>
+          <button type="button" className="wnew__close" aria-label="Close" onClick={onClose} disabled={busy}><Icon name="close" size={16} /></button>
         </header>
 
         <div className="tidy__opts">

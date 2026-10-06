@@ -464,6 +464,12 @@ class Catalog:
         out = []
         for r in rows:
             d = dict(r)
+            # the project file's save time as it is now, so a project saved in the
+            # music program since the last scan sorts as just worked on
+            try:
+                d["mtime"] = max(d.get("mtime") or 0, os.stat(d["path"]).st_mtime)
+            except (OSError, KeyError, TypeError):
+                pass
             d["backed_up"] = d["last_backup"] is not None
             d["changed"] = d["backed_up"] and _changed_since_backup(d)
             try:  # stored as a JSON array; serve a real list

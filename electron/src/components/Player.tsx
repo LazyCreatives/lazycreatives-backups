@@ -3,7 +3,8 @@ import { makeApi } from "../api";
 import { coverColor } from "../look";
 import { Cover } from "./Cover";
 import { Icon } from "./Icon";
-import { Wave } from "./Wave";
+import { Wave, type WaveMark } from "./Wave";
+import { AUDITION_DELAY, AUDITION_FROM, auditionOn, bindAuditionKeys, useAuditionMode } from "../audition";
 import { Meter } from "./Meter";
 
 const api = makeApi();
@@ -15,9 +16,14 @@ export interface SongMeta { title: string; project?: string; genre?: string | nu
 type State = {
   path: string | null; playing: boolean; error: string | null;
   meta: SongMeta | null; time: number; duration: number;
+  auditioning: boolean;   // a preview on hover, not something chosen to play
 };
 let audio: HTMLAudioElement | null = null;
-let state: State = { path: null, playing: false, error: null, meta: null, time: 0, duration: 0 };
+let state: State = { path: null, playing: false, error: null, meta: null, time: 0, duration: 0, auditioning: false };
+// The song that was in the player bar before a preview took over, put back (paused)
+// when the preview ends.
+let before: { path: string; meta: SongMeta | null; time: number } | null = null;
+let fade = 0;
 const subs = new Set<(s: State) => void>();
 
 function set(next: Partial<State>) {
@@ -40,6 +46,12 @@ function el(): HTMLAudioElement {
 
 export function toggle(path: string, meta?: SongMeta) {
   const a = el();
+  if (state.auditioning) {
+    window.clearInterval(fade); a.volume = 1; before = null;
+    // pressing play on the song being previewed keeps it playing, now for real
+    if (state.path === path) { set({ auditioning: false }); if (a.paused) a.play().catch(() => {}); return; }
+    set({ auditioning: false });
+  }
   if (state.path === path && !a.paused) { a.pause(); return; }
   if (state.path !== path) {
     a.src = api.exportAudioUrl(path);
@@ -69,9 +81,71 @@ export function stop() {
   if (audio) audio.pause();
 }
 
+// Preview a song: start about a third in, fade up, and leave the player bar alone.
+export function audition(path: string, meta: SongMeta) {
+  const a = el();
+  if (state.path === path && !a.paused) return;
+  if (state.path && !state.auditioning && !before) before = { path: state.path, meta: state.meta, time: a.currentTime };
+  window.clearInterval(fade);
+  a.volume = 0;
+  a.src = api.exportAudioUrl(path);
+  set({ path, error: null, meta, time: 0, duration: 0, auditioning: true });
+  const jump = () => { if (state.path === path && a.duration) a.currentTime = a.duration * AUDITION_FROM; };
+  a.addEventListener("loadedmetadata", jump, { once: true });
+  a.play().then(() => {
+    fade = window.setInterval(() => {
+      a.volume = Math.min(1, a.volume + 0.1);
+      if (a.volume >= 1) window.clearInterval(fade);
+    }, 30);
+  }).catch(() => set({ playing: false, auditioning: false }));
+}
+
+// Stop previewing `path` (if it is still the one previewing) and put back whatever
+// was in the player bar before, paused where it was.
+export function endAudition(path: string) {
+  if (!state.auditioning || state.path !== path || !audio) return;
+  window.clearInterval(fade);
+  audio.pause();
+  audio.volume = 1;
+  const back = before;
+  before = null;
+  if (back) {
+    audio.src = api.exportAudioUrl(back.path);
+    audio.addEventListener("loadedmetadata", () => { if (audio) audio.currentTime = back.time; }, { once: true });
+    audio.load();
+    set({ path: back.path, meta: back.meta, time: back.time, playing: false, auditioning: false });
+  } else {
+    close();
+  }
+}
+
+// Props for anything that stands for a song (a row, a cover): with previewing on,
+// resting the pointer on it or moving onto it from the keyboard plays a preview.
+export function useAudition(path: string | null | undefined, meta: SongMeta | undefined) {
+  const [on] = useAuditionMode();
+  const timer = useRef(0);
+  useEffect(() => { bindAuditionKeys(); }, []);
+  useEffect(() => () => { window.clearTimeout(timer.current); if (path) endAudition(path); }, [path]);
+  if (!on || !path || !meta) return {};
+  const start = () => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => { if (auditionOn()) audition(path, meta); }, AUDITION_DELAY);
+  };
+  const end = () => { window.clearTimeout(timer.current); endAudition(path); };
+  return { "data-audition": "", onMouseEnter: start, onMouseLeave: end, onFocus: start, onBlur: end };
+}
+
+// A row or card that previews its song on hover (see useAudition).
+export function AuditionDiv({ song, meta, ...rest }: React.HTMLAttributes<HTMLDivElement> & {
+  song?: string | null; meta?: SongMeta;
+}) {
+  const a = useAudition(song, meta);
+  return <div {...rest} {...a} />;
+}
+
 export function close() {
-  if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); }
-  set({ path: null, playing: false, meta: null, time: 0, duration: 0, error: null });
+  if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); audio.volume = 1; }
+  set({ path: null, playing: false, meta: null, time: 0, duration: 0, error: null, auditioning: false });
 }
 
 function usePlayerState() {
@@ -83,7 +157,8 @@ function usePlayerState() {
 export function usePlayer(path: string | null | undefined) {
   const s = usePlayerState();
   const mine = !!path && s.path === path;
-  return { playing: mine && s.playing, error: mine ? s.error : null, played: mine && s.duration ? s.time / s.duration : 0 };
+  return { playing: mine && s.playing, error: mine ? s.error : null, played: mine && s.duration ? s.time / s.duration : 0,
+    auditioning: mine && s.auditioning };
 }
 
 // ── waveforms: asked of the backup service first (WAV, AIFF); anything it can't
@@ -147,14 +222,32 @@ export function usePeaks(path: string | null | undefined) {
   return { ref, peaks };
 }
 
+// How long a song is, in seconds (0 until known): read from the file's header only.
+const lengths = new Map<string, number>();
+export function useSongLength(path: string | null | undefined): number {
+  const [len, setLen] = useState(path ? lengths.get(path) ?? 0 : 0);
+  useEffect(() => {
+    if (!path) { setLen(0); return; }
+    if (lengths.has(path)) { setLen(lengths.get(path)!); return; }
+    setLen(0);
+    const a = new Audio();
+    a.preload = "metadata";
+    const done = () => { if (a.duration && isFinite(a.duration)) { lengths.set(path, a.duration); setLen(a.duration); } };
+    a.addEventListener("loadedmetadata", done, { once: true });
+    a.src = api.exportAudioUrl(path);
+    return () => { a.removeEventListener("loadedmetadata", done); a.removeAttribute("src"); a.load(); };
+  }, [path]);
+  return len;
+}
+
 // A song's waveform that you can click to play from that point.
-export function SongWave({ path, meta, height = 26 }: { path: string; meta: SongMeta; height?: number }) {
+export function SongWave({ path, meta, height = 26, marks }: { path: string; meta: SongMeta; height?: number; marks?: WaveMark[] }) {
   const { ref, peaks } = usePeaks(path);
   const { played } = usePlayer(path);
   return (
     <div ref={ref} className="songwave" onClick={(e) => e.stopPropagation()}>
-      <Wave peaks={peaks} color={coverColor(meta.genre, meta.project ?? meta.title)} played={played} height={height}
-        onSeek={(f) => { if (state.path !== path) toggle(path, meta); setTimeout(() => seek(f), 60); }} />
+      <Wave peaks={peaks} color={coverColor(meta.genre, meta.project ?? meta.title)} played={played} height={height} marks={marks}
+        onSeek={(f) => { if (state.path !== path || state.auditioning) toggle(path, meta); setTimeout(() => seek(f), 60); }} />
     </div>
   );
 }
@@ -182,10 +275,11 @@ const clock = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60))
 export function PlayerBar() {
   const s = usePlayerState();
   const { peaks } = usePeaks(s.path);
+  const shown = !!s.path && !s.auditioning;
   useEffect(() => {
-    document.documentElement.classList.toggle("has-player", !!s.path);
-  }, [s.path]);
-  if (!s.path || !s.meta) return null;
+    document.documentElement.classList.toggle("has-player", shown);
+  }, [shown]);
+  if (!shown || !s.meta) return null;
   const m = s.meta;
   return (
     <div className="playerbar" role="region" aria-label="Now playing">
@@ -200,7 +294,7 @@ export function PlayerBar() {
       </button>
       <span className="playerbar__time">{clock(s.time)}</span>
       <Wave peaks={peaks} color={coverColor(m.genre, m.project ?? m.title)} played={s.duration ? s.time / s.duration : 0}
-        height={36} onSeek={seek} className="playerbar__wave" />
+        height={36} onSeek={seek} duration={s.duration} className="playerbar__wave" />
       <span className="playerbar__time">{s.duration ? clock(s.duration) : "–:––"}</span>
       <Meter peaks={peaks} playing={s.playing} duration={s.duration} now={now} />
       <button type="button" className="iconbtn" onClick={close} aria-label="Close the player"><Icon name="close" /></button>

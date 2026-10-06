@@ -1,5 +1,8 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useLook } from "../look";
+import { Icon } from "./Icon";
+import { useDialogFocus } from "./a11y";
+import { useLeave } from "./Desktop";
 
 // The "What's new in <version>" panel. It opens by itself the first time the app
 // starts after an update, and from the "What's new" button next to Check for
@@ -76,10 +79,13 @@ function Inline({ text }: { text: string }) {
 
 const SIDE: Record<string, string> = { New: "A", Better: "B", Fixed: "C" };
 
-export function WhatsNewPanel({ notes, upcoming = false, onClose }: {
+export function WhatsNewPanel({ notes, upcoming = false, onClose: close }: {
   notes: Notes; upcoming?: boolean; onClose: () => void;
 }) {
   const [look] = useLook();
+  const [leaving, onClose] = useLeave(close);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  useDialogFocus(boxRef);
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -89,8 +95,8 @@ export function WhatsNewPanel({ notes, upcoming = false, onClose }: {
 
   let n = 0;
   return (
-    <div className="wnew__scrim" onClick={onClose}>
-      <div className="wnew" role="dialog" aria-modal="true" aria-labelledby="wnew-title" onClick={(e) => e.stopPropagation()}>
+    <div className="wnew__scrim" data-leaving={leaving || undefined} onClick={onClose}>
+      <div ref={boxRef} className="wnew" role="dialog" aria-modal="true" aria-labelledby="wnew-title" onClick={(e) => e.stopPropagation()}>
         <header className="wnew__head">
           {look === "sleeve" && (
             <div className="wnew__disc" aria-hidden="true"><span className="mono">{notes.version}</span></div>
@@ -99,7 +105,7 @@ export function WhatsNewPanel({ notes, upcoming = false, onClose }: {
             <div className="eyebrow">{upcoming ? "Coming in the next update" : "You're on the latest version"}</div>
             <h2 id="wnew-title">What's new in <span className="mono wnew__ver">{notes.version}</span></h2>
           </div>
-          <button type="button" className="wnew__close" aria-label="Close" onClick={onClose}>✕</button>
+          <button type="button" className="wnew__close" aria-label="Close" onClick={onClose}><Icon name="close" size={14} /></button>
         </header>
 
         <div className="wnew__list">

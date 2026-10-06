@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { CopyButton } from "../components/Desktop";
+import { openMenu, CopyButton, toast, toastWarn } from "../components/Desktop";
+import { plainReason } from "../runBackup";
 import { makeApi } from "../api";
 import type { Snapshot, VerifyResult, SnapshotFile, SnapshotFilesResult, SnapshotDiff } from "../types";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
-import { fmtSize, fmtDate, shortPath, sourceLabel } from "../format";
+import { fmtSize, fmtDate, shortPath, sourceLabel, fmtCount } from "../format";
 import { runRelinkBackup, pointSampleToFile } from "../relink";
 import "../missing.css";
 import { osWords } from "../platform";
@@ -135,7 +136,10 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
       const r = await api.verify(id);
       setResults((m) => ({ ...m, [id]: r }));
       setSnaps((list) => list.map((s) => s.id === id ? { ...s, verified: r.ok ? 1 : 0 } : s));
-    } catch { /* surfaced as no result */ }
+    } catch (e: any) {
+      // say so: otherwise the button just stops spinning and nothing seems to happen
+      toastWarn(`Couldn't check this backup. ${plainReason(e?.message)}`, { label: "Try again", onClick: () => { verify(id); } });
+    }
     finally { setVerifying((s) => { const n = new Set(s); n.delete(id); return n; }); }
   }
   async function restore(id: number) {
@@ -197,10 +201,15 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
         <div className="row cols cols-head"><span /><span>Backup</span><span className="col-num">Files</span><span className="col-num">Size</span><span>Checked</span></div>
         {[...snaps].reverse().map((s) => (
           <button key={s.id} onClick={() => setSelId(s.id)} aria-pressed={selId === s.id}
+            onContextMenu={(e) => { setSelId(s.id); openMenu(e, [
+              { label: verifying.has(s.id) ? "Checking…" : "Check again", onClick: () => { verify(s.id); }, disabled: verifying.has(s.id) },
+              { label: restoring.has(s.id) ? "Restoring…" : "Restore…", onClick: () => { restore(s.id); }, disabled: restoring.has(s.id) },
+              { label: sharing.has(s.id) ? "Zipping…" : "Share as a zip", onClick: () => { share(s.id); }, disabled: sharing.has(s.id) },
+            ]); }}
             className={`row cols snaprow${selId === s.id ? " row--selected" : ""}`}>
             <span className={`dot${s.verified ? " dot--ok" : ""}`} />
-            <span className="col-trunc">{fmtDate(s.timestamp)}{s.label ? ` · ${s.label}` : ""}</span>
-            <span className="col-num">{s.file_count}</span>
+            <span className="col-trunc" title={s.label ? `${fmtDate(s.timestamp)} · ${s.label}` : undefined}>{fmtDate(s.timestamp)}{s.label ? ` · ${s.label}` : ""}</span>
+            <span className="col-num">{fmtCount(s.file_count)}</span>
             <span className="col-num">{fmtSize(s.total_size)}</span>
             <span className={s.verified ? "" : "faint"}>{s.verified ? "Opens, files match" : "Not checked"}</span>
           </button>
@@ -213,7 +222,7 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
             <div style={{ minWidth: 0 }}>
               <h2 style={{ margin: 0 }}>{fmtDate(sel.timestamp)}{sel.label ? ` · ${sel.label}` : ""}</h2>
               <div className="sub" style={{ margin: "5px 0 0", fontSize: 12.5 }}>
-                {sel.file_count} file{sel.file_count === 1 ? "" : "s"} · {fmtSize(sel.total_size)}
+                {fmtCount(sel.file_count)} file{sel.file_count === 1 ? "" : "s"} · {fmtSize(sel.total_size)}
                 {groups.gathered.length > 0 && (
                   <> · {groups.gathered.length} gathered from {locations} location{locations === 1 ? "" : "s"}</>
                 )}

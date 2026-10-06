@@ -4,9 +4,11 @@ import { isTyping } from "./nav";
 // Everyday desktop conveniences, the page side. SHARED FILE: the same file lives in
 // Backups and Uploader (electron/src/desktop.ts); change both together.
 //   - things remembered between launches (the last page, sort and filters)
-//   - keyboard shortcuts: Cmd/Ctrl+F search, Cmd/Ctrl+, Settings, Space play/pause,
+//   - keyboard shortcuts: Cmd/Ctrl+K find anything, Cmd/Ctrl+F search, Cmd/Ctrl+, Settings, Cmd/Ctrl+1… pages,
+//     Space play/pause,
 //     Escape closes the open project, track or crate
 //   - copy to the clipboard, progress on the dock / taskbar icon, drag and drop
+//   - window glass: marks <html> when the window is see-through (see lazy-ui.css)
 
 const bridge = () => (window as any).ablebackup || (window as any).lazyupload;
 export const IS_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent);
@@ -31,7 +33,13 @@ export function keep(key: string, value: unknown) {
 
 // ── keyboard shortcuts ───────────────────────────────────────────────────────
 
-export type Command = "find" | "settings" | "back" | "forward" | "play" | "whats-new" | "shortcuts";
+export type Command = "find" | "palette" | "settings" | "back" | "forward" | "play" | "whats-new" | "shortcuts" | `page-${number}`;
+
+// "page-2" → 2: Cmd/Ctrl + a number opens that page of the sidebar, top to bottom.
+export function pageNumber(cmd: Command): number | null {
+  const m = /^page-(\d)$/.exec(cmd);
+  return m ? Number(m[1]) : null;
+}
 
 // Elements that use Space themselves (buttons, ticks, menus), so Space doesn't play there.
 function usesSpace(t: EventTarget | null): boolean {
@@ -48,7 +56,10 @@ export function shortcutFor(
   const mod = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
   if (mod && !e.altKey && !e.shiftKey) {
     if (e.key === "f" || e.key === "F" || e.code === "KeyF") return "find";
+    if (e.key === "k" || e.key === "K" || e.code === "KeyK") return "palette";
     if (e.key === "," || e.code === "Comma") return "settings";
+    const digit = /^Digit([1-9])$/.exec(e.code)?.[1] ?? (/^[1-9]$/.test(e.key) ? e.key : null);
+    if (digit) return `page-${Number(digit)}`;
     return null;
   }
   if ((e.key === " " || e.code === "Space") && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
@@ -71,13 +82,16 @@ export function focusSearch(): boolean {
 export function shortcutList(isMac = IS_MAC): { keys: string; what: string }[] {
   const mod = isMac ? "Cmd" : "Ctrl";
   return [
+    { keys: `${mod} + K`, what: "Find anything: a page, project, track or action" },
     { keys: `${mod} + F`, what: "Jump to the search box" },
     { keys: `${mod} + ,`, what: "Open Settings" },
+    { keys: `${mod} + 1, 2, 3…`, what: "Go to a page in the sidebar, counting from the top" },
     { keys: "Space", what: "Play or pause the song in the player" },
     { keys: "Esc", what: "Close a panel, menu or the open page" },
     { keys: isMac ? "Cmd + [   Cmd + ]" : "Alt + Left   Alt + Right", what: "Back and forward (or the mouse's side buttons)" },
     { keys: "Right-click", what: "More actions on a project or track" },
     { keys: `${mod} + W`, what: "Close the window (the app keeps running in the tray)" },
+    { keys: `${mod} + Shift + N`, what: "Open or close the narrow window that sits beside your music program" },
   ];
 }
 
@@ -227,4 +241,17 @@ export function isInside(folder: string, parents: string[]): boolean {
 export function baseName(p: string): string {
   const parts = p.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] || p;
+}
+
+// ── window glass ─────────────────────────────────────────────────────────────
+
+// The window's see-through material: "vibrancy" (Mac), "mica" (Windows 11) or "none"
+// (see windowMaterial in desktop.js). Shown as data-material on <html> so the sidebar
+// only turns see-through when the desktop really is behind it.
+export function windowMaterial(): "vibrancy" | "mica" | "none" {
+  const m = typeof window !== "undefined" ? bridge()?.material : undefined;
+  return m === "vibrancy" || m === "mica" ? m : "none";
+}
+if (typeof document !== "undefined" && windowMaterial() !== "none") {
+  document.documentElement.dataset.material = windowMaterial();
 }

@@ -33,7 +33,7 @@
 
 /* Sleeve: rounder, with a big poster heading */
 [data-look="sleeve"] .welcome { border-radius: 14px; }
-[data-look="sleeve"] .welcome__body > h1 { font: 400 42px/1 var(--display); letter-spacing: 0.02em; margin-bottom: 10px; }
+[data-look="sleeve"] .welcome__body > h1 { font: 700 34px/1.1 var(--font); letter-spacing: -0.02em; margin-bottom: 10px; }
 [data-look="sleeve"] .welcome__seg { height: 4px; border-radius: 999px; }
 [data-look="sleeve"] .welcome .lookpick__opt { border-radius: 10px; }
 
@@ -50,7 +50,7 @@
 .suggest__row:not(.suggest__row--on) .suggest__count { opacity: 0.5; }
 .suggest__row--on .suggest__count { color: var(--accent-2); }
 [data-look="crate"] .suggest { border-radius: 0; }
-[data-look="crate"] .suggest__row:nth-child(even) { background: #111316; }
+[data-look="crate"] .suggest__row:nth-child(even) { background: var(--zebra-solid); }
 [data-look="crate"] .suggest__row--on { box-shadow: inset 3px 0 0 var(--accent); }
 [data-look="sleeve"] .suggest { border: 0; gap: 8px; overflow: visible; }
 [data-look="sleeve"] .suggest__row { border: 1px solid var(--border-strong); border-radius: 10px; padding: 13px 16px; }

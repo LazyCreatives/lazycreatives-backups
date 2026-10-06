@@ -7,12 +7,13 @@ import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { PlayButton, SongWave } from "../components/Player";
 import { EmptyState } from "../components/SlothSpot";
+import { fmtDay } from "../format";
 
 const api = makeApi();
 const bridge = () => (window as any).ablebackup;
 
 const fmtWhen = (secs: number | null) =>
-  secs ? new Date(secs * 1000).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  secs ? fmtDay(secs * 1000, { time: true }) : "";
 
 const folderOf = (p: string) => p.split(/[\\/]/).filter(Boolean).slice(-2, -1)[0] ?? "";
 

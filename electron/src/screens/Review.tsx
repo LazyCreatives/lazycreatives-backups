@@ -75,8 +75,8 @@ export function Review({ pending, onStarted, onCancel }: {
           {more > 0 && <span className="receipt__more mono">+{more}</span>}
         </div>
         <div className="receipt__facts">
-          <div><span className="receipt__big display">{pending.count}</span><span className="faint">project{pending.count === 1 ? "" : "s"}</span></div>
-          <div><span className="receipt__big display">{fmtSize(pending.size)}</span><span className="faint">to copy at most</span></div>
+          <div><span className="receipt__big">{pending.count}</span><span className="faint">project{pending.count === 1 ? "" : "s"}</span></div>
+          <div><span className="receipt__big">{fmtSize(pending.size)}</span><span className="faint">to copy at most</span></div>
           <div className="receipt__dest">
             <span className="faint">Kept in</span>
             <span className="mono col-trunc" title={dest}>{dest ? `${dest}/AbletonBackups` : "Not set"}</span>

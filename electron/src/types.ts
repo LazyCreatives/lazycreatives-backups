@@ -175,7 +175,10 @@ export interface Entitlement {
 }
 export interface JobStatus {
   state: "running" | "done" | "error";
-  result?: { timestamp?: string; ok_count?: number; error_count?: number; path?: string };
+  result?: {
+    timestamp?: string; ok_count?: number; error_count?: number; skipped_count?: number; path?: string;
+    errors?: { project_name: string; path?: string; error: string }[];  // which projects failed, and why
+  };
   error?: string;
 }
 export type ProgressEvent =

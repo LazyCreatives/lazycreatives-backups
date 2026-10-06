@@ -1,10 +1,49 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { copyText, shortcutList } from "../desktop";
 import { Icon } from "./Icon";
+import { useDialogFocus } from "./a11y";
 
 // Everyday desktop pieces for the page. SHARED FILE: the same file lives in Backups
 // and Uploader (electron/src/components/Desktop.tsx); change both together. Styles
 // are in lazy-ui.css (.ctxmenu, .copybtn, .dropzone, .toast, .keys, .confirm), in both looks.
+
+// ── pop-ups that fade out ────────────────────────────────────────────────────
+
+const LEAVE_POP_MS = 140;  // --dur-quick in lazy-ui.css
+const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Close a pop-up with a short fade instead of in one frame: `leave(...)` marks it as
+// leaving (put data-leaving on the scrim, see lazy-ui.css), then calls `close(...)` once
+// the fade is done. With reduced motion it closes straight away.
+export function useLeave<A extends unknown[]>(close: (...a: A) => void): [boolean, (...a: A) => void] {
+  const [leaving, setLeaving] = useState(false);
+  const going = useRef(false);
+  const leave = (...a: A) => {
+    if (going.current) return;
+    if (reducedMotion()) { close(...a); return; }
+    going.current = true;
+    setLeaving(true);
+    setTimeout(() => { going.current = false; setLeaving(false); close(...a); }, LEAVE_POP_MS);
+  };
+  return [leaving, leave];
+}
+
+// The same for a pop-up its parent shows and hides: wrap the condition,
+// <Exit>{open && <Panel />}</Exit>, and the panel stays a moment after `open` goes
+// false, marked data-leaving so its fade-out can play. It can't be clicked meanwhile.
+export function Exit({ children }: { children: ReactNode }) {
+  const last = useRef<ReactNode>(null);
+  const [, redraw] = useState(0);
+  if (children) last.current = children;
+  const leaving = !children && last.current != null;
+  useEffect(() => {
+    if (!leaving) return;
+    const t = setTimeout(() => { last.current = null; redraw((n) => n + 1); }, reducedMotion() ? 0 : LEAVE_POP_MS);
+    return () => clearTimeout(t);
+  }, [leaving]);
+  if (!children && !last.current) return null;
+  return <div className="exit" data-leaving={leaving || undefined} {...(leaving ? { inert: "" } : {})}>{children || last.current}</div>;
+}
 
 // ── right-click menu ─────────────────────────────────────────────────────────
 
@@ -70,7 +109,7 @@ export function ContextMenuHost() {
   if (!m) return null;
   return (
     <div ref={ref} className="ctxmenu" role="menu"
-      style={pos ? { left: pos.left, top: pos.top } : { left: m.x, top: m.y, visibility: "hidden" }}
+      style={pos ? { left: pos.left, top: pos.top, transformOrigin: `${m.x - pos.left}px ${m.y - pos.top}px` } : { left: m.x, top: m.y, visibility: "hidden" }}
       onContextMenu={(e) => e.preventDefault()}>
       {m.items.map((it, i) => it === "-"
         ? <div key={`sep${i}`} className="ctxmenu__sep" role="separator" />
@@ -107,33 +146,67 @@ export function CopyButton({ text, what = "path", size = 14, className = "" }: {
 
 // ── little messages along the bottom ─────────────────────────────────────────
 
-type ToastMsg = { id: number; text: string; action?: { label: string; onClick: () => void } };
+// Up to three at once, newest in front and the older ones tucked just behind it.
+// Pointing at the stack fans it out and holds every message until the pointer leaves.
+// A message saying something went wrong gets the warning mark instead of the tick.
+type Tone = "ok" | "warn";
+type ToastMsg = { id: number; text: string; action?: { label: string; onClick: () => void }; tone: Tone };
 let toastSeq = 0;
-const toastSubs = new Set<(t: ToastMsg | null) => void>();
+const toastSubs = new Set<(t: ToastMsg) => void>();
+const MAX_TOASTS = 3;
+const LEAVE_MS = 220;
 
 // Show a one-line message for a few seconds, with an optional button.
-export function toast(text: string, action?: ToastMsg["action"]) {
-  const msg = { id: ++toastSeq, text, action };
+export function toast(text: string, action?: ToastMsg["action"], tone: Tone = "ok") {
+  const msg = { id: ++toastSeq, text, action, tone };
   toastSubs.forEach((f) => f(msg));
 }
 
+// The same, for something that went wrong (a failed backup, a folder that couldn't be added).
+export function toastWarn(text: string, action?: ToastMsg["action"]) {
+  toast(text, action, "warn");
+}
+
+type Shown = ToastMsg & { leaving?: boolean };
+
 export function ToastHost() {
-  const [msg, setMsg] = useState<ToastMsg | null>(null);
-  useEffect(() => { toastSubs.add(setMsg); return () => { toastSubs.delete(setMsg); }; }, []);
+  const [list, setList] = useState<Shown[]>([]);
+  const [held, setHeld] = useState(false);
+  const leave = (id: number) => {
+    setList((l) => l.map((m) => m.id === id ? { ...m, leaving: true } : m));
+    setTimeout(() => setList((l) => l.filter((m) => m.id !== id)), LEAVE_MS);
+  };
   useEffect(() => {
-    if (!msg) return;
-    const t = setTimeout(() => setMsg(null), msg.action ? 7000 : 3500);
-    return () => clearTimeout(t);
-  }, [msg]);
-  if (!msg) return null;
+    const add = (m: ToastMsg) => setList((l) => [m, ...l.filter((x) => !x.leaving)].slice(0, MAX_TOASTS));
+    toastSubs.add(add);
+    return () => { toastSubs.delete(add); };
+  }, []);
+  // each message keeps its own few seconds, paused while the stack is pointed at
+  const live = list.filter((m) => !m.leaving);
+  useEffect(() => {
+    if (held) return;
+    const timers = live.map((m) => setTimeout(() => leave(m.id), (m.action || m.tone === "warn" ? 7000 : 3500)));
+    return () => timers.forEach(clearTimeout);
+  }, [held, live.map((m) => m.id).join()]);
+  if (!list.length) return null;
+  let depth = 0;
   return (
-    <div className="toast" role="status" key={msg.id}>
-      <Icon name="check" size={15} />
-      <span className="toast__text">{msg.text}</span>
-      {msg.action && (
-        <button type="button" className="toast__btn" onClick={() => { setMsg(null); msg.action!.onClick(); }}>{msg.action.label}</button>
-      )}
-      <button type="button" className="iconbtn toast__x" aria-label="Dismiss" onClick={() => setMsg(null)}><Icon name="close" size={13} /></button>
+    <div className={`toasts${held ? " toasts--open" : ""}`} onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)}>
+      {list.map((m) => {
+        const i = m.leaving ? depth : depth++;
+        return (
+          <div className={`toast toast--${m.tone}${i > 0 ? " toast--back" : ""}`} role={m.tone === "warn" ? "alert" : "status"} key={m.id}
+            data-leaving={m.leaving || undefined} aria-hidden={i > 0 && !held ? true : undefined}
+            style={{ "--i": i, zIndex: MAX_TOASTS - i } as CSSProperties}>
+            <Icon name={m.tone === "warn" ? "alert" : "check"} size={15} />
+            <span className="toast__text">{m.text}</span>
+            {m.action && (
+              <button type="button" className="toast__btn" onClick={() => { leave(m.id); m.action!.onClick(); }}>{m.action.label}</button>
+            )}
+            <button type="button" className="iconbtn toast__x" aria-label="Dismiss" onClick={() => leave(m.id)}><Icon name="close" size={13} /></button>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -155,7 +228,9 @@ export function ConfirmHost() {
   const [c, setC] = useState<ConfirmState>(null);
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => { confirmSubs.add(setC); return () => { confirmSubs.delete(setC); }; }, []);
-  const done = (ok: boolean) => { c?.resolve(ok); setC(null); };
+  const [leaving, leave] = useLeave((ok: boolean) => { c?.resolve(ok); setC(null); });
+  const done = (ok: boolean) => leave(ok);
+  useDialogFocus(ref, !!c);
   useEffect(() => {
     if (!c) return;
     // the safe choice has focus, so a stray Enter never deletes anything
@@ -166,7 +241,7 @@ export function ConfirmHost() {
   }, [c]);
   if (!c) return null;
   return (
-    <div className="wnew__scrim" onClick={() => done(false)}>
+    <div className="wnew__scrim" data-leaving={leaving || undefined} onClick={() => done(false)}>
       <div ref={ref} className={`wnew confirm${c.danger ? " confirm--danger" : ""}`} role="alertdialog" aria-modal="true"
         aria-labelledby="confirm-title" onClick={(e) => e.stopPropagation()}>
         <div className="confirm__body">
@@ -200,21 +275,24 @@ export function DropZone({ show, title, hint }: { show: boolean; title: string; 
 
 // ── Help → Keyboard shortcuts ────────────────────────────────────────────────
 
-export function ShortcutsPanel({ onClose }: { onClose: () => void }) {
+export function ShortcutsPanel({ onClose: close }: { onClose: () => void }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [leaving, onClose] = useLeave(close);
+  useDialogFocus(ref);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="wnew__scrim" onClick={onClose}>
-      <div className="wnew keys" role="dialog" aria-modal="true" aria-labelledby="keys-title" onClick={(e) => e.stopPropagation()}>
+    <div className="wnew__scrim" data-leaving={leaving || undefined} onClick={onClose}>
+      <div ref={ref} className="wnew keys" role="dialog" aria-modal="true" aria-labelledby="keys-title" onClick={(e) => e.stopPropagation()}>
         <header className="wnew__head">
           <div className="wnew__heading">
             <div className="eyebrow">Help</div>
             <h2 id="keys-title">Keyboard shortcuts</h2>
           </div>
-          <button type="button" className="wnew__close" aria-label="Close" onClick={onClose}>✕</button>
+          <button type="button" className="wnew__close" aria-label="Close" onClick={onClose}><Icon name="close" size={14} /></button>
         </header>
         <div className="keys__list">
           {shortcutList().map((s) => (

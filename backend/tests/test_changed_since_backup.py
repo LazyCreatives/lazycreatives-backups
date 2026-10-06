@@ -42,3 +42,18 @@ def test_old_catalog_falls_back_to_backup_time(tmp_path):
                             "missing_count": 0}], "t")
     cat.record_snapshot("P", "2026-10-05_1000", 1, 1, "ok", [], project_id="p")
     assert _lib(cat)["P"]["changed"] is False
+
+
+def test_library_reports_the_save_time_as_it_is_now(tmp_path):
+    """A project saved in the music program since the last scan reads as just worked on
+    (the narrow window and Home's "Recently worked on" pick it up without a re-scan)."""
+    als = write_als(tmp_path / "Q" / "Q.als", [])
+    os.utime(als, (1_000, 1_000))
+    cat = Catalog(tmp_path / "c.db")
+    cat.upsert_discovered([{"project_id": "q", "name": "Q", "path": str(als), "dir": str(als.parent),
+                            "daw": "ableton", "owner": "x", "size": 1, "mtime": 1_000,
+                            "missing_count": 0}], "t")
+    os.utime(als, (5_000, 5_000))                            # saved again, no scan since
+    assert _lib(cat)["Q"]["mtime"] == 5_000
+    als.unlink()                                             # moved away: keeps the last known time
+    assert _lib(cat)["Q"]["mtime"] == 1_000

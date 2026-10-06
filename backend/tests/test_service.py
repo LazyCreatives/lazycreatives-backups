@@ -175,6 +175,9 @@ def test_run_backup_isolates_project_errors(tmp_path, monkeypatch):
 
     assert summary["ok_count"] == 0
     assert summary["error_count"] == 1
+    # the app shows which project failed and why
+    assert summary["errors"] == [{"project_name": "Song", "path": str(tmp_path / "Song Project" / "Song.als"),
+                                  "error": "disk full"}]
     row = cat.snapshots_for("Song")[0]
     assert row["status"] == "error"
     assert "disk full" in row["error"]

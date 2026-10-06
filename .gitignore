@@ -33,3 +33,7 @@ electron/rclone/
 # Impeccable design checker: per-machine state
 .impeccable/
 .claude/settings.local.json
+
+# Playwright picture tests (electron/e2e): run output, not baselines
+electron/e2e/test-results/
+electron/e2e/playwright-report/

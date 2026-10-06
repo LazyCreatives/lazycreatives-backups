@@ -17,11 +17,12 @@ function rng(seed: number) {
 const GRAIN = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAFi0lEQVR42k2X53bqMBCEhU03vRtCLwYCoRgI7/9i9+44n87hhyJjydLuzOxIcf/+/atYOzjn8taG1hbWAmsTe693BetD6xvWNjxrvKNvebe2vsj3et5YS6zNbexmbWptaK1p706subT2dvbnx1rHXpasrxLQ2H4frV3tuW9tZ21LQG3rtUiowPWtFrKWszbwG1ur2++y9bH1v9YK9vylYLONnXvovQI460NrylCTKmyusad1Lev1c2x9wqLKSAvH9jwDFQX3RSI7EBESK5DReEKC2m+muQ54ZkRYtP7C4JIsKiAhmk5AJ6RuWtz6PVmnZHWxvgYaOdbWb2U/hMoG7+oKICELLaCMR/qNBgoEqEV/rFW1qLUt85XRkSBzBKHAJwqGAJTEgiRaoBqyruZkEOmjX7ISfOojApGoejZ2t17cSUht5iwQ4BV+E1D6YtMT409RZ63EWJ4gMwTuLHaGH20ytXZBQMpakC8QpKDrCRGEJ1GJ+xH0LDJu/4IVgj7YNhS90M4qEzMwh0SkSeI0RRP5TKl/AfVZLGCDFih1tTFluaBKUsYd1Cn4prUilK1ISNX0JwiyDflob88KSL+PlNEOSANrERs56ntNjb/hPCJgj0ATNMS5UN5qPwXvUHGBja74giYp8oB+iagKILAnmycc72lzgkqhUOWsqhIaL4JUwpondL8dwkuo0z7mkuADIRkIqm9MR+qdIs4uQu2wYDsrrb+1KpTdDl1JYw1MK6ai5g5D+cFoRijVgYYyFN9nnwkbqVSHzHmhnRA0xfUEsd7ZPKX/YZ5Eq0TlmFkmUvmYDFtE2IVbBeDPCl92X2w+4XtBGzHWI7iUSriQ2IVK6UPVBlfNxNEEiQkZlTGiLTYcE/UdJ6tQUgVE2yCjMqV4woq7bNqA0ikl7P0l58+CEPt8o9wG/M1R/hm114Dzgk3X0FCDb66IM+HdGGOLM9P5ex5DaZQlBf/KpM/LgFp9YjxVshTPA7hck5mOWo/EmYBW9EOMqsmaAQ7YokJ2WZJw0kLBDk8vkvUNIU2ANwKBB9n0gPXOPSJGhHnOlyoB50GljtjPrFV2lJQiuiHCDdFfyKSJyLxN99BEE3GK+wCO3/j+EFNqYGY7glgg4BtJKqBMsRU4DTCcB1URkU1AReS9nWI8B4IZQ9uY6hkDvx+vY/X+lIxJPKuCkCwKiKvCDWlJ6YnrK4p++gsIvO85khMyjwh2yXcl0Atw2hK3qzWGpzWzcjtyTEa+XIDqCecxwQyANwXOgDK++SsaGlJANWhQMt9eB+giQbwVx6lUJ4seNERM/Mb17mSz52BaI1zvjkPvjFzLIuy5S5Vd8IoO9ISUeOJV74BDJrJCqVt0kXyU4pkN8lxgYirnALQ7xOmpjaHAn7IVhP3AVfP+NBRUZ3i7oIcIpTa4aF6Y0waZDv5RZdMqi/dZR273QngbSjXmouqvcHJLN+C0y6HKE5DlcT4FV6SGS/D+YIMy9tzBtFropIMx9bgBJdCYQ6ADkll5WDdwrt8dKJnD0xxX3DB24n2Jfs8NOMYHJlzDuxxWI25UKzb2989jRi3qF99l1O+vVVeOzybcVjGhFmd5Df+4c4mZgNge236zngOFE7xP0cKOhLObyolT8EjJHPjno4dGxmx0Rv2zDzgPlOEIqnyAS0xrBR0L0FpSCXU0kd1u9yw88v/lMGnLov7imZJBlZtuytH6AN4pyN2gxQt2wryU9weSm/t/TI7cA18E8EC1S4I7IsIDQtui8IgF68z3a9WAfMmF5MgJ2qKqZnjJzLFx8+P+P/04jof4e0QgOe6GKXzOqYoz430E1oeWz+p4cNg98I+F/+fUR9/HCX1pxfAXQ4Mvvx16SBBcnaz31PUvmjlQDXe8/5fDLUA/qqr5fxnFXO6VsoLWAAAAAElFTkSuQmCC";
 const FONT = "Schibsted Grotesk, system-ui, sans-serif";
 
-export function Cover({ name, genre, size, className = "", label = true }: {
+export function Cover({ name, genre, size, className = "", label = true, colour }: {
   name: string; genre?: string | null; size?: number; className?: string; label?: boolean;
+  colour?: string;  // draw in this colour instead of the genre's (a crate colour being tried)
 }) {
   const id = useId().replace(/:/g, "");
-  const c = coverColor(genre, name);
+  const c = colour ?? coverColor(genre, name);
   const h = hash(name);
   const r = rng(h);
   const kind = h % 4;

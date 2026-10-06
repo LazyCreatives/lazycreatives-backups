@@ -9,38 +9,58 @@
 }
 
 .lib-row { padding-right: 14px; }
-/* tick · stripe · play · cover · name · latest song · BPM · backup · last backup · main button · menu */
-.lib-cols { --cols: 18px 4px 28px 36px minmax(0, 1fr) minmax(120px, 190px) 44px 128px 118px 72px 32px; }
-.lib-cols--nosongs { --cols: 18px 4px 28px 36px minmax(0, 1fr) 150px 44px 128px 118px 72px 32px; }
+/* stripe · tick · play · cover · pin · name · rating · latest song · BPM · backup · last backup · main button · menu
+   (the same order as Uploader's lists: the genre stripe first, then the tick) */
+.lib-cols { --cols: 4px 24px 28px 36px 24px minmax(0, 1fr) 78px minmax(120px, 190px) 44px 128px 118px 150px 32px; }
+.lib-cols--nosongs { --cols: 4px 24px 28px 36px 24px minmax(0, 1fr) 78px 150px 44px 128px 118px 150px 32px; }
 .lib-cols.cols-head { padding-right: 14px; }
-@media (max-width: 1100px) {
-  .lib-cols, .lib-cols--nosongs { --cols: 18px 4px 28px 36px minmax(0, 1fr) 0 44px 128px 118px 72px 32px; }
-  .lib-cols > :nth-child(6) { visibility: hidden; }
+/* the pin star has its own column, so the "Project" heading starts where the names do */
+.lib-cols.lib-row, .lib-cols.cols-head { column-gap: 10px; }
+/* Narrower windows: the least needed columns step out (latest song, then last backup,
+   then play and BPM) so the project name always keeps room and the row's button stays
+   on screen. A hidden cell leaves the grid, so its gap goes with it. */
+@media (max-width: 1360px) {
+  .lib-cols, .lib-cols--nosongs { --cols: 4px 24px 28px 36px 24px minmax(0, 1fr) 78px 44px 128px 118px 150px 32px; }
+  .lib-cols > :nth-child(8) { display: none; }
 }
-.lib-tickcell { display: flex; align-items: center; justify-content: center; }
+@media (max-width: 1099px) {
+  .lib-cols, .lib-cols--nosongs { --cols: 4px 24px 28px 36px 24px minmax(0, 1fr) 44px 128px 150px 32px; }
+  .lib-cols > :nth-child(7), .lib-cols > :nth-child(11) { display: none; }
+}
+@media (max-width: 1040px) {
+  .lib-cols, .lib-cols--nosongs { --cols: 4px 24px 36px 24px minmax(0, 1fr) 128px 150px 32px; }
+  .lib-cols > :nth-child(3), .lib-cols > :nth-child(9) { display: none; }
+}
+.lib-find__view { margin-left: auto; display: flex; gap: 8px; }
+.sleeve__meta .rating { margin-top: 2px; }
+.lib-tickcell, .lib-pincell { display: flex; align-items: center; justify-content: center; }
 .lib-tick { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+/* the tick draws at 15px but takes clicks over the 24px square around it */
+.lib-tickhit { display: inline-grid; place-items: center; width: 24px; height: 24px; cursor: pointer; }
 /* ticks stay quiet until you point at a row or have ticked something */
-.lib-row .lib-tick { opacity: 0; transition: opacity var(--dur-fast) ease; }
+.lib-row .lib-tick { opacity: 0; transition: opacity var(--dur-quick) ease; }
 .lib-row:hover .lib-tick, .lib-row .lib-tick:focus-visible, .lib-row .lib-tick:checked,
-.table--picking .lib-row .lib-tick { opacity: 1; }
+.lib-row:focus-within .lib-tick, .table--picking .lib-row .lib-tick { opacity: 1; }
 .lib-row--picked { background: var(--accent-soft) !important; }
 .lib-namerow { display: flex; align-items: center; gap: 6px; min-width: 0; }
 
-/* pin star: shows on hover, stays lit once pinned */
+/* pin star: shows on hover, stays lit once pinned (a 24px target around a 14px star) */
 .pinbtn {
-  display: inline-grid; place-items: center; width: 20px; height: 20px; flex-shrink: 0; padding: 0;
+  display: inline-grid; place-items: center; width: 24px; height: 24px; flex-shrink: 0; padding: 0;
   border: none; background: transparent; color: var(--text-faint); cursor: pointer; border-radius: 4px;
-  opacity: 0; transition: opacity var(--dur-fast) ease, color var(--dur-fast) ease;
+  opacity: 0; transition: opacity var(--dur-quick) ease, color var(--dur-quick) ease;
 }
-.lib-row:hover .pinbtn, .sleeve:hover .pinbtn, .pinbtn:focus-visible, .pinbtn--on { opacity: 1; }
+.lib-row:hover .pinbtn, .sleeve:hover .pinbtn, .lib-row:focus-within .pinbtn, .sleeve:focus-within .pinbtn,
+.pinbtn:focus-visible, .pinbtn--on { opacity: 1; }
 .pinbtn:hover { color: var(--text); }
 .pinbtn--on { color: var(--warn); }
 .pinbtn--on:hover { color: var(--warn); }
 .sleeve__acts { display: inline-flex; align-items: center; gap: 2px; }
 
-/* Sleeve: a tick in the cover's top-left corner */
-.sleeve__tick { position: absolute; left: 10px; top: 10px; opacity: 0; transition: opacity var(--dur-fast) ease; }
-.sleeve:hover .sleeve__tick, .sleeve--picking .sleeve__tick, .sleeve__tick:focus-within { opacity: 1; }
+/* Sleeve: a tick in the cover's top-left corner, faintly there so you can find it
+   without pointing at the cover first */
+.sleeve__tick { position: absolute; left: 7px; top: 7px; opacity: 0.4; transition: opacity var(--dur-quick) ease; }
+.sleeve:hover .sleeve__tick, .sleeve:focus-within .sleeve__tick, .sleeve--picking .sleeve__tick, .sleeve__tick:focus-within { opacity: 1; }
 .sleeve__tick .lib-tick { width: 18px; height: 18px; }
 .sleeve--selected { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -59,8 +79,8 @@
 .pickbar__clear { font-size: 13px; padding: 0 6px; }
 [data-look="crate"] .pickbar { border-radius: 0; }
 [data-look="crate"] .pickbar .btn { border-radius: 0; }
-[data-look="sleeve"] .pickbar { border-radius: 999px; }
-[data-look="sleeve"] .pickbar .btn { border-radius: 999px; }
+[data-look="sleeve"] .pickbar { border-radius: var(--radius-lg); }
+[data-look="sleeve"] .pickbar .btn { border-radius: var(--radius); }
 .lib-sub { color: var(--text-faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib-state { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); min-width: 0; }
 .lib-row[role="button"] { cursor: pointer; }
@@ -68,6 +88,9 @@
 .lib-status { margin: 0; font-size: 13px; color: var(--text-faint); white-space: nowrap; }
 .lib-status--warn { color: var(--warn); }
 .lib-status--ok { color: var(--text-dim); }
+.lib-status--error { color: var(--danger); }
+/* why a backup from this card didn't work, under the name */
+.lib-failed { margin-top: 3px; font-size: 12px; line-height: 1.35; color: var(--danger); }
 .lib-status.col-num { font-size: 12.5px; color: var(--text-dim); }
 
 /* "more" menu */
@@ -159,7 +182,7 @@
 .lib-search__x:hover { color: var(--text); background: var(--surface-3); }
 .lib-find__n { color: var(--text-faint); font-family: var(--font-mono); font-size: 12px; margin-left: 4px; }
 .seg__opt--on .lib-find__n { color: var(--text-dim); }
-.lib-pick { width: auto; min-width: 128px; height: 30px; padding-top: 0; padding-bottom: 0; font-size: 12.5px; }
+.lib-pick { width: auto; min-width: 116px; height: 30px; padding-top: 0; padding-bottom: 0; font-size: 12.5px; }
 .lib-pick--on { border-color: var(--accent); color: var(--text); }
 .lib-find__count { margin-left: auto; font-size: 12.5px; color: var(--text-dim); white-space: nowrap; }
 .lib-find__count b { color: var(--text); font-weight: 600; }
@@ -169,6 +192,12 @@
   color: var(--text-dim); font: 500 12.5px var(--font); cursor: pointer;
 }
 .lib-find__clear:hover { color: var(--text); border-color: var(--border-interactive); }
+
+/* big libraries: rows and covers off screen aren't drawn until you scroll to them */
+.lib-row { content-visibility: auto; contain-intrinsic-size: auto 52px; }
+.sleeves > .sleeve { content-visibility: auto; contain-intrinsic-size: auto 176px auto 260px; }
+/* …but an open ··· menu hangs outside its row, so that row is always drawn in full */
+.lib-row:has(.lib-menu--open), .sleeves > .sleeve:has(.lib-menu--open) { content-visibility: visible; }
 
 /* Crate table headings sort the table: click one, click again to flip it */
 .lib-sort {

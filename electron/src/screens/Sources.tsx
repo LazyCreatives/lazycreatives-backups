@@ -12,6 +12,8 @@ import { Icon, type IconName } from "../components/Icon";
 import { SlothSpot } from "../components/SlothSpot";
 import { Cover } from "../components/Cover";
 import { genreColor, useLook } from "../look";
+import { GlyphPicker } from "../components/Marks";
+import { ThemePicker } from "../components/LookPicker";
 import { UpdateCheck } from "../components/UpdateCheck";
 import { useEntitlement } from "../entitlement";
 import { fmtInterval, fmtClock, fmtSize } from "../format";
@@ -218,6 +220,12 @@ export function Sources() {
           ))}
         </div>
       </SetRow>
+      <SetRow title="Light or dark" help="Ink or paper, in either look. Match my computer follows your computer's own setting.">
+        <ThemePicker />
+      </SetRow>
+      <SetRow title="Rating mark" help="What ratings are drawn with. Rate a project from its row, or right-click it.">
+        <GlyphPicker />
+      </SetRow>
 
       <SetGroup title="Your music" />
       <SetRow title="Project folders" help="Backups looks in these folders for your projects.">
@@ -408,7 +416,7 @@ function LookThumb({ kind }: { kind: "crate" | "sleeve" }) {
     <div style={{ display: "grid", gap: 3 }}>
       {demo.slice(0, 3).map(([n, g], i) => (
         <div key={n} style={{ display: "grid", gridTemplateColumns: "3px 14px 1fr", gap: 6, alignItems: "center",
-          height: 16, background: i % 2 ? "#111316" : "transparent" }}>
+          height: 16, background: i % 2 ? "var(--zebra-solid)" : "transparent" }}>
           <span style={{ background: genreColor(g), alignSelf: "stretch" }} />
           <Cover name={n} genre={g} size={14} label={false} />
           <span style={{ height: 4, borderRadius: 2, background: genreColor(g), opacity: 0.6, width: `${60 + i * 12}%` }} />

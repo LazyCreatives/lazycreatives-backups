@@ -6,8 +6,14 @@
 //     dropped file from a dropped folder, for the page
 //   - on Windows, no white title bar: the page draws its own top strip (TitleBar in
 //     src/components/Desktop.tsx) and Windows draws its buttons over it
-const { app, Menu, clipboard, ipcMain, screen, shell } = require("electron");
+//   - Cut / Copy / Paste (and spelling fixes) when right-clicking text
+//   - window glass: the sidebar lets the desktop show through, frosted (Mac) or
+//     tinted by the wallpaper (Windows 11's Mica)
+//   - light or dark: the page's theme (Settings > Look) also colours the window, the
+//     Windows title strip and the system's own menus and glass
+const { app, Menu, clipboard, ipcMain, nativeTheme, screen, shell } = require("electron");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 // ── window size and place ─────────────────────────────────────────────────────
@@ -67,9 +73,58 @@ function windowStateOptions() {
 // There the window gets no title bar; the page's strip takes its place in the app's
 // ink colour, and Windows still draws minimise / maximise / close (with snapping) on
 // it. The colour matches --bg in lazy-ui.css. Mac and Linux keep their usual frame.
-const TITLE_BAR = { color: "#0B0E12", symbolColor: "#AAB4C0", height: 36 };
-function windowChromeOptions(platform = process.platform) {
-  return platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: TITLE_BAR } : {};
+const INK = "#0B0E12";
+const PAPER = "#EDEAE4";  // --bg in light mode (lazy-ui.css, html[data-theme="light"])
+const CLEAR = "#00000000";
+const TITLE_BAR = { color: INK, symbolColor: "#AAB4C0", height: 36 };
+const TITLE_BAR_LIGHT = { color: PAPER, symbolColor: "#3A424C", height: 36 };
+
+// ── light or dark ─────────────────────────────────────────────────────────────
+
+// The page picks Dark, Light or Match my computer (look.ts) and tells this side, so the
+// window opens in the right colour next time and the system's own pieces follow it.
+const themeFile = () => path.join(app.getPath("userData"), "theme.json");
+const CHOICES = ["dark", "light", "system"];
+
+// { choice, theme }: what was picked, and what it came out as ("light" or "dark").
+function savedTheme() {
+  try {
+    const s = JSON.parse(fs.readFileSync(themeFile(), "utf8"));
+    return { choice: CHOICES.includes(s.choice) ? s.choice : "dark", theme: s.theme === "light" ? "light" : "dark" };
+  } catch {
+    return { choice: "dark", theme: "dark" };
+  }
+}
+
+// The Windows title strip's colours for a theme, see-through when the window is glass.
+function titleBarFor(theme, glass) {
+  const bar = theme === "light" ? TITLE_BAR_LIGHT : TITLE_BAR;
+  return { ...bar, color: glass ? CLEAR : bar.color };
+}
+
+// ── window glass ──────────────────────────────────────────────────────────────
+
+// Which see-through material the window gets: "vibrancy" on a Mac, "mica" on Windows 11
+// (build 22621 and later; older Windows has no Mica), "none" elsewhere. The page is told
+// (--lc-material, data-material on <html>) and only then makes the sidebar and the title
+// strip see-through; everything else stays solid ink. Turning off transparency in the
+// system settings makes both materials plain again, with no change needed here.
+function windowMaterial(platform = process.platform, release = os.release()) {
+  if (platform === "darwin") return "vibrancy";
+  if (platform === "win32" && Number(String(release).split(".")[2] || 0) >= 22621) return "mica";
+  return "none";
+}
+
+function windowChromeOptions(platform = process.platform, material = windowMaterial(platform), theme = savedTheme().theme) {
+  const glass = material !== "none";
+  const opts = { backgroundColor: glass ? CLEAR : theme === "light" ? PAPER : INK };
+  if (platform === "win32") {
+    opts.titleBarStyle = "hidden";
+    opts.titleBarOverlay = titleBarFor(theme, glass);
+  }
+  if (material === "mica") opts.backgroundMaterial = "mica";
+  if (material === "vibrancy") Object.assign(opts, { vibrancy: "sidebar", visualEffectState: "followWindow" });
+  return opts;
 }
 
 // ── menu bar ──────────────────────────────────────────────────────────────────
@@ -112,6 +167,7 @@ function installAppMenu({ appName, website, getWindow }) {
         { role: "undo" }, { role: "redo" }, { type: "separator" },
         { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" },
         { type: "separator" },
+        { label: "Find anything…", ...pageKey("CmdOrCtrl+K"), click: send("palette") },
         { label: "Find", ...pageKey("CmdOrCtrl+F"), click: send("find") },
       ],
     },
@@ -141,9 +197,58 @@ function installAppMenu({ appName, website, getWindow }) {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// ── right-click in text ──────────────────────────────────────────────────────
+
+// Right-clicking a text box or selected text gives the usual Cut / Copy / Paste menu,
+// with spelling fixes for a misspelt word. The page's own menus (projects, tracks)
+// stop the click first, so this only shows where the page has none.
+function textMenuTemplate(params, isMac = process.platform === "darwin") {
+  const { isEditable, selectionText = "", misspelledWord = "", dictionarySuggestions = [], editFlags = {} } = params;
+  const hasText = selectionText.trim().length > 0;
+  if (!isEditable && !hasText) return [];
+  const items = [];
+  if (isEditable && misspelledWord) {
+    for (const word of dictionarySuggestions.slice(0, 4)) items.push({ label: word, replace: word });
+    items.push({ label: "Add to dictionary", learn: misspelledWord }, { type: "separator" });
+  }
+  if (isEditable) items.push({ role: "cut", enabled: !!editFlags.canCut });
+  items.push({ role: "copy", enabled: !!editFlags.canCopy || hasText });
+  if (isEditable) items.push({ role: "paste", enabled: !!editFlags.canPaste }, { type: "separator" }, { role: "selectAll" });
+  if (hasText && isMac) items.push({ type: "separator" }, { label: `Look up “${selectionText.trim().slice(0, 24)}”`, lookUp: true });
+  return items;
+}
+
+function installTextMenu(win) {
+  win.webContents.on("context-menu", (_e, params) => {
+    const template = textMenuTemplate(params).map((it) => {
+      if (it.replace) return { label: it.label, click: () => win.webContents.replaceMisspelling(it.replace) };
+      if (it.learn) return { label: it.label, click: () => win.webContents.session.addWordToSpellCheckerDictionary(it.learn) };
+      if (it.lookUp) return { label: it.label, click: () => win.webContents.showDefinitionForSelection() };
+      return it;
+    });
+    if (template.length) Menu.buildFromTemplate(template).popup({ window: win });
+  });
+}
+
 // ── helpers the page calls ────────────────────────────────────────────────────
 
 function registerDesktopIpc(getWindow) {
+  // Light or dark (Settings > Look): the system's menus, glass and dialogs follow it,
+  // and on Windows the title strip's colours too. Remembered for the next launch.
+  try { nativeTheme.themeSource = savedTheme().choice; } catch { /* before ready on old Electron: the page sends it again */ }
+  ipcMain.handle("set-theme", (_e, choice, theme) => {
+    const c = CHOICES.includes(choice) ? choice : "dark";
+    const t = theme === "light" ? "light" : "dark";
+    nativeTheme.themeSource = c;
+    try { fs.writeFileSync(themeFile(), JSON.stringify({ choice: c, theme: t })); } catch { /* read-only disk: skip */ }
+    const win = getWindow();
+    if (!win || win.isDestroyed()) return;
+    const glass = windowMaterial() !== "none";
+    if (!glass) win.setBackgroundColor(t === "light" ? PAPER : INK);
+    if (process.platform === "win32" && typeof win.setTitleBarOverlay === "function") {
+      try { win.setTitleBarOverlay(titleBarFor(t, glass)); } catch { /* no overlay on this window */ }
+    }
+  });
   ipcMain.handle("copy-text", (_e, text) => {
     if (typeof text !== "string" || !text) return false;
     clipboard.writeText(text);
@@ -185,4 +290,4 @@ function showWindow(win) {
   win.focus();
 }
 
-module.exports = { windowChromeOptions, windowStateOptions, savedWindowState, onAScreen, installAppMenu, registerDesktopIpc, showWindow };
+module.exports = { windowMaterial, windowChromeOptions, titleBarFor, savedTheme, textMenuTemplate, installTextMenu, windowStateOptions, savedWindowState, onAScreen, installAppMenu, registerDesktopIpc, showWindow };

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { backupAndWait } from "../runBackup";
 import { CopyButton } from "../components/Desktop";
 import { makeApi } from "../api";
 import type { LibraryItem } from "../types";
@@ -48,17 +49,10 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
   async function runBackup(opts: Record<string, unknown>, tag: string, okMsg: string) {
     setErr(null); setNote(null); setBusy(tag);
     try {
-      const { job_id } = await api.startBackup({
+      const res = await backupAndWait({
         als_paths: [item.path], portable: true, layout: "project_date", find_missing: true, ...opts,
-      });
-      for (;;) {
-        const st = await api.jobStatus(job_id);
-        if (st.state === "done" || st.state === "error") {
-          if (st.state === "error") throw new Error(st.error || "Backup failed.");
-          break;
-        }
-        await new Promise((r) => setTimeout(r, 1000));
-      }
+      }, 1000);
+      if (!res.ok) throw new Error(`Couldn't back it up. ${res.reason}`);
       const after = await load(true);
       onChanged?.();
       setNote(after.missing_count === 0
@@ -102,7 +96,7 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
               : recoverable > 0 && lost > 0
               ? <><span className="found">{recoverable} found in your library</span> · <span className="lost">{lost} need you to point them out</span></>
               : lost === 0
-              ? <span className="found">All {miss.length} are in your library — Fix now backs them up.</span>
+              ? <span className="found">All {miss.length} are in your library — Find missing samples backs them up.</span>
               : <span className="lost">{lost} couldn’t be found anywhere — point me to them.</span>}
           </div>
         </div>
@@ -112,7 +106,7 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
               {busy === "folder" ? "Searching…" : "Look in a folder…"}
             </Button>
             <Button onClick={fixNow} disabled={working}>
-              {busy === "fix" ? "Fixing…" : "Fix now"}
+              {busy === "fix" ? "Searching…" : "Find missing samples"}
             </Button>
           </div>
         )}

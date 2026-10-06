@@ -1,8 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { DUR } from "./motion";
 import type { GroupBy, CrateSort, DigSort, CrateGroup, Project } from "./types";
 import { toProjectFromLibrary, SLOTH_BLUE } from "./types";
+import type { LibraryItem } from "../../types";
+import { NO_FILTERS, applyFilters, type LibFilters } from "../../libraryFilter";
+import { useSmartCrates } from "../../smart";
+import { genreColor, genreColorsVersion } from "../../look";
+import { ratingOf, useRatings } from "../../marks";
 import { makeApi } from "../../api";
 import { useCrates } from "./hooks/useCrates";
 import { CrateControls } from "./CrateControls";
@@ -40,11 +45,12 @@ export function CrateView({ openKey, onOpenKey, onCloseKey, onOpenProject }: {
   const reduce = !!osReduce || manualReduce;
 
   const [projects, setProjects] = useState<Project[]>([]);
+  const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     let alive = true;
     api.library()
-      .then((lib) => { if (alive) setProjects(lib.projects.map(toProjectFromLibrary)); })
+      .then((lib) => { if (alive) { setItems(lib.projects); setProjects(lib.projects.map(toProjectFromLibrary)); } })
       .catch(() => { /* leave empty */ })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
@@ -54,6 +60,20 @@ export function CrateView({ openKey, onOpenKey, onCloseKey, onOpenProject }: {
   const [crateSort, setCrateSort] = useKept("crateSort");
   const [search, setSearch] = useKept("search");
   const crates = useCrates(projects, groupBy, crateSort, search);
+  // Smart crates saved in the Library: what fits each one right now
+  const saved = useSmartCrates<LibFilters>("library");
+  useRatings();
+  const rated = items.map((i) => ratingOf(i.project_id)).join();
+  const colours = genreColorsVersion();
+  const smart: CrateGroup[] = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return saved.map((c) => {
+      const f = { ...NO_FILTERS, ...c.filters };
+      const list = applyFilters(items, f).map(toProjectFromLibrary).filter((p) => !q || p.name.toLowerCase().includes(q));
+      const accent = f.genre && f.genre !== "-" ? genreColor(f.genre) : SLOTH_BLUE;
+      return { key: `smart:${c.id}`, label: c.name, accent, projects: list, count: list.length };
+    });
+  }, [saved, items, search, rated, colours]);
 
   const [active, setActive] = useKept("active");
   const [digSort, setDigSort] = useKept("digSort");
@@ -63,7 +83,7 @@ export function CrateView({ openKey, onOpenKey, onCloseKey, onOpenProject }: {
   const openGroup: CrateGroup | null =
     openKey === "__all__"
       ? { key: "__all__", label: "All records", accent: SLOTH_BLUE, projects, count: projects.length }
-      : crates.find((c) => c.key === openKey) ?? null;
+      : crates.find((c) => c.key === openKey) ?? smart.find((c) => c.key === openKey) ?? null;
   const level: "shelf" | "dig" = openGroup ? "dig" : "shelf";
 
   function open(key: string) {
@@ -92,13 +112,22 @@ export function CrateView({ openKey, onOpenKey, onCloseKey, onOpenProject }: {
             {loading
               ? <div className="crate-empty">Loading your collection…</div>
               : crates.length === 0
-              ? <EmptyCrate message={search ? "No projects match your search." : "Nothing scanned yet — run a scan and your projects land in crates."} />
-              : <CrateShelf groups={crates} onOpen={open} reduce={reduce} />}
+              ? (search
+                ? <EmptyCrate searching title="No projects match your search">Try fewer letters, or clear the search box.</EmptyCrate>
+                : <EmptyCrate title="Nothing to dig through yet">Scan your project folders in the Library and your projects land here in crates.</EmptyCrate>)
+              : <>
+                  {smart.length > 0 && <>
+                    <div className="crate-section"><h2>Smart crates</h2><span>Saved from the Library's filters. They fill themselves.</span></div>
+                    <CrateShelf groups={smart} onOpen={open} reduce={reduce} label="Smart crates" />
+                    <div className="crate-section"><h2>{groupBy === "genre" ? "By genre" : groupBy === "daw" ? "By music app" : groupBy === "tempo" ? "By tempo" : "By recency"}</h2></div>
+                  </>}
+                  <CrateShelf groups={crates} onOpen={open} reduce={reduce} />
+                </>}
           </motion.div>
         ) : (
           <motion.div key="dig" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduce ? 0.12 : DUR.base }}>
             <CrateDig
-              group={openGroup!}
+              group={openGroup!} all={projects}
               active={active} setActive={setActive}
               digSort={digSort} setDigSort={setDigSort}
               verifiedOnly={verifiedOnly} setVerifiedOnly={setVerifiedOnly}

@@ -1,27 +1,37 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { makeApi } from "../api";
 import type { Overview, LibraryItem } from "../types";
 import type { BackupProgress } from "../useProgress";
-import type { StatusFilter } from "../libraryFilter";
-import { fmtSize, fmtDate, fmtInterval, fmtNext, shortPath, dawLabel } from "../format";
+import { countStatuses, itemStatus, yearOf, type LibFilters, type StatusFilter } from "../libraryFilter";
+import { Collection, tally, type CollectionData } from "../components/Collection";
+import { rowKey } from "../components/a11y";
+import { backupAndWait } from "../runBackup";
+import { openMenu, toast, toastWarn } from "../components/Desktop";
+import { copyText } from "../desktop";
+import { osWords } from "../platform";
+import { fmtSize, fmtDate, fmtInterval, fmtNext, shortPath, dawLabel, fmtCount, fmtCap } from "../format";
 import { Icon } from "../components/Icon";
 import { Cover } from "../components/Cover";
+import { Rolling } from "../components/Rolling";
 import { PlayButton, SongWave, type SongMeta } from "../components/Player";
 import { genreColor, useLook } from "../look";
-import { usePins } from "../pins";
+import { togglePin, usePins } from "../pins";
 import { EmptyState, SlothSpot } from "../components/SlothSpot";
 import "../home.css";
 
 const api = makeApi();
+const bridge = () => (window as any).ablebackup;
+const HOME_ROWS = 8;  // rows per Home list before "Show all"
 
 /* ── Home ── */
-export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, onOpenHistory, onOpenStatus, onOpenProject }: {
+export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, onOpenHistory, onOpenStatus, onOpenFilters, onOpenProject }: {
   backup: BackupProgress;
   onBackupNow: () => void;
   onOpenSettings: () => void;
   onResumeProgress: () => void;
   onOpenHistory: () => void;
   onOpenStatus: (status: StatusFilter) => void;  // the Library showing only these
+  onOpenFilters: (f: Partial<LibFilters>) => void;  // the Library showing one genre, app or year
   onOpenProject: (name: string) => void;
 }) {
   const [ov, setOv] = useState<Overview | null>(null);
@@ -73,25 +83,29 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
     }
   }
 
-  // "Find it for me": re-back up that one project with sample-hunting on. An
+  // "Find missing samples": re-back up that one project with sample-hunting on. An
   // optional extraLib is a folder the user pointed at ("look in this folder"),
   // searched this run in addition to the saved sample libraries.
+  // If it doesn't work, a message says why and offers to try again; if samples are
+  // still missing afterwards, it offers the project page to point to them.
   async function fixOne(it: LibraryItem, extraLib?: string) {
     setFixing((s) => new Set(s).add(it.project_id));
-    try {
-      const { job_id } = await api.startBackup({
-        als_paths: [it.path], find_missing: true, portable: true, layout: "project_date",
-        libraries: extraLib ? [extraLib] : undefined,
-      });
-      for (;;) {
-        const st = await api.jobStatus(job_id);
-        if (st.state === "done" || st.state === "error") break;
-        await new Promise((r) => setTimeout(r, 1200));
-      }
-    } catch { /* result shows on reload */ }
-    finally {
-      setFixing((s) => { const n = new Set(s); n.delete(it.project_id); return n; });
-      load();
+    const res = await backupAndWait({
+      als_paths: [it.path], find_missing: true, portable: true, layout: "project_date",
+      libraries: extraLib ? [extraLib] : undefined,
+    });
+    setFixing((s) => { const n = new Set(s); n.delete(it.project_id); return n; });
+    load();
+    if (!res.ok) {
+      toastWarn(`${it.name} couldn't be backed up. ${res.reason}`, { label: "Try again", onClick: () => { fixOne(it, extraLib); } });
+      return;
+    }
+    if (it.missing_count > 0) {
+      const now = (await api.library().catch(() => null))?.projects.find((i) => i.project_id === it.project_id);
+      if (now && now.missing_count > 0) {
+        toastWarn(`${now.missing_count} of ${it.name}'s samples are still missing.`,
+          { label: "Point me to them", onClick: () => onOpenProject(it.name) });
+      } else if (now) toast(`Found every missing sample in ${it.name} and backed it up.`);
     }
   }
 
@@ -110,8 +124,10 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   if (!ov) return <p className="sub">Waking the sloth…</p>;
 
   // Saved in the DAW since its last backup: backed up, but not this version.
-  const changedItems = items.filter((i) => i.backed_up && i.changed && i.missing_count === 0);
-  const notYet = items.filter((i) => !i.backed_up).length;
+  // The same counting as the Library and Dig (itemStatus), so the numbers agree.
+  const counts = countStatuses(items);
+  const changedItems = items.filter((i) => itemStatus(i) === "changed");
+  const notYet = counts.none;
   const waiting = notYet + changedItems.length;
   const warnItems = items.filter((i) => i.missing_count > 0);
   // One "needs a look" number everywhere: projects missing samples (backed up or not)
@@ -120,21 +136,21 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   const lookCount = warnItems.length
     + new Set(ov.attention.filter((a) => a.kind === "error" && !warnNames.has(a.project_name)).map((a) => a.project_name)).size;
   const savedPct = ov.logical_size > 0 ? Math.round((ov.saved_bytes / ov.logical_size) * 100) : 0;
-  const okCount = items.filter((i) => i.backed_up && !i.changed && i.missing_count === 0).length;
-  const lookItems = items.filter((i) => i.missing_count > 0);
-  const newCount = items.filter((i) => !i.backed_up && i.missing_count === 0).length;
+  const okCount = counts.safe;
+  const lookItems = items.filter((i) => itemStatus(i) === "missing");
+  const newCount = counts.none;
   const failed = ov.attention.filter((a) => a.kind === "error" && !warnNames.has(a.project_name));
 
   // No backup folder yet: the person skipped backups to just browse.
   const off = !ov.nas.path;
   // Plain facts, one headline. The numbers are real, never vague.
   const title = off
-    ? (items.length === 0 ? "Let's find your projects." : `${items.length} ${items.length === 1 ? "project" : "projects"}, ready to browse.`)
+    ? (items.length === 0 ? "Let's find your projects." : `${fmtCount(items.length)} ${items.length === 1 ? "project" : "projects"}, ready to browse.`)
     : doneFlash
     ? (backup.errors > 0 ? `Backed up ${backup.completed}, ${backup.errors} failed.` : `Backed up and checked ${backup.completed} ${backup.completed === 1 ? "project" : "projects"}.`)
     : working ? (kick && !backup.active ? "Looking for projects…" : `Backing up ${backup.completed} of ${backup.total || "…"}…`)
     : items.length === 0 ? "Let's find your projects."
-    : `${okCount} of ${items.length} projects are safe.`;
+    : `${fmtCount(okCount)} of ${fmtCount(items.length)} projects are safe.`;
   const sub = off
     ? "Backups are off for now. Turn them on whenever you like and every project gets a checked copy."
     : working
@@ -143,17 +159,17 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
     ? "Press the button and Backups will look through your project folders."
     : lookCount > 0 || changedItems.length > 0
     ? `Every backed-up project was re-opened and loads. ${[
-        changedItems.length > 0 ? `${changedItems.length} changed since ${changedItems.length === 1 ? "its" : "their"} last backup` : "",
-        lookCount > 0 ? `${lookCount} ${lookCount === 1 ? "needs" : "need"} a look` : "",
+        changedItems.length > 0 ? `${fmtCount(changedItems.length)} changed since ${changedItems.length === 1 ? "its" : "their"} last backup` : "",
+        lookCount > 0 ? `${fmtCount(lookCount)} ${lookCount === 1 ? "needs" : "need"} a look` : "",
       ].filter(Boolean).join(", ")} below.`
     : "Every backed-up project was re-opened and loads without errors.";
-  const eyebrow = off ? "Backups off" : ov.last_run
+  const schedLine = off ? "Backups off" : ov.last_run
     ? `Last backup ${fmtDate(ov.last_run)} · ${ov.schedule.enabled
         ? `next ${ov.schedule.next_run ? fmtNext(ov.schedule.next_run) : fmtInterval(ov.schedule.interval_minutes)}`
         : "next: when you say so"}`
     : "No backups yet";
   const pct = backup.total > 0 ? Math.round((backup.completed / backup.total) * 100) : 0;
-  const total = okCount + changedItems.length + lookItems.length + newCount;
+  const total = counts.all;
   const spaceSaved = ov.pool_known ? fmtSize(ov.saved_bytes) + (savedPct > 0 ? ` · ${savedPct}%` : "") : "…";
   const meta = (it: LibraryItem): SongMeta | undefined =>
     it.latest_export ? { title: it.latest_export.name, project: it.name, genre: it.genre } : undefined;
@@ -173,11 +189,11 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   const head = (
     <>
       <div style={{ minWidth: 0 }}>
-        <div className="eyebrow">{eyebrow}</div>
         <h1>{title}</h1>
         <p className="sub">{sub}{" "}
           {working && backup.active && <button className="linkbtn" onClick={onResumeProgress}>Show details</button>}
         </p>
+        <p className="statusline"><Icon name="history" size={13} />{schedLine}</p>
       </div>
       <div className="page-head__actions">
         {off ? <>
@@ -188,8 +204,8 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
         <button className="btn btn--primary" onClick={backItUp} disabled={working || !ov.nas.reachable}
           title={ov.nas.reachable ? "Find every project and back it up, checked" : "Choose where backups go in Settings first"}>
           {working ? "Backing up…"
-            : waiting > 0 && notYet === 0 ? `Back up the ${waiting} changed`
-            : waiting > 0 ? `Back up ${waiting} ${waiting === 1 ? "project" : "projects"}` : "Back up now"}
+            : waiting > 0 && notYet === 0 ? `Back up the ${fmtCount(waiting)} changed`
+            : waiting > 0 ? `Back up ${fmtCount(waiting)} ${waiting === 1 ? "project" : "projects"}` : "Back up now"}
         </button>
         {look === "sleeve" && !ov.schedule.enabled && <button className="btn" onClick={onOpenSettings}>Set a schedule</button>}
         </>}
@@ -198,14 +214,15 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   );
   const progress = working && (
     <div className="progress" style={{ marginBottom: 22 }} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-      <div className="progress__fill" style={{ width: `${Math.max(3, pct)}%` }} />
+      <div className="progress__fill" style={{ "--pct": Math.max(3, pct) } as CSSProperties} />
     </div>
   );
   const fixButtons = (it: LibraryItem, label: string) => {
     const busy = fixing.has(it.project_id);
     return (
       <span className="col-act" onClick={(e) => e.stopPropagation()}>
-        <button className="btn btn--sm" onClick={() => fixOne(it)} disabled={busy}>{busy ? "Searching…" : label}</button>
+        <button className="btn btn--sm" onClick={() => fixOne(it)} disabled={busy}
+          title="Search your sample folders for them and back the project up">{busy ? "Searching…" : label}</button>
         <button className="iconbtn" onClick={() => lookInFolder(it)} disabled={busy}
           title="Search a folder you choose" aria-label={`Search a folder for ${it.name}'s samples`}>
           <Icon name="folder" />
@@ -213,6 +230,16 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
       </span>
     );
   };
+  // right-click on a project anywhere on Home: the same everyday actions as the library
+  const projectMenu = (it: LibraryItem) => (e: React.MouseEvent) => openMenu(e, [
+    { label: "Show backups & details", onClick: () => onOpenProject(it.name) },
+    { label: `Open in ${dawLabel(it.daw)}`, onClick: () => { if (it.path) bridge()?.openProject?.(it.path); } },
+    { label: it.backed_up && !it.changed ? "Back up again" : "Back up now", onClick: () => { fixOne(it); }, disabled: fixing.has(it.project_id) },
+    { label: pins.includes(it.project_id) ? "Unpin" : "Pin to the top", onClick: () => togglePin(it.project_id) },
+    "-",
+    { label: `Show in ${osWords().fileManager}`, onClick: () => { if (it.path) bridge()?.revealPath?.(it.path); } },
+    { label: "Copy project path", onClick: () => { copyText(it.path); } },
+  ]);
   const backupButton = (it: LibraryItem) => {
     const busy = fixing.has(it.project_id);
     return (
@@ -221,15 +248,35 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
       </span>
     );
   };
+  // "Needs a look" counts exactly the rows under it (missing samples and failed
+  // backups); changed projects have their own list with their own count.
+  const lookRows = lookItems.length + failed.length;
   const needsHead = (
     <div className="section__head">
-      <h2>Needs a look</h2>
+      <h2>Needs a look{lookRows > 0 && <span className="faint section__n"> {fmtCount(lookRows)}</span>}</h2>
+    </div>
+  );
+  const changedHead = (
+    <div className="section__head">
+      <h2>Changed since last backup<span className="faint section__n"> {fmtCount(changedItems.length)}</span></h2>
     </div>
   );
   const hasNeeds = changedItems.length > 0 || lookItems.length > 0 || failed.length > 0;
+  // Big libraries can have hundreds waiting: Home shows the first few of each list
+  // and hands the rest to the Library, filtered to them.
+  const changedShown = changedItems.slice(0, HOME_ROWS);
+  const lookShown = lookItems.slice(0, HOME_ROWS);
+  const failedShown = failed.slice(0, Math.max(0, HOME_ROWS - lookShown.length));
+  const more = (total: number, shown: number, status: StatusFilter) => total > shown && (
+    <button className="linkbtn home-more" onClick={() => onOpenStatus(status)}>Show all {fmtCount(total)} in the Library</button>
+  );
+  const changedMore = more(changedItems.length, changedShown.length, "changed");
+  const lookMore = more(lookRows, lookShown.length + failedShown.length, "missing");
   const edited = (it: LibraryItem) => {
     return `Saved ${savedWhen(it)}, after its last backup`;
   };
+
+  const collection = items.length > 0 ? <Collection data={collectionOf(items, onOpenFilters)} /> : null;
 
   const foot = (
     <footer className="home-foot">
@@ -263,10 +310,10 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
               {newCount > 0 && <span style={{ flex: newCount, background: "var(--idle)" }} />}
             </div>
             <div className="home-hero__legend">
-              <button className="linkbtn" onClick={() => onOpenStatus("safe")}><b>{okCount}</b> safe</button>
-              {changedItems.length > 0 && <button className="linkbtn" onClick={() => onOpenStatus("changed")}><b>{changedItems.length}</b> changed</button>}
-              <button className="linkbtn" onClick={() => onOpenStatus("missing")}><b>{lookCount}</b> need a look</button>
-              <button className="linkbtn" onClick={() => onOpenStatus("none")}><b>{notYet}</b> not yet</button>
+              <button className="linkbtn" onClick={() => onOpenStatus("safe")}><b><Rolling value={okCount} /></b> safe</button>
+              {changedItems.length > 0 && <button className="linkbtn" onClick={() => onOpenStatus("changed")}><b><Rolling value={changedItems.length} /></b> changed</button>}
+              <button className="linkbtn" onClick={() => onOpenStatus("missing")}><b><Rolling value={lookCount} /></b> need a look</button>
+              <button className="linkbtn" onClick={() => onOpenStatus("none")}><b><Rolling value={notYet} /></b> not yet</button>
             </div>
             <div className="home-hero__saved">Space saved by sharing files <span className="mono">{spaceSaved}</span></div>
           </div>
@@ -284,8 +331,8 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
             {recent.map((it) => {
               const m = meta(it);
               return (
-                <div key={it.project_id} className="sleeve" data-nav-key={it.name} role="button" tabIndex={0} onClick={() => onOpenProject(it.name)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenProject(it.name); } }}>
+                <div key={it.project_id} className="sleeve" data-nav-key={it.name} role="button" tabIndex={0} onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}
+                  onKeyDown={rowKey(() => onOpenProject(it.name))}>
                   <div className="sleeve__art">
                     <Cover name={it.name} genre={it.genre} />
                     {pins.includes(it.project_id) && <span className="pin-badge" title="Pinned"><Icon name="starFilled" size={13} /></span>}
@@ -303,37 +350,45 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
         </section>
       )}
 
-      {hasNeeds && (
+      {changedItems.length > 0 && (
         <section className="section">
-          {needsHead}
+          {changedHead}
           <div className="needcards">
-            {changedItems.map((it) => (
-              <div key={"c" + it.project_id} className="needcard" data-nav-key={it.name} role="button" tabIndex={0} onClick={() => onOpenProject(it.name)}
-                onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(it.name); }}>
+            {changedShown.map((it) => (
+              <div key={"c" + it.project_id} className="needcard" data-nav-key={it.name} role="button" tabIndex={0} onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}
+                onKeyDown={rowKey(() => onOpenProject(it.name))}>
                 <Cover name={it.name} genre={it.genre} label={false} />
                 <div className="needcard__body">
                   <div className="sleeve__name" title={it.name}>{it.name}</div>
-                  <div className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Saved since last backup</div>
+                  <div className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Changed</div>
                   {backupButton(it)}
                 </div>
               </div>
             ))}
-            {lookItems.map((it) => (
-              <div key={it.project_id} className="needcard" data-nav-key={it.name} role="button" tabIndex={0} onClick={() => onOpenProject(it.name)}
-                onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(it.name); }}>
+          </div>
+          {changedMore}
+        </section>
+      )}
+      {lookRows > 0 && (
+        <section className="section">
+          {needsHead}
+          <div className="needcards">
+            {lookShown.map((it) => (
+              <div key={it.project_id} className="needcard" data-nav-key={it.name} role="button" tabIndex={0} onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}
+                onKeyDown={rowKey(() => onOpenProject(it.name))}>
                 <Cover name={it.name} genre={it.genre} label={false} />
                 <div className="needcard__body">
                   <div className="sleeve__name" title={it.name}>{it.name}</div>
-                  <div className="warn-line"><span className="dot dot--warn" />{it.missing_count} {it.missing_count === 1 ? "sample" : "samples"} missing</div>
-                  {fixButtons(it, "Find them")}
+                  <div className="warn-line"><span className="dot dot--warn" />{fmtCap(it.missing_count)} {it.missing_count === 1 ? "sample" : "samples"} missing</div>
+                  {fixButtons(it, "Find missing samples")}
                 </div>
               </div>
             ))}
-            {failed.map((a) => {
+            {failedShown.map((a) => {
               const it = byName.get(a.project_name);
               return (
                 <div key={"f" + a.project_name} className="needcard" data-nav-key={a.project_name} role="button" tabIndex={0} onClick={() => onOpenProject(a.project_name)}
-                  onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(a.project_name); }}>
+                  onKeyDown={rowKey(() => onOpenProject(a.project_name))}>
                   <Cover name={a.project_name} genre={it?.genre} label={false} />
                   <div className="needcard__body">
                     <div className="sleeve__name" title={a.project_name}>{a.project_name}</div>
@@ -344,9 +399,11 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
               );
             })}
           </div>
+          {lookMore}
         </section>
       )}
 
+      {collection}
       {foot}
 
     </div>
@@ -380,8 +437,8 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
           <section className="deckcard" aria-label="Where your projects stand">
             <div className="deckcard__screen">
               <span className="deckcard__lbl">Safe</span>
-              <span className="deckcard__big">{okCount}<small>/{total}</small></span>
-              <span className="deckcard__lbl deckcard__lbl--r">{changedItems.length + lookCount > 0 ? `${changedItems.length + lookCount} to do` : "All good"}</span>
+              <span className={`deckcard__big${total >= 1000 ? " deckcard__big--long" : ""}`}><Rolling value={okCount} /><small>/<Rolling value={total} /></small></span>
+              <span className="deckcard__lbl deckcard__lbl--r">{changedItems.length + lookCount > 0 ? `${fmtCount(changedItems.length + lookCount)} to do` : "All good"}</span>
             </div>
             <div className={`spines${spines.length > 40 ? " spines--tight" : ""}`} role="list" aria-label="One line per project">
               {spines.map((sp, i) => (
@@ -392,62 +449,63 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
               ))}
             </div>
             <div className="deckcard__legend">
-              <button className="deckcard__row" onClick={onOpenHistory}><span className="dot dot--ok" />Backed up, opens<b>{okCount}</b></button>
-              {changedItems.length > 0 && <button className="deckcard__row" onClick={onOpenHistory}><span className="dot dot--accent" />Saved since last backup<b>{changedItems.length}</b></button>}
-              <button className="deckcard__row" onClick={onOpenHistory}><span className="dot dot--warn" />Need a look<b>{lookCount}</b></button>
-              <button className="deckcard__row" onClick={onOpenHistory}><span className="dot" />Not backed up<b>{notYet}</b></button>
+              <button className="deckcard__row" onClick={onOpenHistory}><span className="dot dot--ok" />Backed up, opens<b>{fmtCount(okCount)}</b></button>
+              {changedItems.length > 0 && <button className="deckcard__row" onClick={onOpenHistory}><span className="dot dot--accent" />Changed since last backup<b>{fmtCount(changedItems.length)}</b></button>}
+              <button className="deckcard__row" onClick={onOpenHistory}><span className="dot dot--warn" />Need a look<b>{fmtCount(lookCount)}</b></button>
+              <button className="deckcard__row" onClick={onOpenHistory}><span className="dot" />Not backed up<b>{fmtCount(notYet)}</b></button>
               <div className="deckcard__row deckcard__row--quiet">Space saved by sharing files<b>{spaceSaved}</b></div>
             </div>
           </section>
 
           <div className="home-deck__main">
             <section className="section">
-              {needsHead}
-              {hasNeeds ? (
-                <div className="table table--crate">
-                  {changedItems.map((it) => (
+              {hasNeeds ? (<>
+                {changedItems.length > 0 && <>{changedHead}<div className="table table--crate">
+                  {changedShown.map((it) => (
                     <div key={"c" + it.project_id} data-nav-key={it.name} className="row cols needs-cols" role="button" tabIndex={0}
-                      onClick={() => onOpenProject(it.name)} onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(it.name); }}>
+                      onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)} onKeyDown={rowKey(() => onOpenProject(it.name))}>
                       <span className="stripe" style={{ background: genreColor(it.genre) }} />
                       <Cover name={it.name} genre={it.genre} size={36} />
                       <span style={{ minWidth: 0 }}>
-                        <div className="col-trunc" style={{ fontWeight: 500 }}>{it.name}</div>
+                        <div className="col-trunc" style={{ fontWeight: 500 }} title={it.name}>{it.name}</div>
                         <div className="lib-sub">{subLine(it)}</div>
                       </span>
-                      <span className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Saved since last backup</span>
+                      <span className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Changed</span>
                       {backupButton(it)}
                     </div>
                   ))}
-                  {lookItems.map((it) => (
+                </div>{changedMore}</>}
+                {lookRows > 0 && <div style={changedItems.length > 0 ? { marginTop: 22 } : undefined}>{needsHead}<div className="table table--crate">
+                  {lookShown.map((it) => (
                     <div key={it.project_id} data-nav-key={it.name} className="row cols needs-cols" role="button" tabIndex={0}
-                      onClick={() => onOpenProject(it.name)} onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(it.name); }}>
+                      onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)} onKeyDown={rowKey(() => onOpenProject(it.name))}>
                       <span className="stripe" style={{ background: genreColor(it.genre) }} />
                       <Cover name={it.name} genre={it.genre} size={36} />
                       <span style={{ minWidth: 0 }}>
-                        <div className="col-trunc" style={{ fontWeight: 500 }}>{it.name}</div>
+                        <div className="col-trunc" style={{ fontWeight: 500 }} title={it.name}>{it.name}</div>
                         <div className="lib-sub">{subLine(it)}</div>
                       </span>
-                      <span className="warn-line"><span className="dot dot--warn" />{it.missing_count} {it.missing_count === 1 ? "sample" : "samples"} missing</span>
-                      {fixButtons(it, "Find samples")}
+                      <span className="warn-line" title={`${fmtCount(it.missing_count)} ${it.missing_count === 1 ? "sample" : "samples"} missing`}><span className="dot dot--warn" />{fmtCap(it.missing_count)} {it.missing_count === 1 ? "sample" : "samples"} missing</span>
+                      {fixButtons(it, "Find missing samples")}
                     </div>
                   ))}
-                  {failed.map((a) => {
+                  {failedShown.map((a) => {
                     const it = byName.get(a.project_name);
                     return (
                       <div key={"f" + a.project_name} data-nav-key={a.project_name} className="row cols needs-cols" role="button" tabIndex={0}
-                        onClick={() => onOpenProject(a.project_name)} onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(a.project_name); }}>
+                        onClick={() => onOpenProject(a.project_name)} onKeyDown={rowKey(() => onOpenProject(a.project_name))}>
                         <span className="stripe" style={{ background: "var(--danger)" }} />
                         <Cover name={a.project_name} genre={it?.genre} size={36} />
-                        <span className="col-trunc" style={{ fontWeight: 500 }}>{a.project_name}</span>
+                        <span className="col-trunc" style={{ fontWeight: 500 }} title={a.project_name}>{a.project_name}</span>
                         <span className="warn-line warn-line--error" title={a.reason}><span className="dot dot--error" />{a.reason}</span>
                         <span className="col-act"><button className="btn btn--sm">Open</button></span>
                       </div>
                     );
                   })}
-                </div>
-              ) : (
+                </div>{lookMore}</div>}
+              </>) : (<>{needsHead}
                 <div className="allgood"><SlothSpot pose="thumbs-up" size={40} /><span><b>Nothing needs a look.</b> Every backed-up project opens.</span><span className="allgood__say">All safe. Back to my nap.</span></div>
-              )}
+              </>)}
             </section>
 
             {recent.length > 0 && (
@@ -459,16 +517,16 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
                 <div className="table table--crate">
                   {recent.slice(0, pinnedItems.length > 4 ? pinnedItems.length : 4).map((it) => {
                     const pinned = pins.includes(it.project_id);
-                    const st = it.missing_count > 0 ? ["dot--warn", `${it.missing_count} missing`]
+                    const st = it.missing_count > 0 ? ["dot--warn", `${fmtCap(it.missing_count)} missing`]
                       : it.changed ? ["dot--accent", "Changed"] : it.backed_up ? ["dot--ok", "Safe"] : ["", "Not backed up"];
                     return (
                       <div key={"r" + it.project_id} data-nav-key={it.name} className="row cols recent-cols" role="button" tabIndex={0}
-                        onClick={() => onOpenProject(it.name)} onKeyDown={(e) => { if (e.key === "Enter") onOpenProject(it.name); }}>
+                        onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)} onKeyDown={rowKey(() => onOpenProject(it.name))}>
                         <span className="stripe" style={{ background: genreColor(it.genre) }} />
                         <Cover name={it.name} genre={it.genre} size={36} />
                         <span style={{ minWidth: 0 }}>
-                          <div className="col-trunc recent-name" style={{ fontWeight: 500 }}>
-                            {pinned && <span className="recent-star" title="Pinned"><Icon name="starFilled" size={12} /></span>}{it.name}
+                          <div className="recent-name" style={{ fontWeight: 500 }}>
+                            {pinned && <span className="recent-star" title="Pinned"><Icon name="starFilled" size={12} /></span>}<span className="col-trunc" title={it.name}>{it.name}</span>
                           </div>
                           <div className="lib-sub">{subLine(it)}</div>
                         </span>
@@ -488,7 +546,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
                   {songs.map((it) => {
                     const m = meta(it)!;
                     return (
-                      <div key={it.project_id} className="songcell" data-nav-key={it.name}>
+                      <div key={it.project_id} className="songcell" data-nav-key={it.name} onContextMenu={projectMenu(it)}>
                         <PlayButton path={it.latest_export!.path} title={it.latest_export!.name} meta={m} size={30} />
                         <div style={{ minWidth: 0 }}>
                           <div className="songcell__top">
@@ -507,7 +565,40 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
         </div>
       )}
 
+      {collection}
       {foot}
     </div>
   );
+}
+
+// The whole library in figures, for "Your collection" / the liner notes.
+function collectionOf(items: LibraryItem[], open: (f: Partial<LibFilters>) => void): CollectionData {
+  const c = countStatuses(items);
+  const songs = items.reduce((n, i) => n + (i.export_count ?? (i.latest_export ? 1 : 0)), 0);
+  const online = items.filter((i) => i.latest_export?.uploaded).length;
+  const size = items.reduce((n, i) => n + (i.size || 0), 0);
+  const kept = items.reduce((n, i) => n + (i.snapshot_count || 0), 0);
+  const backed = items.filter((i) => i.backed_up).length;
+  const genres = tally(items, (i) => i.genre);
+  const daws = tally(items, (i) => i.daw);
+  const years = tally(items, yearOf).sort((a, b) => b[0].localeCompare(a[0]));
+  const first = years.length ? years[years.length - 1][0] : "";
+  const top = genres.slice(0, 2).map(([g]) => g);
+  return {
+    intro: `${fmtCount(items.length)} project${items.length === 1 ? "" : "s"}${first && years.length > 1 ? `, saved between ${first} and ${years[0][0]}` : ""}`
+      + `${top.length ? `, mostly ${top.join(" and ")}` : ""}. ${fmtCount(c.safe)} of them are safe right now.`,
+    figures: [
+      { label: "Projects", value: fmtCount(items.length) },
+      { label: "Backed up", value: fmtCount(backed), note: backed < items.length ? `${fmtCount(items.length - backed)} not yet` : "every one" },
+      { label: "Songs exported", value: fmtCount(songs) },
+      { label: "On SoundCloud", value: fmtCount(online) },
+      { label: "Size on disk", value: fmtSize(size) },
+      { label: "Backups kept", value: fmtCount(kept) },
+    ],
+    lists: [
+      { title: "Genres", rows: genres.map(([g, n]) => ({ label: g, n, colour: genreColor(g), onClick: () => open({ genre: g }) })) },
+      { title: "Music apps", rows: daws.map(([d, n]) => ({ label: dawLabel(d), n, onClick: () => open({ daw: d }) })) },
+      { title: "Year last saved", rows: years.map(([y, n]) => ({ label: y, n, onClick: () => open({ year: y }) })) },
+    ],
+  };
 }

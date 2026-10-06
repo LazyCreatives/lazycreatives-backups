@@ -9,7 +9,7 @@ export function CrateControls({ groupBy, setGroupBy, crateSort, setCrateSort, se
 }) {
   return (
     <div className="crate-controls">
-      <span className="faint" style={{ fontSize: 12.5 }}>Crates by</span>
+      <span className="crate-controls__label">Crates by</span>
       <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} aria-label="Group crates by">
         <option value="genre">Genre</option>
         <option value="daw">Music app</option>
@@ -22,7 +22,7 @@ export function CrateControls({ groupBy, setGroupBy, crateSort, setCrateSort, se
         <option value="recent">Recently used</option>
       </select>
       <input className="crate-search grow" type="text" placeholder="Search projects…"
-        value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search projects" />
+        value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search projects" spellCheck={false} data-find />
       <label className="toolchk">
         <input type="checkbox" checked={reduceMotion} onChange={(e) => setReduceMotion(e.target.checked)} /> Less movement
       </label>

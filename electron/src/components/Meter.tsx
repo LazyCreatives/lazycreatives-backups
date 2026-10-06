@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 // Two little level meters (left and right) for the player bar, like the ones on a mixer.
 // They follow the song's own loudness from its waveform, with a small flicker so they move
 // like real meters, and fall back to nothing when the song stops. Crate look only (CSS).
+// With Reduce Motion turned on they stay still.
 // Same file in Backups and Uploader.
 export function Meter({ peaks, playing, duration, now }: {
   peaks: number[] | null; playing: boolean; duration: number; now: () => number;
@@ -12,6 +13,11 @@ export function Meter({ peaks, playing, duration, now }: {
     const el = ref.current;
     if (!el) return;
     let raf = 0, l = 0, r = 0;
+    // Reduce Motion: the meters stay still
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      el.style.setProperty("--l", "0"); el.style.setProperty("--r", "0");
+      return;
+    }
     const tick = () => {
       let a = 0, b = 0;
       if (playing && peaks && peaks.length && duration > 0) {

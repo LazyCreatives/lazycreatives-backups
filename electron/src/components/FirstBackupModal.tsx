@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useDialogFocus } from "./a11y";
 import { VerifiedSeal } from "./VerifiedSeal";
 import { Button } from "./Button";
 
@@ -12,11 +13,13 @@ export function FirstBackupModal({ completed, onHistory, onClose }: {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useDialogFocus(ref);
   return (
     <div className="modal__scrim" onClick={onClose}>
-      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+      <div ref={ref} className="modal" role="dialog" aria-modal="true" aria-labelledby="firstbackup-title" onClick={(e) => e.stopPropagation()}>
         <VerifiedSeal size={64} />
-        <h2 style={{ margin: "14px 0 8px" }}>Your first backup is done 🎉</h2>
+        <h2 id="firstbackup-title" style={{ margin: "14px 0 8px" }}>Your first backup is done 🎉</h2>
         <p className="sub" style={{ margin: 0, maxWidth: 400, lineHeight: 1.6 }}>
           {completed} project{completed === 1 ? "" : "s"} protected. We followed every sample —
           even the ones scattered across other folders — <strong style={{ color: "var(--accent)" }}>gathered them

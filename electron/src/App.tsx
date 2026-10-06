@@ -9,9 +9,9 @@ import { Dig } from "./screens/Dig";
 import { LcBrand } from "./components/LcBrand";
 import { FirstBackupModal } from "./components/FirstBackupModal";
 import { WhatsNewHost, openWhatsNew } from "./components/WhatsNew";
-import { ConfirmHost, ContextMenuHost, DropZone, ShortcutsPanel, ToastHost, toast } from "./components/Desktop";
+import { ConfirmHost, ContextMenuHost, DropZone, Exit, ShortcutsPanel, ToastHost, toast, toastWarn } from "./components/Desktop";
 import { GenrePickHost } from "./components/GenrePick";
-import { baseName, folderOf, isInside, keep, recall, useDesktopCommands, useEscapeToClose, useFileDrop, useIconProgress, type Dropped } from "./desktop";
+import { baseName, folderOf, isInside, keep, pageNumber, recall, useDesktopCommands, useEscapeToClose, useFileDrop, useIconProgress, type Dropped } from "./desktop";
 import { makeApi } from "./api";
 import { useLiveProgress } from "./useProgress";
 import type { Config, ProjectSummary } from "./types";
@@ -19,8 +19,17 @@ import { PlayerBar, togglePlaying } from "./components/Player";
 import { EmptyState } from "./components/SlothSpot";
 import { useBackForwardInput, useNav, type Place } from "./nav";
 import { JUST_BACKED_UP, type LibraryView } from "./libraryFilter";
+import { currentTheme, genreColor, getLook, setLook, toggleTheme, useGenreColors } from "./look";
+import { PaletteHost, openPalette, type PaletteItem } from "./components/Palette";
+import { smartCrates } from "./smart";
+import { IS_MAC } from "./desktop";
+import { COMPANION_KEYS, openCompanion, useCompanionCommand } from "./companion";
+import { NO_FILTERS, type LibFilters } from "./libraryFilter";
+import { dawLabel } from "./format";
+import type { LibraryItem } from "./types";
 
 const api = makeApi();
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export type Tab = "home" | "library" | "dig" | "settings";
 export type FlowStep = "scan" | "review" | "progress";
@@ -48,6 +57,7 @@ function isConfigured(c: Config): boolean {
 
 export default function App() {
   const [cfg, setCfg] = useState<Config | null | "error">(null);
+  useGenreColors();  // a crate colour you pick redraws every screen
   // Where you are: a tab, maybe an open project or crate on it, maybe a backup flow
   // step on top. Kept as a back/forward history (side mouse buttons, Alt+arrows).
   // The app opens on the page it was closed on.
@@ -80,6 +90,39 @@ export default function App() {
   const openLibrary = (view: LibraryView) => { setLibraryView(view); setTab("library"); };
   useEffect(() => { keep(LAST_PAGE, tab); }, [tab]);
 
+  // Cmd/Ctrl+K: every page, action, smart crate, genre and project in one list.
+  const paletteProjects = useRef<LibraryItem[]>([]);
+  const showPalette = () => {
+    api.library().then((r) => { paletteProjects.current = r.projects; }).catch(() => {}).finally(openPalette);
+  };
+  const paletteItems = (): PaletteItem[] => {
+    const mod = IS_MAC ? "Cmd" : "Ctrl";
+    const pages: [Tab, string, PaletteItem["icon"]][] = [["home", "Home", "home"], ["library", "Library", "library"], ["dig", "Dig", "dig"], ["settings", "Settings", "settings"]];
+    const list = paletteProjects.current;
+    const genres = [...new Set(list.map((i) => i.genre || "").filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const other = getLook() === "crate" ? "sleeve" : "crate";
+    return [
+      ...pages.map(([t, label, icon], i) => ({ id: `go-${t}`, group: "Go to", label, icon, keys: `${mod} + ${i + 1}`, run: () => setTab(t) })),
+      { id: "backup", group: "Actions", label: "Back up now", icon: "refresh", words: ["scan", "save"], run: () => setFlow("scan") },
+      { id: "look", group: "Actions", label: `Switch to the ${other === "sleeve" ? "Sleeve" : "Crate"} look`, icon: "palette", words: ["look", "theme", "crate", "sleeve"], run: () => setLook(other) },
+      { id: "theme", group: "Actions", label: `Switch to ${currentTheme() === "light" ? "dark" : "light"}`, icon: "palette", words: ["theme", "light", "dark", "mode"], run: toggleTheme },
+      { id: "companion", group: "Actions", label: "Open the narrow window", icon: "narrow", keys: COMPANION_KEYS,
+        words: ["companion", "small", "side", "beside", "float", "on top", "mini"], run: openCompanion },
+      { id: "play", group: "Actions", label: "Play or pause", icon: "play", keys: "Space", run: togglePlaying },
+      { id: "new", group: "Actions", label: "What's new", icon: "info", run: openWhatsNew },
+      { id: "keys", group: "Actions", label: "Keyboard shortcuts", icon: "command", words: ["keys", "help"], run: () => setShowKeys(true) },
+      ...smartCrates<LibFilters>("library").map((c) => {
+        const f = { ...NO_FILTERS, ...c.filters };
+        return { id: `smart-${c.id}`, group: "Smart crates", label: c.name, icon: "crate" as const, run: () => openLibrary({ status: f.status, filters: f }) };
+      }),
+      ...genres.map((g) => ({ id: `genre-${g}`, group: "Genres", label: g, colour: genreColor(g), quiet: true,
+        hint: plural(list.filter((i) => i.genre === g).length, "project"), run: () => openLibrary({ status: "all", filters: { genre: g } }) })),
+      ...list.map((it) => ({ id: `p-${it.project_id}`, group: "Projects", label: it.name, cover: { name: it.name, genre: it.genre }, quiet: true,
+        hint: [it.genre, it.bpm ? `${Math.round(it.bpm)} BPM` : "", dawLabel(it.daw)].filter(Boolean).join(" · "),
+        words: [it.genre || "", it.latest_export?.name || ""], run: () => setTab("library", it.project_id) })),
+    ];
+  };
+
   // Keyboard shortcuts and the menu bar (see desktop.ts).
   useDesktopCommands((cmd) => {
     if (cmd === "settings") setTab("settings");
@@ -88,6 +131,16 @@ export default function App() {
     else if (cmd === "play") togglePlaying();
     else if (cmd === "whats-new") openWhatsNew();
     else if (cmd === "shortcuts") setShowKeys(true);
+    else if (cmd === "palette") showPalette();
+    else {
+      const n = pageNumber(cmd);
+      if (n && TABS[n - 1]) setTab(TABS[n - 1]);
+    }
+  });
+  // The narrow window hands over to this one: "Open Backups", or a project in it.
+  useCompanionCommand((cmd) => {
+    if (cmd.go === "project") setTab("library", cmd.name);
+    else setTab("home");
   });
   // Escape closes an open project or crate.
   useEscapeToClose(sub && !flow ? closeSub : null);
@@ -119,7 +172,7 @@ export default function App() {
       toast(fresh.length === 1 ? `Added ${baseName(fresh[0])} to your project folders.` : `Added ${fresh.length} project folders.`,
         { label: "Scan now", onClick: () => setFlow("scan") });
     } catch {
-      toast("Couldn't add that folder. Try Add folder in Settings.");
+      toastWarn("Couldn't add that folder. Try Add folder in Settings.");
     }
   }
   const dragging = useFileDrop(addDropped, !!cfg && cfg !== "error" && isConfigured(cfg));
@@ -234,6 +287,7 @@ export default function App() {
               onResumeProgress={() => setFlow("progress")}
               onOpenHistory={() => setTab("library")}
               onOpenStatus={(status) => openLibrary({ status })}
+              onOpenFilters={(filters) => openLibrary({ status: "all", filters })}
               onOpenProject={(name) => setTab("library", name)}
             />
           ) : tab === "library" ? (
@@ -256,15 +310,16 @@ export default function App() {
       <ToastHost />
       <ConfirmHost />
       <GenrePickHost />
+      <PaletteHost items={paletteItems} />
       <DropZone show={dragging} title="Drop to add" hint="Drop a project folder to add it to the folders Backups looks in." />
       {showKeys && <ShortcutsPanel onClose={() => setShowKeys(false)} />}
-      {showFirstBackup && (
+      <Exit>{showFirstBackup && (
         <FirstBackupModal
           completed={live.backup.completed}
           onHistory={() => { setShowFirstBackup(false); openLibrary(JUST_BACKED_UP); }}
           onClose={() => setShowFirstBackup(false)}
         />
-      )}
+      )}</Exit>
     </div>
   );
 }

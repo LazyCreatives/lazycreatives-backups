@@ -116,7 +116,7 @@
 /* ---- modal (first-backup onboarding) ---- */
 .modal__scrim {
   position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px;
-  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px); animation: scrimIn .2s ease both;
+  background: rgb(var(--scrim-rgb) / calc(0.55 * var(--scrim-k))); backdrop-filter: blur(3px); animation: scrimIn .2s ease both;
 }
 .modal {
   max-width: 460px; width: 100%; text-align: center; padding: 30px 30px 26px;
@@ -126,6 +126,8 @@
 }
 @keyframes scrimIn { from { opacity: 0; } }
 @keyframes modalIn { 0% { transform: translateY(14px) scale(0.96); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
+.exit[data-leaving] .modal__scrim { animation: wnewFadeOut var(--dur-quick) var(--ease-leave) both; }
+.exit[data-leaving] .modal { animation: wnewOut var(--dur-quick) var(--ease-leave) both; }
 @media (prefers-reduced-motion: reduce) { .modal, .modal__scrim { animation: none !important; } }
 
 /* ---- locked feature ---- */
@@ -218,7 +220,7 @@
 .dest-row--on .dest-row__where { color: var(--accent-2); }
 .dest-row--on .dest-row__btn { color: var(--accent-2); }
 [data-look="crate"] .dest-list { border-radius: 0; }
-[data-look="crate"] .dest-row:nth-child(even) { background: rgba(255, 255, 255, 0.022); }
+[data-look="crate"] .dest-row:nth-child(even) { background: var(--zebra); }
 [data-look="crate"] .dest-row--on::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent-2); }
 [data-look="crate"] .dest-row__mark { border-radius: 2px; }
 [data-look="sleeve"] .dest-list { border: 0; display: grid; gap: 8px; }
@@ -277,7 +279,7 @@
 .drive__main { display: grid; gap: 7px; min-width: 0; }
 .drive__path { font-size: 12.5px; color: var(--text); }
 .drive__bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-3); }
-.drive__other { background: #3A4048; }
+.drive__other { background: var(--idle-bar); }
 .drive__ours { background: var(--accent); }
 .drive__nums { font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
 .drive__key { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
@@ -285,3 +287,7 @@
 /* the look switch: bigger previews */
 .lookpick { grid-template-columns: repeat(2, minmax(0, 260px)); }
 .lookpick__opt { padding: 12px; }
+
+/* the "i" dot draws at 14px but takes pointer clicks and hovers over a 26px circle
+   (belongs with .info in lazy-ui.css; kept here until that shared file is next changed) */
+.info::before { content: ""; position: absolute; inset: -6px; border-radius: 50%; }

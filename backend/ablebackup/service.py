@@ -899,6 +899,7 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
     last_sigs = catalog.latest_signatures()
     ok_count = 0
     error_count = 0
+    errors: list[dict] = []  # which projects failed and why, for the "couldn't" message
     skipped_count = 0
     mirror_ok = 0
     mirror_failed = 0
@@ -930,6 +931,7 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
                 project_id=p.project_id, daw=p.daw_id,
             )
             error_count += 1
+            errors.append({"project_name": p.name, "path": str(p.project_path), "error": str(e)})
             _emit(progress, {"type": "project_error", "index": i,
                              "project_name": p.name, "error": str(e)})
             continue
@@ -966,6 +968,6 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
                      "ok_count": ok_count, "error_count": error_count,
                      "mirror_failed": mirror_failed, "cancelled": cancelled})
     return {"timestamp": timestamp, "ok_count": ok_count,
-            "error_count": error_count, "skipped_count": skipped_count,
+            "error_count": error_count, "errors": errors, "skipped_count": skipped_count,
             "mirror_ok": mirror_ok, "mirror_failed": mirror_failed,
             "cancelled": cancelled}

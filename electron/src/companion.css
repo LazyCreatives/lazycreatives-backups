@@ -1,0 +1,152 @@
+/* The narrow window beside the music program, and the sidebar button that opens it.
+   SHARED FILE: the same file lives in Backups and Uploader (electron/src/companion.css);
+   change both together. Colours come only from the shared tokens (lazy-ui.css), so the
+   window follows the app's look and colours. Crate: dense rows, genre stripes, solid
+   lines. Sleeve: small covers on rounded cards. */
+
+/* ---- the sidebar button (main window) ---- */
+.nav__narrow { margin-top: 6px; }
+.nav__narrow .nav__label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- the window ---- */
+.cw { display: flex; flex-direction: column; height: 100%; min-width: 0; background: var(--bg); color: var(--text); }
+.cw-head {
+  display: flex; align-items: center; gap: 4px; height: 46px; flex: none; padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.cw-head__mark { width: 22px; height: 28px; object-fit: contain; user-select: none; -webkit-user-drag: none; margin-right: 4px; }
+.cw-head__name { font-family: var(--display); font-size: 22px; line-height: 1; letter-spacing: 0.03em; color: var(--accent); padding-top: 3px; }
+.cw-head__space { flex: 1; }
+.cw-head .iconbtn { width: 30px; height: 30px; }
+.cw-head .cw-pin--on, .cw-head .cw-pin--on:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
+
+.cw-body { flex: 1; min-height: 0; overflow: auto; padding: 14px 14px 18px; display: grid; gap: 18px; align-content: start; }
+.cw-wait { margin: 24px 4px; color: var(--text-dim); }
+.cw .empty { padding: 24px 6px; }
+.cw .empty__body { font-size: 13px; }
+
+.cw-section { min-width: 0; }
+.cw-label { margin: 0 0 8px; font: 600 11px var(--font); letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-faint); }
+[data-look="sleeve"] .cw-label { font-size: 13.5px; letter-spacing: 0; text-transform: none; color: var(--text); }
+
+/* state colours, one per kind of news */
+.cw-tone--ok { color: var(--text-dim); }
+.cw-tone--changed { color: var(--accent); }
+.cw-tone--look { color: var(--warn); }
+.cw-tone--error { color: var(--danger); }
+.cw-tone--new { color: var(--text-faint); }
+
+/* ---- at a glance: one headline, and when it last ran ---- */
+.cw-glance {
+  --tone: var(--idle); --tone-soft: transparent;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 10px;
+  padding: 12px 14px; background: var(--surface); border: 1px solid var(--border-strong);
+}
+.cw-glance--ok { --tone: var(--accent-2); --tone-soft: var(--ok-soft); }
+.cw-glance--changed, .cw-glance--busy { --tone: var(--accent); --tone-soft: var(--accent-soft); }
+.cw-glance--look { --tone: var(--warn); --tone-soft: var(--warn-soft); }
+.cw-glance--error { --tone: var(--danger); --tone-soft: var(--danger-soft); }
+[data-look="crate"] .cw-glance { border-radius: 2px; border-left: 3px solid var(--tone); padding-left: 12px; }
+[data-look="sleeve"] .cw-glance { border-radius: 12px; background: linear-gradient(var(--tone-soft), var(--tone-soft)), var(--surface); border-color: var(--border); }
+.cw-glance__dot { width: 10px; height: 10px; }
+.cw-glance--busy .cw-glance__dot { animation: cwPulse 1.4s ease-in-out infinite; }
+.cw-glance__text { min-width: 0; }
+.cw-glance__title { font-size: 15px; font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cw-glance__detail { margin-top: 2px; font-size: 12.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cw-glance__when { display: grid; justify-items: end; gap: 2px; text-align: right; white-space: nowrap; }
+.cw-glance__when span { font-size: 11px; color: var(--text-faint); }
+.cw-glance__when b { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cw-glance__bar { grid-column: 1 / -1; }
+.cw-glance .btn { grid-column: 1 / -1; }
+
+/* ---- the project / mix you're on now ---- */
+.cw-now {
+  display: grid; grid-template-columns: 76px minmax(0, 1fr); column-gap: 12px; row-gap: 10px; align-items: center;
+  padding: 12px; background: var(--surface); border: 1px solid var(--border);
+}
+[data-look="sleeve"] .cw-now { border-radius: 12px; }
+[data-look="crate"] .cw-now { grid-template-columns: 4px 52px minmax(0, 1fr); padding: 12px 12px 12px 0; border-color: var(--border-strong); border-radius: 0; }
+[data-look="crate"] .cw-now > .stripe { grid-row: 1 / span 4; align-self: stretch; margin: -12px 0; width: 4px; }
+.cw-now > .cw-now__facts, .cw-now > .cw-now__go, .cw-now > .cw-note { grid-column: 1 / -1; }
+[data-look="crate"] .cw-now > .cw-now__facts, [data-look="crate"] .cw-now > .cw-now__go, [data-look="crate"] .cw-now > .cw-note { grid-column: 2 / -1; }
+.cw-now__art { padding: 0; border: 0; background: none; cursor: pointer; line-height: 0; border-radius: 6px; }
+.cw-now__art .cover { border-radius: 6px; }
+[data-look="sleeve"] .cw-now__art .cover { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28); }
+[data-look="crate"] .cw-now__art, [data-look="crate"] .cw-now__art .cover { border-radius: 2px; }
+.cw-now__text { min-width: 0; display: grid; gap: 2px; }
+.cw-now__name {
+  display: block; max-width: 100%; text-align: left; color: var(--text); font-size: 15px; font-weight: 600; line-height: 1.25;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cw-now__name:hover { color: var(--accent); }
+.cw-now__sub { font-size: 12px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cw-now__state { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; min-width: 0; }
+.cw-now__state > :last-child:not(.dot) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cw-now__facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; padding-top: 10px; border-top: 1px solid var(--border); }
+.cw-now__facts dt { font-size: 11px; color: var(--text-faint); }
+.cw-now__facts dd { margin: 1px 0 0; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cw-now__go { width: 100%; height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.cw-note { font-size: 12.5px; color: var(--text-dim); line-height: 1.4; }
+.cw-note--warn { color: var(--warn); }
+.cw-spin {
+  width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent;
+  animation: cwSpin 0.8s linear infinite;
+}
+@keyframes cwSpin { to { transform: rotate(360deg); } }
+@keyframes cwPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .cw-spin, .cw-glance--busy .cw-glance__dot { animation: none; } }
+
+/* ---- lists: Crate rows ---- */
+.cw-list > .row.cw-cols, .table--crate.cw-list > .row { min-height: 46px; padding: 6px 10px 6px 0; cursor: pointer; }
+[data-look="crate"] .cw-list { border-radius: 0; }
+.cw-cols { --cols: 4px 28px minmax(0, 1fr) 104px; column-gap: 10px; }
+.cw-cols .cover { border-radius: 2px; }
+.cw-cols__main, .cw-card__main { display: grid; min-width: 0; line-height: 1.3; }
+.cw-cols__name, .cw-card__name { font-size: 13px; font-weight: 500; }
+.cw-cols__when, .cw-card__when { font-size: 11.5px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cw-state { display: flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; min-width: 0; }
+.cw-state > :last-child:not(.dot) { overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- lists: Sleeve cards ---- */
+.cw-cards { display: grid; gap: 8px; }
+.cw-card {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) 104px; align-items: center; column-gap: 10px;
+  padding: 7px 10px 7px 7px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  cursor: pointer; transition: border-color var(--dur-quick), background var(--dur-quick);
+}
+.cw-card:hover { border-color: var(--border-interactive); }
+.cw-card .cover { border-radius: 6px; }
+.cw-list .row:focus-visible, .cw-card:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* a thin bar under a mix that is going up */
+.cw-mini { display: block; height: 3px; margin-top: 4px; background: var(--surface-3); border-radius: 2px; overflow: hidden; }
+.cw-mini > i { display: block; height: 100%; width: calc(var(--pct, 0) * 1%); background: var(--accent); transition: width 0.4s var(--ease-glide); }
+
+/* ---- drop zone (Uploader) ---- */
+.cw-drop {
+  display: grid; justify-items: center; gap: 4px; padding: 18px 14px; text-align: center; color: var(--text-dim);
+  border: 1.5px dashed var(--border-interactive); background: transparent; cursor: pointer; font: inherit; width: 100%;
+  transition: border-color var(--dur-quick), background var(--dur-quick), color var(--dur-quick);
+}
+[data-look="crate"] .cw-drop { border-radius: 2px; }
+[data-look="sleeve"] .cw-drop { border-radius: 12px; }
+.cw-drop:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+.cw-drop:disabled { cursor: not-allowed; opacity: 0.6; }
+.cw-drop--over { border-color: var(--accent); border-style: solid; background: var(--accent-soft); color: var(--text); }
+.cw-drop__icon {
+  display: grid; place-items: center; width: 34px; height: 34px; margin-bottom: 4px; border-radius: 50%;
+  background: var(--surface-2); color: var(--accent);
+}
+[data-look="crate"] .cw-drop__icon { border-radius: 2px; }
+.cw-drop--over .cw-drop__icon { background: var(--accent); color: var(--accent-ink); }
+.cw-drop__title { font-size: 14px; font-weight: 600; color: var(--text); }
+.cw-drop__hint { font-size: 12px; color: var(--text-faint); line-height: 1.4; }
+.cw-drop__note { margin-top: 8px; }
+
+/* ---- footer ---- */
+.cw-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: none; min-width: 0;
+  padding: 9px 14px; border-top: 1px solid var(--border); background: var(--surface); font-size: 12px; color: var(--text-dim);
+}
+.cw-foot__drive { display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cw-foot__open { flex: none; font-size: 12px; font-weight: 500; }

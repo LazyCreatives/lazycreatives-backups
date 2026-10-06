@@ -1,10 +1,15 @@
-import slothUrl from "../../assets/lazy-creatives-sloth.png";
+import { EmptyState } from "../../components/SlothSpot";
 
-export function EmptyCrate({ message }: { message?: string }) {
+// Dig's empty shelf or empty crate, with the same sloth drawings as the other empty pages.
+export function EmptyCrate({ title, children, searching }: {
+  title: string; children?: React.ReactNode; searching?: boolean;
+}) {
   return (
     <div className="crate-empty">
-      <img src={slothUrl} alt="" draggable={false} />
-      <div>{message ?? "Nothing in this crate yet — point me at a projects folder."}</div>
+      <EmptyState pose={searching ? "searching" : "napping"} title={title}
+        say={searching ? "Looked everywhere. Nothing." : "Empty crate. Back to my nap."}>
+        {children}
+      </EmptyState>
     </div>
   );
 }

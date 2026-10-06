@@ -129,6 +129,10 @@ export function makeApi() {
     async ignoreSong(path: string, ignored = true): Promise<{ ok: boolean }> {
       return req("POST", "/api/exports/ignore", { path, ignored });
     },
+    // markers (locators, cues) saved in a project, in seconds from the start
+    async projectMarkers(path: string): Promise<{ markers: { t: number; name: string }[] }> {
+      return req("GET", `/api/project/markers?path=${encodeURIComponent(path)}`);
+    },
     // the outline of a song, for drawing its waveform (null: decode it here)
     async exportPeaks(path: string): Promise<{ peaks: number[] | null }> {
       return req("GET", `/api/exports/peaks?path=${encodeURIComponent(path)}`);

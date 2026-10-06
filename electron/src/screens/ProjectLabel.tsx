@@ -4,10 +4,12 @@ import { makeApi } from "../api";
 import type { LibraryItem, Snapshot, SnapshotDiff } from "../types";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
-import { fmtSize, dawLabel } from "../format";
+import { fmtSize, dawLabel, fmtDay, fmtCount } from "../format";
 import { parseStamp } from "./Crate/types";
 import { Cover } from "../components/Cover";
-import { PlayButton, SongWave } from "../components/Player";
+import { SleeveWear } from "../components/SleeveWear";
+import { PlayButton, SongWave, useSongLength } from "../components/Player";
+import type { WaveMark } from "../components/Wave";
 import { coverColor, useLook } from "../look";
 import { EmptyState } from "../components/SlothSpot";
 import { GenreChip } from "../components/GenrePick";
@@ -17,10 +19,8 @@ const api = makeApi();
 
 // Numbers on the project page are real, never vague.
 
-const fmtD = (ms: number) =>
-  ms ? new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
-const fmtDT = (ms: number) =>
-  ms ? new Date(ms).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+const fmtD = (ms: number) => fmtDay(ms);
+const fmtDT = (ms: number) => fmtDay(ms, { time: true });
 
 // stable catalog number from the project's identity
 function catalogNo(projectId: string): string {
@@ -100,14 +100,14 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
           ? <Delta added={d!.added.length} changed={d!.changed.length} removed={d!.removed.length} />
           : d?.available && !d.is_first
           ? <>identical to the previous backup</>
-          : <>{s.file_count} file{s.file_count === 1 ? "" : "s"} · {fmtSize(s.total_size)}</>,
+          : <>{fmtCount(s.file_count)} file{s.file_count === 1 ? "" : "s"} · {fmtSize(s.total_size)}</>,
       });
     }
     if (first) {
       evs.push({
         kind: "created", when: parseStamp(first.timestamp),
         what: `First backed up`,
-        delta: <>{first.file_count} file{first.file_count === 1 ? "" : "s"} · {fmtSize(first.total_size)}</>,
+        delta: <>{fmtCount(first.file_count)} file{first.file_count === 1 ? "" : "s"} · {fmtSize(first.total_size)}</>,
       });
     }
     return evs;
@@ -193,9 +193,9 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
     ["Made in", dawLabel(item.daw)],
     ...(item.bpm || item.tracks ? [["Tempo · tracks",
       [item.bpm ? `${Math.round(item.bpm)} BPM` : "", item.tracks ? `${item.tracks} tracks` : ""].filter(Boolean).join(" · ")] as [string, string]] : []),
-    ["Size on disk", `${fmtSize(item.size)}${latest ? ` · ${latest.file_count} files` : ""}`],
+    ["Size on disk", `${fmtSize(item.size)}${latest ? ` · ${fmtCount(latest.file_count)} files` : ""}`],
     ["First on record", created ? fmtD(created) : "—"],
-    ["Backups", String(item.snapshot_count)],
+    ["Backups", fmtCount(item.snapshot_count)],
     ["Last checked", lastVerifiedSnap ? fmtDT(parseStamp(lastVerifiedSnap.timestamp)) : "Never", lastVerifiedSnap ? "" : "faint"],
     ["Missing samples", warn ? `${warn}` : "None", warn ? "warn" : ""],
     ["Genre", onGenre
@@ -210,14 +210,20 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
 
   const song = item.latest_export ?? null;
   const songMeta = { title: song?.name ?? "", project: item.name, genre: item.genre };
+  const marks = useProjectMarks(item.path, song?.path ?? null);
+  const markNote = marks.length > 0 && (
+    <div className="wave-legend">
+      <span><Icon name="flag" size={12} />{marks.length} marker{marks.length === 1 ? "" : "s"} from the project, placed as if the song was exported from the start</span>
+    </div>
+  );
   const tint = coverColor(item.genre, item.name);
   const statusText = warn > 0 ? <span className="warn-text">{warn} sample{warn === 1 ? "" : "s"} missing</span>
-    : item.changed ? <span className="accent-text"><span className="dot dot--accent" /> changed since its last backup</span>
+    : item.changed ? <span className="muted-dot"><span className="dot dot--accent" /> changed since its last backup</span>
     : item.backed_up ? <span className="ok-text"><span className="dot dot--ok" /> safe, opens</span>
     : <span className="faint">not backed up yet</span>;
   const statusChip = warn > 0 ? <span className="fact-chip fact-chip--warn">{warn} sample{warn === 1 ? "" : "s"} missing</span>
-    : item.changed ? <span className="fact-chip fact-chip--changed" title="Saved since its last backup; back it up to keep this version">● Saved since last backup</span>
-    : item.backed_up ? <span className="fact-chip fact-chip--ok">● Safe, opens</span>
+    : item.changed ? <span className="fact-chip fact-chip--changed" title="Saved since its last backup; back it up to keep this version"><span className="dot dot--accent" />Changed since last backup</span>
+    : item.backed_up ? <span className="fact-chip fact-chip--ok"><span className="dot dot--ok" />Safe, opens</span>
     : <span className="fact-chip">Not backed up yet</span>;
 
   const chip = onGenre && <GenreChip genre={item.genre ?? null} setByYou={!!item.genre_by_you} onClick={onGenre} />;
@@ -227,20 +233,33 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
         <header className="proj-hero" style={{ ["--tint" as string]: tint }}>
           <div className="proj-hero__sleeve">
             {/* the spine, printed like a record's: catalogue number and title */}
-            <span className="proj-hero__spine" aria-hidden="true"><b>{cat}</b>{item.name}</span>
-            <Cover name={item.name} genre={item.genre} className="proj-hero__cover" label={false} />
+            <span className="proj-hero__spine" aria-hidden="true"><b>{cat}</b><span className="proj-hero__spinename">{item.name}</span></span>
+            <span className="worn"><Cover name={item.name} genre={item.genre} className="proj-hero__cover" label={false} /><SleeveWear name={item.name} /></span>
           </div>
           <div className="proj-hero__text">
-            <div className="eyebrow">{[crate !== "Untagged" ? `${crate} project` : "", dawLabel(item.daw)].filter(Boolean).join(" · ")}</div>
-            <h1 className="proj-hero__name col-trunc" title={item.name}>{item.name}</h1>
+            <h1 className="proj-hero__name" title={item.name}>{item.name}</h1>
+            {/* the numbers first, printed big like the back of a 12-inch */}
+            <dl className="proj-spec">
+              {item.bpm ? <div><dt>BPM</dt><dd>{Math.round(item.bpm)}</dd></div> : null}
+              {item.tracks ? <div><dt>Tracks</dt><dd>{item.tracks}</dd></div> : null}
+              <div><dt>{item.snapshot_count === 1 ? "Backup" : "Backups"}</dt><dd>{fmtCount(item.snapshot_count)}</dd></div>
+              <div><dt>Made in</dt><dd className="proj-spec__word">{dawLabel(item.daw)}</dd></div>
+            </dl>
             <div className="proj-hero__meta">
-              {[item.bpm ? `${Math.round(item.bpm)} BPM` : "", item.tracks ? `${item.tracks} tracks` : "",
-                created ? `started ${fmtD(created)}` : "", `${item.snapshot_count} backup${item.snapshot_count === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}
-              {" · "}{statusText}
+              {statusText}{created ? <span className="faint"> · started {fmtD(created)}</span> : null}
             </div>
             {chip && <div className="proj-hero__genre">{chip}</div>}
+            {song && (
+              <div className="proj-hero__song">
+                <PlayButton path={song.path} title={song.name} meta={songMeta} size={52} className="playbtn--big" />
+                <div className="marks-labelled" style={{ minWidth: 0 }}>
+                  <div className="proj-hero__songname"><b className="col-trunc">{song.name}</b><span className="faint">latest song</span></div>
+                  <SongWave path={song.path} meta={songMeta} height={56} marks={marks} />
+                  {markNote}
+                </div>
+              </div>
+            )}
             <div className="proj-hero__actions">
-              {song && <PlayButton path={song.path} title={song.name} meta={songMeta} size={48} className="playbtn--big" />}
               <Button variant="ghost" onClick={onOpenInDaw}>Open in {dawLabel(item.daw)}</Button>
               <Button variant="ghost" onClick={onReveal}><Icon name="folder" size={15} />Show in folder</Button>
               <CopyButton text={item.path} what="project path" size={15} className="copybtn--big" />
@@ -251,20 +270,20 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
       ) : (
         <>
           <header className="deck-head">
-            <Cover name={item.name} genre={item.genre} size={124} label={false} />
+            <span className="worn"><Cover name={item.name} genre={item.genre} size={124} label={false} /><SleeveWear name={item.name} /></span>
             <div style={{ minWidth: 0 }}>
-              <div className="eyebrow deck-head__eyebrow" style={{ color: tint }}>{[crate !== "Untagged" ? `${crate} project` : "", dawLabel(item.daw)].filter(Boolean).join(" · ")}</div>
               <h1 className="col-trunc" title={item.name}>{item.name}</h1>
               {/* like the screen on a deck: tempo, tracks, size, backups */}
               <div className="deckread">
                 <span className="deckread__cell"><small>BPM</small><b>{item.bpm ? Math.round(item.bpm) : "–"}</b></span>
                 <span className="deckread__cell"><small>Tracks</small><b>{item.tracks || "–"}</b></span>
                 <span className="deckread__cell"><small>Size</small><b>{fmtSize(item.size)}</b></span>
-                <span className="deckread__cell"><small>Backups</small><b>{item.snapshot_count}</b></span>
+                <span className="deckread__cell"><small>Backups</small><b>{fmtCount(item.snapshot_count)}</b></span>
               </div>
               <div className="fact-chips">
                 {statusChip}
                 {chip}
+                <span className="fact-chip">{dawLabel(item.daw)}</span>
               </div>
             </div>
             <div className="page-head__actions">
@@ -280,7 +299,8 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
                 <PlayButton path={song.path} title={song.name} meta={songMeta} size={46} className="playbtn--big" />
                 <div style={{ minWidth: 0 }}>
                   <div className="deck__title"><b className="col-trunc">{song.name}</b><span className="faint">latest song · exported {fmtDT(song.mtime * 1000)}</span></div>
-                  <SongWave path={song.path} meta={songMeta} height={52} />
+                  <div className="marks-labelled"><SongWave path={song.path} meta={songMeta} height={52} marks={marks} /></div>
+                  {markNote}
                 </div>
               </>
             ) : (
@@ -299,7 +319,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
             {allTabs.map((t) => (
               <button key={t.key} role="tab" aria-selected={t === active}
                 className={`tab${t === active ? " tab--on" : ""}`} onClick={() => setTab(t.key)}>
-                {t.label}{t.count != null && <span className="tab__count">{t.count}</span>}
+                {t.label}{t.count != null && <span className="tab__count">{fmtCount(t.count)}</span>}
               </button>
             ))}
           </div>
@@ -343,4 +363,20 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
       <div className={`ltoast${toast ? " ltoast--show" : ""}`} role="status">{toast ?? ""}</div>
     </>
   );
+}
+
+// The project's markers as pins on its latest song: read from the project file, then
+// placed along the song once its length is known. Markers past the end are left off.
+function useProjectMarks(projectPath: string, songPath: string | null): WaveMark[] {
+  const [raw, setRaw] = useState<{ t: number; name: string }[]>([]);
+  const length = useSongLength(songPath);
+  useEffect(() => {
+    let alive = true;
+    setRaw([]);
+    if (!songPath) return;
+    api.projectMarkers(projectPath).then((r) => { if (alive) setRaw(r.markers); }).catch(() => {});
+    return () => { alive = false; };
+  }, [projectPath, songPath]);
+  if (!length) return [];
+  return raw.filter((m) => m.t < length).map((m) => ({ at: m.t / length, label: m.name, time: m.t, kind: "cue" as const }));
 }

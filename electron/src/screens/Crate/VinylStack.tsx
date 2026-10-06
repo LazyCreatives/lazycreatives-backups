@@ -22,9 +22,10 @@ function vinylTransform(offset: number, reduce: boolean, flat: boolean) {
   }
   if (offset < 0) return { rotateX: -72, z: 150, y: 60, scale: 1, opacity: 0, zIndex: 0 };
   if (offset === 0) return { rotateX: flat ? 0 : -3, z: 50, y: 0, scale: 1.02, opacity: 1, zIndex: 120 };
-  const rx = Math.min(12, 4 + ao);
-  // the records behind stand a little taller each, so their tops show like a crate's
-  return { rotateX: rx, z: -ao * 16, y: -Math.min(ao, 5) * 34, scale: 1 - ao * 0.015,
+  const rx = Math.min(10, 4 + ao);
+  // the records behind stand in the crate, each a little further back, so their tops
+  // show over the one you pulled up, like a real crate seen from above
+  return { rotateX: rx, z: -ao * 18, y: -Math.min(ao, 4) * 36, scale: 1 - ao * 0.012,
            opacity: ao > 5 ? 0 : 1, zIndex: 120 - ao };
 }
 
@@ -93,7 +94,8 @@ export function VinylStack({ list, active, setActive, reduce, onOpenProject }: {
       <motion.div className="stage" ref={stageRef}
         drag={reduce ? false : "x"} dragConstraints={{ left: 0, right: 0 }} dragElastic={0.12}
         onDragEnd={reduce ? undefined : onDragEnd} onWheel={onWheel} onKeyDown={onKeyDown}
-        role="group" aria-label="Records — arrow keys to flip, Enter to open">
+        role="listbox" aria-orientation="horizontal" aria-label="Records — arrow keys to flip, Enter to open">
+        <div className={`dig-crate dig-crate--${look}`} aria-hidden="true"><span className="dig-crate__grip" /></div>
         {windowed.map((p, k) => {
           const i = lo + k;
           const isActive = i === active;
@@ -101,7 +103,8 @@ export function VinylStack({ list, active, setActive, reduce, onOpenProject }: {
             <motion.div key={p.id} className={`rec rec--${look}`}
               ref={isActive ? activeRef : undefined}
               tabIndex={isActive ? 0 : -1}
-              aria-label={`${p.name}, ${p.bpm ?? "unknown"} BPM`}
+              role="option" aria-selected={isActive}
+              aria-label={`${p.name}, ${p.bpm ? `${Math.round(p.bpm)} BPM` : "tempo unknown"}`}
               aria-setsize={list.length} aria-posinset={i + 1}
               style={{ ["--tint" as string]: tintOf(p), transformPerspective: 1150 }}
               animate={withVisibility(vinylTransform(i - active, reduce, look === "sleeve"))}

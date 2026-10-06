@@ -11,7 +11,7 @@
 .tidy__name input { width: 100%; font-size: 14px; font-weight: 600; }
 .tidy__check { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 18px; font-size: 13px; color: var(--text-dim); cursor: pointer; }
 
-.tidy__list { overflow: auto; flex: 1; min-height: 120px; }
+.tidy__list { overflow: auto; overscroll-behavior: contain; flex: 1; min-height: 120px; }
 .tidy__row {
   display: grid; grid-template-columns: 28px 96px minmax(0, 1fr) minmax(0, 1.3fr);
   align-items: center; column-gap: 12px; padding: 8px 20px; border-bottom: 1px solid var(--border);
@@ -19,19 +19,19 @@
 }
 .tidy__row--head {
   position: sticky; top: 0; z-index: 1; padding-top: 9px; padding-bottom: 9px; background: var(--surface-2);
-  color: var(--text-faint); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-faint); font-size: 12.5px; font-weight: 600;
 }
-.tidy__row--folder { background: rgba(255, 255, 255, 0.02); }
+.tidy__row--folder { background: var(--zebra); }
 .tidy__what { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); white-space: nowrap; }
 .tidy__now { color: var(--text-dim); }
-.tidy__row--rename .tidy__now { text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, 0.25); }
+.tidy__row--rename .tidy__now { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text) 25%, transparent); }
 .tidy__after { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .tidy__edit { display: flex; align-items: center; flex: 1 1 100%; min-width: 0; }
 .tidy__edit input[type="text"] {
   flex: 1; min-width: 0; height: 28px; padding: 0 8px; font-size: 12.5px; color: var(--text);
   background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
 }
-.tidy__row--rename .tidy__edit input[type="text"] { border-color: rgba(134, 179, 211, 0.35); }
+.tidy__row--rename .tidy__edit input[type="text"] { border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
 .tidy__edit input[type="text"]:focus { border-color: var(--accent); outline: none; }
 .tidy__ext { padding-left: 6px; color: var(--text-faint); font-size: 12.5px; }
 .tidy__same { color: var(--text-faint); font-size: 12.5px; }
@@ -40,9 +40,9 @@
 .tidy__row--skipped .tidy__now, .tidy__row--skipped .tidy__what { opacity: 0.55; }
 .tidy__tag {
   padding: 1px 7px; border-radius: 4px; font-size: 12px; white-space: nowrap; color: var(--accent);
-  background: var(--accent-soft); border: 1px solid rgba(134, 179, 211, 0.3);
+  background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
-.tidy__tag--ok { color: var(--accent-2); background: var(--ok-soft); border-color: rgba(108, 203, 143, 0.3); }
+.tidy__tag--ok { color: var(--accent-2); background: var(--ok-soft); border-color: color-mix(in srgb, var(--accent-2) 30%, transparent); }
 .tidy__ghead {
   display: flex; align-items: center; gap: 12px; padding: 12px 20px 8px; border-bottom: 1px solid var(--border);
 }
@@ -50,7 +50,7 @@
 .tidy__empty { padding: 22px 20px; font-size: 13px; }
 .tidy__err {
   display: flex; align-items: center; gap: 8px; margin: 10px 20px 0; padding: 9px 12px; font-size: 13px;
-  color: var(--warn); background: var(--warn-soft); border: 1px solid rgba(231, 176, 74, 0.4); border-radius: var(--radius);
+  color: var(--warn); background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-radius: var(--radius);
 }
 .tidy__foot {
   display: flex; align-items: center; justify-content: space-between; gap: 18px;
@@ -68,7 +68,7 @@
 }
 [data-look="crate"] .tidy__row--rename::before { background: var(--accent) !important; }
 [data-look="crate"] .tidy__row--kept::before, [data-look="crate"] .tidy__row--blocked::before { background: var(--warn) !important; }
-[data-look="crate"] .tidy__group .tidy__row:nth-child(even) { background: rgba(255, 255, 255, 0.022); }
+[data-look="crate"] .tidy__group .tidy__row:nth-child(even) { background: var(--zebra); }
 [data-look="crate"] .tidy__edit input[type="text"], [data-look="crate"] .tidy__tag, [data-look="crate"] .tidy__err { border-radius: 0; }
 
 /* Sleeve: softer, roomier rows. */

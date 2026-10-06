@@ -2,6 +2,7 @@ import { Scan } from "./Scan";
 import { Review } from "./Review";
 import { Backup } from "./Backup";
 import { Button } from "../components/Button";
+import { Icon } from "../components/Icon";
 import type { FlowStep, PendingBackup } from "../App";
 import type { ScanProgress, BackupProgress } from "../useProgress";
 import type { ProjectSummary } from "../types";
@@ -36,7 +37,7 @@ export function BackupFlow({ step, projects, onProjects, scan, backup, pending, 
           {STEPS.map((s, i) => (
             <span key={s.id}
               className={`flowstep${s.id === step ? " flowstep--on" : ""}${i < cur ? " flowstep--done" : ""}`}>
-              <span className="flowstep__n">{i < cur ? "✓" : i + 1}</span>{s.label}
+              <span className="flowstep__n">{i < cur ? <Icon name="check" size={12} /> : i + 1}</span>{s.label}
             </span>
           ))}
         </div>
@@ -52,7 +53,7 @@ export function BackupFlow({ step, projects, onProjects, scan, backup, pending, 
         <Review pending={pending} onStarted={onStarted} onCancel={onBackToScan} />
       )}
       {step === "progress" && (
-        <Backup progress={backup} jobId={activeJob} />
+        <Backup progress={backup} jobId={activeJob} onRetry={onStarted} />
       )}
     </>
   );

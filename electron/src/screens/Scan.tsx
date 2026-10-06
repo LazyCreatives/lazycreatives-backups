@@ -15,6 +15,7 @@ import { Icon } from "../components/Icon";
 import { coverColor, useLook } from "../look";
 import { EmptyState } from "../components/SlothSpot";
 import { useGenres } from "../useGenres";
+import { rowKey } from "../components/a11y";
 
 const api = makeApi();
 type SortKey = "name" | "recent" | "size" | "issues";
@@ -228,14 +229,14 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
                       return (
                         <div key={p.als_path} className={`sleeve pick${isSel ? " pick--on" : ""}`} role="checkbox" aria-checked={isSel}
                           tabIndex={0} onClick={() => toggle(p.als_path)}
-                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(p.als_path); } }}>
+                          onKeyDown={rowKey(() => toggle(p.als_path))}>
                           <div className="sleeve__art">
                             <Cover name={p.name} genre={genreOf(p.name, p.als_path)} />
                             <span className="pick__tick" aria-hidden>{isSel && <Icon name="check" size={14} />}</span>
                             {p.missing_count > 0 && <span className="sleeve__badge pick__warn">{p.missing_count} missing</span>}
                           </div>
                           <div className="sleeve__meta">
-                            <span className="sleeve__name">{p.name}</span>
+                            <span className="sleeve__name" title={p.name}>{p.name}</span>
                             <span className="sleeve__sub">{dawLabel(p.daw)} · {p.present_count} sample{p.present_count === 1 ? "" : "s"} · {fmtSize(p.total_size)}</span>
                           </div>
                         </div>
@@ -255,7 +256,7 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
                             <input type="checkbox" checked={isSel} onChange={() => toggle(p.als_path)} />
                             <Cover name={p.name} genre={genreOf(p.name, p.als_path)} size={36} label={false} />
                             <div style={{ minWidth: 0 }}>
-                              <div className="lib-name">{p.name}</div>
+                              <div className="lib-name" title={p.name}>{p.name}</div>
                               <div className="lib-sub">{groupByFolder ? dawLabel(p.daw) : p.project_dir}</div>
                             </div>
                             <span className="col-num faint">{p.present_count} sample{p.present_count === 1 ? "" : "s"}</span>

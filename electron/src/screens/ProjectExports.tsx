@@ -6,13 +6,13 @@ import type { ExportRow, LibraryItem, ProjectExports as Data } from "../types";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { PlayButton, SongWave } from "../components/Player";
-import { fmtSize } from "../format";
+import { fmtSize, fmtDay } from "../format";
 
 const api = makeApi();
 const bridge = () => (window as any).ablebackup;
 
 const fmtWhen = (secs: number | null) =>
-  secs ? new Date(secs * 1000).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  secs ? fmtDay(secs * 1000, { time: true }) : "";
 
 // Plain words for how the song was linked to this project.
 const HOW: Record<ExportRow["match"], string> = {
@@ -131,8 +131,8 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
               ? <SongWave path={e.path} meta={songMeta(e.name)} height={20} />
               : <div className="sub col-trunc" style={{ margin: 0, fontSize: 12 }}>File has been moved or deleted</div>}
           </div>
-          <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{e.exists ? fmtWhen(e.mtime) : "—"}</div>
-          <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{e.exists ? fmtSize(e.size ?? 0) : "—"}</div>
+          <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{e.exists && e.mtime ? fmtWhen(e.mtime) : "—"}</div>
+          <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{e.exists && e.size != null ? fmtSize(e.size) : "—"}</div>
           {linked && <div className="col-end">
             {e.upload?.url && (
               <button type="button" className="pill pill--ok linkpill"

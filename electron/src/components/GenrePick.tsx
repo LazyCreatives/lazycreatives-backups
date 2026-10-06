@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { GENRES, genreColor } from "../look";
+import { useDialogFocus } from "./a11y";
+import { CRATE_COLORS, GENRES, builtInColor, genreColor, pickedColor, setGenreColor } from "../look";
 import { Cover } from "./Cover";
+import { useLeave } from "./Desktop";
 
 // Correct a project's (or a mix's) genre. The apps guess a genre from tempo and
 // name; this box lets the producer pick the right one, type their own, or go back
 // to the guess. The cover in the box follows the pick, so they see the new colour
 // before saving. SHARED FILE: the same file lives in Backups and Uploader
 // (electron/src/components/GenrePick.tsx); change both together. Styles are in
-// lazy-ui.css (.gpick, .genrechip, .genre-guess), in both looks.
+// lazy-ui.css (.gpick, .genrechip, .genre-guess, .swatches), in both looks.
+// The same box also picks a genre's crate colour (pickCrateColor, or the swatches
+// under the genre), which every stripe, cover and crate of that genre then follows.
 
 export type GenrePickOpts = {
   title: string;               // what is being changed, e.g. "Glasshouse"
@@ -33,15 +37,78 @@ export function pickGenre(opts: GenrePickOpts): Promise<GenrePickResult> {
 
 const OTHER = "__other__";
 
+// Just the crate colour of one genre (right-click a crate or a genre).
+type ColorState = { genre: string; cover: string; resolve: () => void } | null;
+const colorSubs = new Set<(s: ColorState) => void>();
+export function pickCrateColor(genre: string, cover?: string): Promise<void> {
+  if (!colorSubs.size) return Promise.resolve();
+  return new Promise((resolve) => colorSubs.forEach((f) => f({ genre, cover: cover ?? genre, resolve })));
+}
+
 // Rendered once in the app; shows the genre box when something asks for it.
 export function GenrePickHost() {
   const [s, setS] = useState<PickState>(null);
+  const [c, setC] = useState<ColorState>(null);
   useEffect(() => { pickSubs.add(setS); return () => { pickSubs.delete(setS); }; }, []);
+  useEffect(() => { colorSubs.add(setC); return () => { colorSubs.delete(setC); }; }, []);
+  if (c) return <ColorBox key={c.genre} c={c} done={() => { c.resolve(); setC(null); }} />;
   if (!s) return null;
   return <GenreBox key={`${s.title}|${s.current}`} s={s} done={(g) => { s.resolve(g); setS(null); }} />;
 }
 
-function GenreBox({ s, done }: { s: NonNullable<PickState>; done: (g: GenrePickResult) => void }) {
+// A row of colour swatches; "Its own" goes back to the genre's built-in colour.
+function Swatches({ genre, value, onPick }: { genre: string; value: string | null; onPick: (hex: string | null) => void }) {
+  const own = builtInColor(genre);
+  return (
+    <div className="swatches" role="radiogroup" aria-label={`Crate colour for ${genre}`}>
+      <button type="button" role="radio" aria-checked={!value} className={`swatch swatch--own${!value ? " swatch--on" : ""}`}
+        style={{ background: own }} title={`${genre}'s own colour`} aria-label="Its own colour" onClick={() => onPick(null)} />
+      {CRATE_COLORS.filter((hex) => hex.toLowerCase() !== own.toLowerCase()).map((hex) => (
+        <button key={hex} type="button" role="radio" aria-checked={value === hex}
+          className={`swatch${value === hex ? " swatch--on" : ""}`} style={{ background: hex }}
+          aria-label={`Colour ${hex}`} onClick={() => onPick(hex)} />
+      ))}
+    </div>
+  );
+}
+
+function ColorBox({ c, done }: { c: NonNullable<ColorState>; done: () => void }) {
+  const [value, setValue] = useState<string | null>(pickedColor(c.genre));
+  const [leaving, leave] = useLeave(done);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useDialogFocus(ref);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); leave(); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+  const save = () => { if (value !== pickedColor(c.genre)) setGenreColor(c.genre, value); leave(); };
+  return (
+    <div className="wnew__scrim" data-leaving={leaving || undefined} onClick={() => leave()}>
+      <div ref={ref} className="wnew confirm gpick" role="dialog" aria-modal="true" aria-labelledby="gcolor-title"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="gpick__body">
+          <div className="gpick__art" aria-hidden>
+            <Cover name={c.cover} genre={null} size={92} colour={value ?? builtInColor(c.genre)} />
+          </div>
+          <div className="gpick__main">
+            <div className="eyebrow">Crate colour</div>
+            <h2 id="gcolor-title" className="col-trunc" title={c.genre}>{c.genre}</h2>
+            <p className="gpick__now">Every {c.genre} stripe, cover and crate takes this colour, on this computer.</p>
+            <Swatches genre={c.genre} value={value} onPick={setValue} />
+          </div>
+        </div>
+        <div className="confirm__foot gpick__foot">
+          <button type="button" className="btn btn--ghost confirm__cancel" onClick={() => leave()}>Cancel</button>
+          <button type="button" className="btn btn--primary" disabled={value === pickedColor(c.genre)} onClick={save}>Save colour</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GenreBox({ s, done: close }: { s: NonNullable<PickState>; done: (g: GenrePickResult) => void }) {
+  const [leaving, done] = useLeave(close);
   const yours = [...new Set((s.yours ?? []).filter((g) => g && !GENRES.includes(g)))].sort((a, b) => a.localeCompare(b));
   const known = !s.current || GENRES.includes(s.current) || yours.includes(s.current);
   const [choice, setChoice] = useState<string>(s.current ? (known ? s.current : OTHER) : "");
@@ -49,6 +116,11 @@ function GenreBox({ s, done }: { s: NonNullable<PickState>; done: (g: GenrePickR
   const ref = useRef<HTMLDivElement | null>(null);
   const picked = choice === OTHER ? own.trim() : choice;
   const changed = picked !== (s.current ?? "") || (!s.setByYou && !!picked);
+  // the crate colour of the genre picked, changed in the same box
+  const [colour, setColour] = useState<Record<string, string | null>>({});
+  const colourFor = (g: string) => (g in colour ? colour[g] : pickedColor(g));
+  const colourChanged = !!picked && colourFor(picked) !== pickedColor(picked);
+  useDialogFocus(ref);
 
   useEffect(() => {
     ref.current?.querySelector<HTMLSelectElement>("select")?.focus();
@@ -57,16 +129,21 @@ function GenreBox({ s, done }: { s: NonNullable<PickState>; done: (g: GenrePickR
     return () => window.removeEventListener("keydown", onKey, true);
   }, []);
 
-  const save = () => { if (picked) done(picked.slice(0, 40)); };
+  const save = () => {
+    if (!picked) return;
+    if (colourChanged) setGenreColor(picked.slice(0, 40), colourFor(picked));
+    done(changed ? picked.slice(0, 40) : undefined);
+  };
   const many = (s.count ?? 1) > 1;
   return (
-    <div className="wnew__scrim" onClick={() => done(undefined)}>
+    <div className="wnew__scrim" data-leaving={leaving || undefined} onClick={() => done(undefined)}>
       <div ref={ref} className="wnew confirm gpick" role="dialog" aria-modal="true" aria-labelledby="gpick-title"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === "Enter" && (e.target as HTMLElement).tagName !== "BUTTON") { e.preventDefault(); save(); } }}>
         <div className="gpick__body">
           <div className="gpick__art" aria-hidden>
-            <Cover name={s.cover} genre={picked || s.current} size={92} />
+            <Cover name={s.cover} genre={picked || s.current} size={92}
+              colour={picked && colourFor(picked) !== pickedColor(picked) ? colourFor(picked) ?? builtInColor(picked) : undefined} />
           </div>
           <div className="gpick__main">
             <div className="eyebrow">{many ? `${s.count} projects` : "Genre"}</div>
@@ -97,6 +174,12 @@ function GenreBox({ s, done }: { s: NonNullable<PickState>; done: (g: GenrePickR
               <input type="text" className="gpick__own" value={own} maxLength={40} autoFocus
                 placeholder="Type the genre, e.g. Afrobeats" onChange={(e) => setOwn(e.target.value)} />
             )}
+            {picked && (
+              <div className="gpick__colour">
+                <span className="gpick__colourlbl">Crate colour for {picked}</span>
+                <Swatches genre={picked} value={colourFor(picked)} onPick={(hex) => setColour((c) => ({ ...c, [picked]: hex }))} />
+              </div>
+            )}
             {s.note && <p className="gpick__note">{s.note}</p>}
           </div>
         </div>
@@ -108,7 +191,7 @@ function GenreBox({ s, done }: { s: NonNullable<PickState>; done: (g: GenrePickR
             </button>
           )}
           <button type="button" className="btn btn--ghost confirm__cancel" onClick={() => done(undefined)}>Cancel</button>
-          <button type="button" className="btn btn--primary" disabled={!picked || !changed} onClick={save}>Save genre</button>
+          <button type="button" className="btn btn--primary" disabled={!picked || (!changed && !colourChanged)} onClick={save}>{changed || !colourChanged ? "Save genre" : "Save colour"}</button>
         </div>
       </div>
     </div>
@@ -124,7 +207,7 @@ export function GenreChip({ genre, setByYou, onClick, className = "" }: {
     : "No genre yet. Click to set one";
   return (
     <button type="button" className={`genrechip${setByYou ? " genrechip--set" : ""} ${className}`.trim()}
-      title={label} aria-label={label} onClick={(e) => { e.stopPropagation(); onClick(); }}>
+      title={label} aria-label={`${genre || "Set genre"}${genre ? (setByYou ? " set by you" : " guessed") : ""}. ${label}`} onClick={(e) => { e.stopPropagation(); onClick(); }}>
       <span className="genrechip__dot" style={{ background: genreColor(genre) }} />
       <span className={setByYou || !genre ? "" : "genre-guess"}>{genre || "Set genre"}</span>
       {genre && <span className="genrechip__how">{setByYou ? "set by you" : "guessed"}</span>}

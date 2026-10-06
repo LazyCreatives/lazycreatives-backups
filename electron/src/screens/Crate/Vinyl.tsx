@@ -14,7 +14,7 @@ export function Vinyl({ project, isActive, reduce, look }: {
   const spinning = isActive && !reduce;
   const badge = project.verified && (
     <motion.span className="vbadge" initial={false}
-      animate={isActive && !reduce ? { scale: [0, 1.25, 1] } : { scale: 1 }}
+      animate={isActive && !reduce ? { opacity: [0, 1], scale: [0.9, 1] } : { opacity: 1, scale: 1 }}
       transition={{ duration: reduce ? 0 : DUR.base, ease: EASE_LAZY }}
       aria-hidden="true">✓</motion.span>
   );
