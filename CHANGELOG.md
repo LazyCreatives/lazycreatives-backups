@@ -13,6 +13,14 @@ How to keep this up to date:
   The checks on pull requests fail if the app's version has no section here.
 -->
 
+## 0.1.11 (6 October 2026)
+
+### Better
+- **A tidier top on Windows.** The white Windows title bar and the File / Edit / View menu row are gone; the app's own dark colour now runs right to the top, with Windows' minimise, maximise and close buttons on the right. The ☰ button at the top left opens the old menus. Dragging, snapping and double-click to maximise work as before. Both looks; Mac and Linux are unchanged.
+
+### Fixed
+- **Dig no longer flickers on Windows.** On some Windows computers the Dig page flashed and jumped while a record was spinning, because a record you had already flipped past could still flash up for a moment. Records you have flipped past are now properly put away. Both looks.
+
 ## 0.1.10 (5 October 2026)
 
 ### New

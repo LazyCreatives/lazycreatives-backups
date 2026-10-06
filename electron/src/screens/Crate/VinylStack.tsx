@@ -28,6 +28,15 @@ function vinylTransform(offset: number, reduce: boolean, flat: boolean) {
            opacity: ao > 5 ? 0 : 1, zIndex: 120 - ao };
 }
 
+// Records faded to nothing are also hidden once the fade ends. On Windows the graphics
+// card could still flash a see-through record (the one already flipped past, lying
+// flat in front of the deck), which made the whole Dig page flicker.
+function withVisibility(t: ReturnType<typeof vinylTransform>) {
+  return t.opacity === 0
+    ? { ...t, transitionEnd: { visibility: "hidden" as const } }
+    : { ...t, visibility: "visible" as const };
+}
+
 export function VinylStack({ list, active, setActive, reduce, onOpenProject }: {
   list: Project[];
   active: number;
@@ -95,7 +104,7 @@ export function VinylStack({ list, active, setActive, reduce, onOpenProject }: {
               aria-label={`${p.name}, ${p.bpm ?? "unknown"} BPM`}
               aria-setsize={list.length} aria-posinset={i + 1}
               style={{ ["--tint" as string]: tintOf(p), transformPerspective: 1150 }}
-              animate={vinylTransform(i - active, reduce, look === "sleeve")}
+              animate={withVisibility(vinylTransform(i - active, reduce, look === "sleeve"))}
               transition={{ duration: reduce ? 0.18 : DUR.slow, ease: EASE_LAZY }}
               onClick={() => { if (isActive) onOpenProject?.(p.name); else setActive(i); }}
             >

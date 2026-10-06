@@ -5,7 +5,7 @@ const { startSidecar, stopSidecar, killGroup } = require("./sidecar");
 const { createTray } = require("./tray");
 const { isOpenAtLogin, setOpenAtLogin, initOpenAtLogin } = require("./startup");
 const { startUpdater } = require("./updater");
-const { windowStateOptions, installAppMenu, registerDesktopIpc, showWindow } = require("./desktop");
+const { windowChromeOptions, windowStateOptions, installAppMenu, registerDesktopIpc, showWindow } = require("./desktop");
 
 const isDev = !!process.env.ABLEBACKUP_DEV;
 let win = null;
@@ -44,7 +44,7 @@ function createWindow() {
   // Reopens at the size and place it was last closed at (see desktop.js).
   const placement = windowStateOptions();
   win = new BrowserWindow({
-    ...placement.options, backgroundColor: "#0B0E12",
+    ...placement.options, ...windowChromeOptions(), backgroundColor: "#0B0E12",
     ...(hasIcon() ? { icon: ICON } : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

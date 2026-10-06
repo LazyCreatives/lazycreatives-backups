@@ -5,7 +5,7 @@ import { baseName, folderOf, isInside, keep, recall, shortcutFor } from "../src/
 // @ts-ignore - untyped JS module imported for its runtime behaviour
 import * as desktopMain from "../electron/desktop";
 
-const { onAScreen } = desktopMain as any;
+const { onAScreen, windowChromeOptions } = desktopMain as any;
 
 const press = (k: Record<string, unknown>) => ({
   key: "", code: "", altKey: false, metaKey: false, ctrlKey: false, shiftKey: false, target: null, ...k,
@@ -86,5 +86,17 @@ describe("window place", () => {
   });
   it("is fine with a window that hangs a little off the edge", () => {
     expect(onAScreen({ x: 900, y: 100, width: 1100, height: 760 }, laptop)).toBe(true);
+  });
+});
+
+describe("window frame", () => {
+  it("Windows gets the app's own dark strip with Windows' buttons drawn over it", () => {
+    const o = windowChromeOptions("win32");
+    expect(o.titleBarStyle).toBe("hidden");
+    expect(o.titleBarOverlay).toMatchObject({ color: "#0B0E12", height: 36 });
+  });
+  it("Mac and Linux keep their usual frame", () => {
+    expect(windowChromeOptions("darwin")).toEqual({});
+    expect(windowChromeOptions("linux")).toEqual({});
   });
 });

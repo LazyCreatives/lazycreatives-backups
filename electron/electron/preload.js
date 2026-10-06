@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld("ablebackup", {
   // Everyday desktop helpers (see desktop.js / src/desktop.ts).
   copyText: (text) => ipcRenderer.invoke("copy-text", text),
   setProgress: (value) => ipcRenderer.invoke("set-progress", value),
+  openAppMenu: (x, y) => ipcRenderer.invoke("open-app-menu", x, y),
   pathKinds: (paths) => ipcRenderer.invoke("path-kinds", paths),
   relaunch: () => ipcRenderer.invoke("relaunch-app"),
   pathForFile: (file) => { try { return webUtils.getPathForFile(file) || ""; } catch { return ""; } },

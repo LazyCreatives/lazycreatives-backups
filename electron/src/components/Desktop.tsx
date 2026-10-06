@@ -228,3 +228,29 @@ export function ShortcutsPanel({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
+
+// ── Windows title bar ────────────────────────────────────────────────────────
+
+// On Windows the window has no title bar of its own (see desktop.js): this strip
+// takes its place in the app's colours. Dragging it moves the window and a
+// double-click maximises (Windows handles both); the ☰ button opens the File, Edit,
+// View, Window and Help menus. Windows draws minimise, maximise and close on the right.
+export function TitleBar() {
+  const b = (window as any).ablebackup || (window as any).lazyupload;
+  const show = b?.platform === "win32" && typeof b?.openAppMenu === "function";
+  useLayoutEffect(() => {
+    document.body.classList.toggle("has-titlebar", show);
+    return () => document.body.classList.remove("has-titlebar");
+  }, [show]);
+  if (!show) return null;
+  return (
+    <div className="titlebar">
+      <button className="titlebar__menu" aria-label="Menu" title="Menu"
+        onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); b.openAppMenu(r.left, r.bottom + 2); }}>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
+          <path d="M2 3.5h10M2 7h10M2 10.5h10" />
+        </svg>
+      </button>
+    </div>
+  );
+}

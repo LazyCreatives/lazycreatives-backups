@@ -4,6 +4,8 @@
 //   - a proper menu bar (File, Edit, View, Window, Help) listing the shortcuts
 //   - copy to the clipboard, progress on the dock / taskbar icon, and telling a
 //     dropped file from a dropped folder, for the page
+//   - on Windows, no white title bar: the page draws its own top strip (TitleBar in
+//     src/components/Desktop.tsx) and Windows draws its buttons over it
 const { app, Menu, clipboard, ipcMain, screen, shell } = require("electron");
 const fs = require("fs");
 const path = require("path");
@@ -57,6 +59,17 @@ function windowStateOptions() {
       for (const ev of ["resize", "move", "maximize", "unmaximize", "close"]) win.on(ev, save);
     },
   };
+}
+
+// ── Windows title bar ─────────────────────────────────────────────────────────
+
+// Windows' own title bar and menu row are light grey whatever the app looks like.
+// There the window gets no title bar; the page's strip takes its place in the app's
+// ink colour, and Windows still draws minimise / maximise / close (with snapping) on
+// it. The colour matches --bg in lazy-ui.css. Mac and Linux keep their usual frame.
+const TITLE_BAR = { color: "#0B0E12", symbolColor: "#AAB4C0", height: 36 };
+function windowChromeOptions(platform = process.platform) {
+  return platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: TITLE_BAR } : {};
 }
 
 // ── menu bar ──────────────────────────────────────────────────────────────────
@@ -143,6 +156,13 @@ function registerDesktopIpc(getWindow) {
     const v = typeof value === "number" && value >= 0 && value <= 1 ? value : -1;
     win.setProgressBar(v);
   });
+  // The ☰ button in the Windows strip opens the menu bar's menus under it.
+  ipcMain.handle("open-app-menu", (_e, x, y) => {
+    const win = getWindow();
+    const menu = Menu.getApplicationMenu();
+    if (!win || win.isDestroyed() || !menu) return;
+    menu.popup({ window: win, x: Math.round(Number(x) || 0), y: Math.round(Number(y) || 0) });
+  });
   // "Restart the app" on the could-not-start screen: a fresh start of the app and its engine.
   ipcMain.handle("relaunch-app", () => { app.relaunch(); app.quit(); });
   // Dropped items: which are folders and which are files.
@@ -165,4 +185,4 @@ function showWindow(win) {
   win.focus();
 }
 
-module.exports = { windowStateOptions, savedWindowState, onAScreen, installAppMenu, registerDesktopIpc, showWindow };
+module.exports = { windowChromeOptions, windowStateOptions, savedWindowState, onAScreen, installAppMenu, registerDesktopIpc, showWindow };

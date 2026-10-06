@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { TitleBar } from "./components/Desktop";
 import { EntitlementProvider } from "./entitlement";
 // Bundled fonts so the app looks the same on every computer.
 // Shared with Uploader: Schibsted Grotesk for everything, Bebas Neue for the app name and big titles.
@@ -21,6 +22,7 @@ window.addEventListener("unhandledrejection", (e) =>
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
+    <TitleBar />
     <EntitlementProvider>
       <App />
     </EntitlementProvider>
