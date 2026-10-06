@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { pickCover } from "../components/CoverPick";
 import { CopyButton } from "../components/Desktop";
 import { makeApi } from "../api";
 import type { LibraryItem, Snapshot, SnapshotDiff } from "../types";
@@ -226,6 +227,11 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
     : item.backed_up ? <span className="fact-chip fact-chip--ok"><span className="dot dot--ok" />Safe, opens</span>
     : <span className="fact-chip">Not backed up yet</span>;
 
+  const coverBtn = (
+    <Button variant="ghost" onClick={() => pickCover({ title: item.name, name: item.name, genre: item.genre })}>
+      <Icon name="image" size={15} />Change cover
+    </Button>
+  );
   const chip = onGenre && <GenreChip genre={item.genre ?? null} setByYou={!!item.genre_by_you} onClick={onGenre} />;
   return (
     <>
@@ -263,6 +269,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
               <Button variant="ghost" onClick={onOpenInDaw}>Open in {dawLabel(item.daw)}</Button>
               <Button variant="ghost" onClick={onReveal}><Icon name="folder" size={15} />Show in folder</Button>
               <CopyButton text={item.path} what="project path" size={15} className="copybtn--big" />
+              {coverBtn}
               {actions}
             </div>
           </div>
@@ -290,6 +297,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
               <Button variant="ghost" onClick={onReveal}><Icon name="folder" size={15} />Show in folder</Button>
               <CopyButton text={item.path} what="project path" size={15} className="copybtn--big" />
               <Button variant="ghost" onClick={onOpenInDaw}>Open in {dawLabel(item.daw)}</Button>
+              {coverBtn}
               {actions}
             </div>
           </header>

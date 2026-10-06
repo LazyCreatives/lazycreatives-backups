@@ -11,8 +11,10 @@ import { FirstBackupModal } from "./components/FirstBackupModal";
 import { WhatsNewHost, openWhatsNew } from "./components/WhatsNew";
 import { ConfirmHost, ContextMenuHost, DropZone, Exit, ShortcutsPanel, ToastHost, toast, toastWarn } from "./components/Desktop";
 import { GenrePickHost } from "./components/GenrePick";
+import { CoverPickHost } from "./components/CoverPick";
+import { setCoverSource } from "./coverArt";
 import { baseName, folderOf, isInside, keep, pageNumber, recall, useDesktopCommands, useEscapeToClose, useFileDrop, useIconProgress, type Dropped } from "./desktop";
-import { makeApi } from "./api";
+import { makeApi, makeCoverSource } from "./api";
 import { useLiveProgress } from "./useProgress";
 import type { Config, ProjectSummary } from "./types";
 import { PlayerBar, togglePlaying } from "./components/Player";
@@ -187,6 +189,9 @@ export default function App() {
     }).catch(() => setCfg("error"));
   }, []);
 
+  // Your cover pictures, so every cover on every page can draw with them.
+  useEffect(() => { setCoverSource(makeCoverSource()); }, []);
+
   // Notification permission, once.
   useEffect(() => {
     if ("Notification" in window && Notification.permission === "default") {
@@ -310,6 +315,7 @@ export default function App() {
       <ToastHost />
       <ConfirmHost />
       <GenrePickHost />
+      <CoverPickHost />
       <PaletteHost items={paletteItems} />
       <DropZone show={dragging} title="Drop to add" hint="Drop a project folder to add it to the folders Backups looks in." />
       {showKeys && <ShortcutsPanel onClose={() => setShowKeys(false)} />}

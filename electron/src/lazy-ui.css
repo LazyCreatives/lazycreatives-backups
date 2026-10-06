@@ -923,6 +923,93 @@ html:not(.lc-dealt) .sleeves > * { animation: lcRise 320ms var(--ease-glide) bot
 .gpick__colourlbl { font-size: 12.5px; color: var(--text-faint); }
 [data-look="crate"] .swatch { border-radius: 3px; }
 
+/* ---- your own covers (coverArt.ts, components/CoverPick.tsx, CoverShelf.tsx) ---- */
+/* a segmented control with its label beside it */
+.cseg { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.cseg__label { font-size: 12.5px; color: var(--text-faint); white-space: nowrap; }
+.seg--sm .seg__opt { height: 26px; padding: 0 9px; font-size: 12.5px; }
+
+/* the Change cover box */
+.wnew.cpick { width: min(660px, calc(100vw - 32px)); max-width: none; }
+.cpick__body { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 20px; padding: 20px 20px 4px; align-items: start; }
+.cpick__art { width: 196px; height: 196px; touch-action: none; }
+.cpick__art .cover { display: block; box-shadow: 0 10px 26px rgb(var(--shade-rgb) / calc(0.4 * var(--shade-k))); }
+.cpick__art--drag { cursor: grab; }
+.cpick__art--drag:active { cursor: grabbing; }
+.cpick__main { min-width: 0; display: grid; gap: 10px; }
+.cpick__main .eyebrow { margin: 0; }
+.cpick__main h2 { margin: 0; font-size: 18px; line-height: 1.25; }
+.cpick__opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; max-height: 236px; overflow-y: auto; padding: 2px; }
+.cpick__opt {
+  display: grid; gap: 4px; justify-items: center; padding: 4px; border: 2px solid transparent; border-radius: var(--radius);
+  background: none; cursor: pointer; font: 11.5px var(--font); color: var(--text-dim); min-width: 0;
+}
+.cpick__opt .cover, .cpick__raw { width: 100%; height: auto; aspect-ratio: 1; display: block; border-radius: 3px; object-fit: cover; }
+.cpick__opt:hover { background: var(--surface-3); }
+.cpick__opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cpick__opt--on { border-color: var(--accent); color: var(--text); }
+.cpick__optname { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cpick__opt--add .cpick__plus {
+  width: 100%; aspect-ratio: 1; display: grid; place-items: center; border: 1px dashed var(--border-strong);
+  border-radius: 3px; font-size: 22px; color: var(--text-faint);
+}
+.cpick__how { display: grid; gap: 8px; }
+[data-look="crate"] :is(.cpick__art .cover, .cpick__opt .cover, .cpick__raw) { border-radius: 0; }
+[data-look="crate"] .cpick__opt { border-radius: 2px; }
+[data-look="sleeve"] .cpick { border-radius: 14px; }
+@media (max-width: 640px) { .cpick__body { grid-template-columns: 1fr; } .cpick__art { justify-self: center; } }
+
+/* Settings, Covers */
+.covshelf { display: grid; gap: 12px; min-width: 0; }
+.covshelf__rules { display: flex; flex-wrap: wrap; gap: 10px 24px; }
+.covshelf__help { margin: 0; font-size: 12.5px; color: var(--text-faint); }
+.covshelf__muted { font-size: 12.5px; color: var(--text-faint); }
+.covshelf__foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.covshelf__thumb { position: relative; display: block; }
+.covshelf__thumb .cover, .covshelf__raw { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; }
+[data-look="crate"] .covshelf__thumb .cover, [data-look="sleeve"] .covshelf__raw { display: none; }
+.covshelf__main {
+  position: absolute; left: 6px; top: 6px; padding: 2px 6px; border-radius: 4px; background: var(--float-bg);
+  color: var(--warn); font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.covshelf__name { min-width: 0; width: 100%; }
+.covshelf__given { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.covshelf__chip { height: 21px; font-size: 11.5px; }
+.covshelf__add { height: 24px; font-size: 12px; padding-top: 0; padding-bottom: 0; max-width: 110px; }
+.covshelf__count { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 13px; }
+.covshelf__acts { display: flex; gap: 12px; justify-content: flex-end; white-space: nowrap; font-size: 12.5px; }
+.covshelf__remove { color: var(--danger); }
+/* Crate: one row per picture, in columns */
+[data-look="crate"] .covshelf__list { border-top: 1px solid var(--border-strong); overflow-x: auto; }
+[data-look="crate"] :is(.covshelf__head, .covshelf__item) {
+  display: grid; grid-template-columns: 44px minmax(120px, 1.2fr) 182px minmax(150px, 1.6fr) 84px 132px;
+  gap: 12px; align-items: center; padding: 6px 8px; min-width: 720px; border-bottom: 1px solid var(--border-strong);
+}
+[data-look="crate"] .covshelf__head { white-space: nowrap; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); font-weight: 600; }
+[data-look="crate"] .covshelf__item:nth-child(odd) { background: var(--zebra-crate); }
+[data-look="crate"] .covshelf__raw { width: 36px; border-radius: 0; }
+[data-look="crate"] .covshelf__main { left: auto; right: -6px; top: -5px; padding: 0 3px; }
+[data-look="crate"] .covshelf__mainword { display: none; }
+/* Sleeve: a shelf of tiles */
+[data-look="sleeve"] .covshelf__head { display: none; }
+[data-look="sleeve"] .covshelf__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
+[data-look="sleeve"] .covshelf__item {
+  display: grid; gap: 8px; align-content: start; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--surface); min-width: 0;
+}
+[data-look="sleeve"] .covshelf__thumb .cover { border-radius: 4px; }
+[data-look="sleeve"] .covshelf__count::before { content: "Picked for "; color: var(--text-faint); }
+[data-look="sleeve"] .covshelf__count[data-none] { display: none; }
+
+/* Change cover on a Sleeve card (Uploader's Upload): shows when you point at the card */
+.sleeve__coverbtn {
+  position: absolute; left: 8px; bottom: 8px; width: 30px; height: 30px; display: grid; place-items: center;
+  border-radius: 50%; background: var(--float-bg); color: var(--on-art); opacity: 0; transition: opacity var(--dur-quick);
+}
+.sleeve:hover .sleeve__coverbtn, .sleeve__coverbtn:focus-visible { opacity: 1; }
+@media (hover: none) { .sleeve__coverbtn { opacity: 1; } }
+[data-look="sleeve"] .covshelf__acts { justify-content: flex-start; }
+
 /* ratings: five marks; the empty ones stay faint until you point at the row */
 .rating { display: inline-flex; align-items: center; gap: 1px; color: var(--warn); outline-offset: 3px; border-radius: 4px; }
 .rating__mark { display: inline-grid; place-items: center; width: 15px; height: 20px; cursor: pointer; color: var(--text-faint); opacity: 0.45; }

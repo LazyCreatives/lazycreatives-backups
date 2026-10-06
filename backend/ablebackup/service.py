@@ -794,7 +794,8 @@ def full_disk_access_ok() -> bool:
 
 
 def scan_summary(sources: list[Path], progress: ProgressCb = None,
-                 find_missing: bool = False, libraries=None, stats=None, learned=()) -> list[dict]:
+                 find_missing: bool = False, libraries=None, stats=None, learned=(),
+                 pointed=None) -> list[dict]:
     """Scan sources and return JSON-serializable project summaries.
 
     When progress is given, emits scan_start/scan_progress/scan_done events so the
@@ -807,7 +808,8 @@ def scan_summary(sources: list[Path], progress: ProgressCb = None,
     from ablebackup.genre import guess_genre
     locate = _build_locator(sources, libraries) if find_missing else None
     out = []
-    for p in scan_projects([Path(s) for s in sources], progress=progress, locate=locate, stats=stats):
+    for p in scan_projects([Path(s) for s in sources], progress=progress, locate=locate, stats=stats,
+                            pointed=pointed):
         # Genre-tag at scan time from BPM (Ableton) + project name + sample filenames,
         # so the whole scanned library is diggable by genre, not just backed-up projects.
         samples = [r.name for r in p.refs]
@@ -888,13 +890,18 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
     # Explicit per-file remaps the user pointed at ("this missing sample IS that
     # file"). Only meaningful on the targeted (als_paths) path — the global pool scan
     # has no single project to attribute them to.
-    overrides = relink_map or None
+    # Files pointed at earlier are remembered in the catalog and used by every later
+    # backup of that project, scheduled ones included; this run's picks win.
+    pointed = catalog.all_pointed()
     if als_paths is not None:
         # Scan only the chosen projects (fast) rather than re-walking every source.
-        projects = [scan_one(Path(a), locate=locate, overrides=overrides)
+        projects = [scan_one(Path(a), locate=locate,
+                             overrides={**pointed.get(str(a), {}), **(relink_map or {})} or None)
                     for a in als_paths if Path(a).exists()]
+        for p in projects:
+            catalog.set_missing_count(p.project_id, len(p.missing))
     else:
-        projects = scan_projects([Path(s) for s in sources], locate=locate)
+        projects = scan_projects([Path(s) for s in sources], locate=locate, pointed=pointed)
 
     last_sigs = catalog.latest_signatures()
     ok_count = 0

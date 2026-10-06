@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { pickCover } from "../components/CoverPick";
 import { makeApi } from "../api";
 import type { LibraryItem } from "../types";
 import type { ScanProgress } from "../useProgress";
@@ -657,6 +658,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                     { label: `Open in ${DAW_NAMES[it.daw ?? ""] ?? "its DAW"}`, onClick: () => openInDaw(it.path) },
                     "-", ...ratingMenu([it.project_id], ratingOf(it.project_id)), "-",
                     { label: it.genre ? "Change genre…" : "Set genre…", onClick: () => changeGenre([it]) },
+                    { label: "Change cover…", onClick: () => { pickCover({ title: it.name, name: it.name, genre: it.genre }); } },
                   ])}>
                   <span className="stripe" style={{ background: genreColor(it.genre) }} />
                   <Cover name={it.name} genre={it.genre} size={28} />
@@ -716,6 +718,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
               ...items.slice(0, 5), "-",
               ...ratingMenu(picked.has(it.project_id) ? [...picked] : [it.project_id], ratingOf(it.project_id)), "-",
               ...(it.genre ? [{ label: `Crate colour for ${it.genre}…`, onClick: () => pickCrateColor(it.genre!, it.name) }] : []),
+              { label: "Change cover…", onClick: () => { pickCover({ title: it.name, name: it.name, genre: it.genre }); } },
               ...items.slice(5),
               { label: "Copy project path", onClick: () => { copyText(it.path); } },
             ] as MenuItem[]);

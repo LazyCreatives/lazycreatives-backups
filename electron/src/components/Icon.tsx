@@ -56,6 +56,7 @@ const PATHS = {
   narrow: "M4 4h16v16H4ZM14 4v16",                     // the narrow window beside your music program
   pin: "M9 3h6M10 3v6l-3 4h10l-3-4V3M12 13v8",        // keep the narrow window on top
   palette: "M12 21a9 9 0 1 1 9-9c0 2-1.5 3-3 3h-2a2 2 0 0 0-1.5 3.3c.4.5.5 1 .5 1.4 0 .7-.9 1.3-3 1.3ZM7.5 11h.01M10 7.5h.01M14.5 7.5h.01",
+  image: "M4 5h16v14H4ZM4 16l5-5 4 4 2-2 5 5M15.5 9.5h.01",  // a picture (Change cover)
 } as const;
 
 export type IconName = keyof typeof PATHS;

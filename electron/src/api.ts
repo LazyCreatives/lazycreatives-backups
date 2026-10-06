@@ -1,4 +1,5 @@
 import type { CloudFolder, Config, SuggestedFolder, ProjectExports, Entitlement, JobStatus, LibraryItem, Overview, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, TidyBatch, TidyDone, TidyOptions, TidyPlan, UnmatchedSong, VerifyResult } from "./types";
+import type { CoverSource } from "./coverArt";
 
 function base() {
   const port = (window as any).ablebackup?.port ?? "8753";
@@ -47,8 +48,8 @@ export function makeApi() {
     // sample is also marked `recoverable` (auto-findable in the library).
     async projectMissing(path: string, find = false): Promise<{
       name: string; path: string; present_count: number; missing_count: number;
-      recoverable_count: number; probed: boolean;
-      missing: { name: string; expected_path: string; recoverable: boolean }[];
+      recoverable_count: number; probed: boolean; pointed_count?: number;
+      missing: { name: string; expected_path: string; recoverable: boolean; pointed?: string | null }[];
     }> {
       return req("GET", `/api/project/missing?path=${encodeURIComponent(path)}${find ? "&find=1" : ""}`);
     },
@@ -157,3 +158,19 @@ export function makeApi() {
   };
 }
 export type Api = ReturnType<typeof makeApi>;
+
+// Your cover pictures (Settings, Covers), for coverArt.ts. Pictures are fetched by
+// <image>, which can't send headers, so the token rides in their address.
+export function makeCoverSource(): CoverSource {
+  return {
+    load: () => req("GET", "/api/covers"),
+    settings: (p) => req("PUT", "/api/covers/settings", p),
+    add: (p) => req("POST", "/api/covers/pictures", p),
+    update: (id, p) => req("PATCH", `/api/covers/pictures/${encodeURIComponent(id)}`, p),
+    remove: (id) => req("DELETE", `/api/covers/pictures/${encodeURIComponent(id)}`),
+    choose: (name, choice) => req("PUT", "/api/covers/choice", { name, choice }),
+    src: (url) => `${base()}${url}?t=${encodeURIComponent(token())}`,
+    pickImage: async () => (window as any).ablebackup?.pickImage?.() ?? null,
+    readImage: async (p) => (window as any).ablebackup?.readImage?.(p) ?? null,
+  };
+}

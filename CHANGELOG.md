@@ -15,6 +15,15 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.2.1 (6 October 2026)
+
+### New
+- **Your own cover art.** In Settings, under Covers, save as many pictures as you like and use each one behind the drawn cover or as the whole cover. Give pictures to genres, mix them across your projects, or use one for everything, and pick Ink print, Photo or Label strip for how a picture sits behind the drawing.
+- **Change cover** on a project's page (or right-click a project) picks the drawn cover, any saved picture or a new one for just that project, with its own style; drag the cover to move the picture. Uploader follows the cover you pick.
+
+### Fixed
+- **Point to file now sticks.** The exact file you pick for a missing sample is remembered: it still shows as "Using …" after you leave the project page, the missing count drops straight away, and every later backup of that project (scheduled ones too) uses that file.
+
 ## 0.2.0 (6 October 2026)
 
 ### New

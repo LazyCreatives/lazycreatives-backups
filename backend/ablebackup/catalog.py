@@ -103,6 +103,17 @@ CREATE TABLE IF NOT EXISTS renamed (
     batch_id TEXT NOT NULL,
     at TEXT NOT NULL
 );
+-- "Point to file": the exact file the producer chose for a sample a project can't
+-- find. Remembered so the choice holds after leaving the page, in every later
+-- backup (scheduled ones too) and in the library's missing counts. Keyed by the
+-- project file and the path the project expects the sample at.
+CREATE TABLE IF NOT EXISTS pointed_samples (
+    project_path TEXT NOT NULL,
+    expected_path TEXT NOT NULL,
+    chosen_path TEXT NOT NULL,
+    at TEXT NOT NULL,
+    PRIMARY KEY (project_path, expected_path)
+);
 """
 
 # Indexes for the columns we filter/join/group on. missing_refs.snapshot_id is the
@@ -282,6 +293,39 @@ class Catalog:
             return default
         return json.loads(row["value"])
 
+    def remember_pointed(self, project_path: str, picks: dict) -> None:
+        """Keep the files the producer pointed at for a project's missing samples
+        ({expected_path: chosen file}); a new pick for the same sample replaces it."""
+        at = time.strftime("%Y-%m-%dT%H:%M:%S")
+        with self._lock:
+            self.conn.executemany(
+                "INSERT INTO pointed_samples (project_path, expected_path, chosen_path, at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(project_path, expected_path) "
+                "DO UPDATE SET chosen_path = excluded.chosen_path, at = excluded.at",
+                [(str(project_path), str(e), str(c), at) for e, c in picks.items() if e and c],
+            )
+            self.conn.commit()
+
+    def pointed_for(self, project_path: str) -> dict:
+        """{expected_path: chosen file} the producer pointed at for one project."""
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT expected_path, chosen_path FROM pointed_samples WHERE project_path = ?",
+                (str(project_path),),
+            ).fetchall()
+        return {r["expected_path"]: r["chosen_path"] for r in rows}
+
+    def all_pointed(self) -> dict:
+        """{project_path: {expected_path: chosen file}} for every project."""
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT project_path, expected_path, chosen_path FROM pointed_samples"
+            ).fetchall()
+        out: dict = {}
+        for r in rows:
+            out.setdefault(r["project_path"], {})[r["expected_path"]] = r["chosen_path"]
+        return out
+
     def recent_snapshots(self, limit=50) -> list[dict]:
         with self._lock:
             rows = self.conn.execute(
@@ -444,6 +488,14 @@ class Catalog:
         with self._lock:
             self.conn.execute("UPDATE discovered SET backed_mtime = ? WHERE project_id = ?",
                               (mtime, project_id))
+            self.conn.commit()
+
+    def set_missing_count(self, project_id: str, count: int) -> None:
+        """Refresh the library's "samples missing" count for one project after a
+        backup re-read it, so a sample just pointed at stops counting straight away."""
+        with self._lock:
+            self.conn.execute("UPDATE discovered SET missing_count = ? WHERE project_id = ?",
+                              (count, project_id))
             self.conn.commit()
 
     def library(self) -> list[dict]:

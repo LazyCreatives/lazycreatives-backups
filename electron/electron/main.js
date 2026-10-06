@@ -132,6 +132,28 @@ ipcMain.handle("pick-file", () => pick({
   ],
 }));
 
+// Pick a picture for a cover (Settings, Covers; Change cover), then read it into a data
+// URL; the page shrinks it and hands it to the sidecar, which keeps its own copy.
+ipcMain.handle("pick-image", () => pick({
+  properties: ["openFile"],
+  filters: [{ name: "Pictures", extensions: ["jpg", "jpeg", "png", "webp"] }],
+}));
+const IMAGE_MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp" };
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+ipcMain.handle("read-image", async (_e, target) => {
+  try {
+    if (typeof target !== "string" || !target) return null;
+    const mime = IMAGE_MIME[path.extname(target).toLowerCase()];
+    if (!mime) return null;
+    const stat = await fs.promises.stat(target);
+    if (!stat.isFile() || stat.size > MAX_IMAGE_BYTES) return null;
+    const buf = await fs.promises.readFile(target);
+    return `data:${mime};base64,${buf.toString("base64")}`;
+  } catch {
+    return null;
+  }
+});
+
 ipcMain.handle("reveal-path", (_e, target) => {
   if (target) shell.showItemInFolder(target);
 });
@@ -173,7 +195,8 @@ app.whenReady().then(async () => {
         cb({ responseHeaders: { ...details.responseHeaders,
           "Content-Security-Policy": [
             "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-            "connect-src http://127.0.0.1:* ws://127.0.0.1:*; img-src 'self' data:; font-src 'self' data:; " +
+            "connect-src http://127.0.0.1:* ws://127.0.0.1:*; font-src 'self' data:; " +
+            "img-src 'self' data: http://127.0.0.1:*; " +  // your cover pictures, served by the sidecar
             "media-src http://127.0.0.1:*",  // the in-app player streams exports from the sidecar
           ] } });
       });

@@ -186,3 +186,57 @@ def test_backup_only_selected_als_paths(tmp_path):
     assert status["result"]["ok_count"] == 1
     assert (dest / "AbletonBackups" / "projects" / "Keep" / "2026-06-06_1500").exists()
     assert not (dest / "AbletonBackups" / "projects" / "Skip" / "2026-06-06_1500").exists()
+
+
+def test_point_to_file_is_remembered(tmp_path, monkeypatch):
+    """A file pointed at for a missing sample still holds after leaving the page:
+    the missing list shows it as chosen (not missing), and a later backup of the
+    project (with no pick sent) still uses that file."""
+    monkeypatch.setenv("ABLEBACKUP_FREE_BETA", "1")  # every feature on, as shipped
+    proj = tmp_path / "Song Project"
+    proj.mkdir()
+    als = proj / "Song.als"
+    write_als(als, [
+        fileref_abs("/gone/away/lead_synth.wav", "lead_synth.wav"),
+        fileref_abs("/gone/away/vox_chop.wav", "vox_chop.wav"),
+    ])
+    chosen = tmp_path / "found" / "lead_synth.wav"
+    chosen.parent.mkdir()
+    chosen.write_bytes(b"the real lead")
+    dest = tmp_path / "NAS"
+
+    def wait(c, job_id):
+        for _ in range(200):
+            st = c.get(f"/api/jobs/{job_id}").json()
+            if st["state"] != "running":
+                return st
+            time.sleep(0.05)
+        return st
+
+    app = create_app(token="", db_path=tmp_path / "c.db")
+    with TestClient(app) as c:
+        c.put("/api/settings", json={"sources": [str(tmp_path)], "dest": str(dest),
+                                     "interval_minutes": 0})
+        before = c.get("/api/project/missing", params={"path": str(als)}).json()
+        expected = next(m["expected_path"] for m in before["missing"] if m["name"] == "lead_synth.wav")
+        r = c.post("/api/backup", json={
+            "als_paths": [str(als)], "find_missing": True, "timestamp": "2026-10-06_1800",
+            "relink_map": {expected: str(chosen)}})
+        assert wait(c, r.json()["job_id"])["state"] == "done"
+
+        # Leaving the page and coming back: the pick is still there.
+        again = c.get("/api/project/missing", params={"path": str(als)}).json()
+        by_name = {m["name"]: m for m in again["missing"]}
+        assert by_name["lead_synth.wav"]["pointed"] == str(chosen)
+        assert by_name["vox_chop.wav"]["pointed"] is None
+        assert again["missing_count"] == 1
+
+        # A later backup, sent without any pick (like the scheduled one), keeps it.
+        # (Portable this time, so it isn't skipped as identical to the first.)
+        r = c.post("/api/backup", json={
+            "als_paths": [str(als)], "find_missing": True, "portable": True,
+            "timestamp": "2026-10-06_1900"})
+        st = wait(c, r.json()["job_id"])
+    assert st["state"] == "done"
+    copies = list(dest.rglob("lead_synth.wav"))
+    assert any("2026-10-06_1900" in str(p) for p in copies)

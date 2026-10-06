@@ -13,7 +13,7 @@ from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from ablebackup import entitlement, exports, markers, tidy, waveform
+from ablebackup import covers, entitlement, exports, markers, tidy, waveform
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
 from ablebackup.api.schemas import (
@@ -31,6 +31,7 @@ from ablebackup.service import (
     resolve_scan_roots, restore_snapshot, run_backup, safe_remote_name, scan_summary,
     share_snapshot, snapshot_diff,
 )
+from ablebackup.resolver import _allowed_external_file
 from ablebackup.scanner import scan_one
 from ablebackup.songmatch import is_stem
 from ablebackup.suggest import suggested_folders
@@ -81,6 +82,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     app.state.pool_refreshing = False  # guard so only one pool-size walk runs at a time
     app.state.pool_tasks = set()        # strong refs so tasks aren't GC'd mid-run
     app.state.cloud_sessions = {}       # connect_id -> CloudConnectSession (OAuth in flight)
+    covers.install(app, catalog, db_path)  # custom cover art: /api/covers/...
 
     _JOBS_CAP = 200
 
@@ -300,7 +302,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         projects = scan_summary(
             sources, progress=progress, find_missing=find_missing,
             libraries=cfg.get("libraries", []), stats=stats,
-            learned=app.state.catalog.genre_examples())
+            learned=app.state.catalog.genre_examples(),
+            pointed=app.state.catalog.all_pointed())
         if not _allows("multi_daw"):
             projects = [p for p in projects if p.get("daw") == "ableton"]
         # Persist what we found so History shows the whole library, not just backups.
@@ -549,14 +552,23 @@ def create_app(token: str, db_path: Path) -> FastAPI:
             still_missing = {r.expected_path or r.name for r in found.missing}
             recoverable = {(r.expected_path or r.name) for r in scan.missing
                            if (r.expected_path or r.name) not in still_missing}
-        missing = [{"name": r.name, "expected_path": r.expected_path or r.name,
-                    "recoverable": (r.expected_path or r.name) in recoverable}
-                   for r in scan.missing]
+        # Files the producer pointed at before: still shown, as "Using <file>", but no
+        # longer counted as missing while the chosen file is there.
+        picks = app.state.catalog.pointed_for(str(p))
+        missing = []
+        for r in scan.missing:
+            key = r.expected_path or r.name
+            chosen = picks.get(key)
+            if chosen and not (Path(chosen).is_file() and _allowed_external_file(Path(chosen))):
+                chosen = None
+            missing.append({"name": r.name, "expected_path": key,
+                            "recoverable": key in recoverable, "pointed": chosen})
         return {
             "name": scan.name,
             "path": str(p),
             "present_count": sum(1 for r in scan.refs if r.exists),
-            "missing_count": len(missing),
+            "missing_count": sum(1 for m in missing if not m["pointed"]),
+            "pointed_count": sum(1 for m in missing if m["pointed"]),
             "recoverable_count": len(recoverable),
             "probed": bool(find),
             "missing": missing,
@@ -606,6 +618,11 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         # Exact per-file remaps the user pointed at ("this missing sample IS that
         # file"). Same auto_relink gating as the auto-finder — it's still a relink.
         relink_map = req.relink_map if find_missing else None
+        # Remember each pick, so it still holds after the page is left and every later
+        # backup of the project (scheduled ones too) uses the same file.
+        if relink_map and als_paths:
+            for a in als_paths:
+                app.state.catalog.remember_pointed(str(a), relink_map)
         # offsite/cloud mirrors are a top-tier (Studio) feature
         mirrors = saved.get("mirrors", []) if _allows("cloud_backup") else []
         # bind the loop here so the worker thread's progress publishing works even

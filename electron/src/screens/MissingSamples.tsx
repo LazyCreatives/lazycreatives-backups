@@ -9,7 +9,7 @@ import "../missing.css";
 const api = makeApi();
 const bridge = () => (window as any).ablebackup;
 
-type Miss = { name: string; expected_path: string; recoverable: boolean };
+type Miss = { name: string; expected_path: string; recoverable: boolean; pointed?: string | null };
 
 // The trust view: the complete, live list of a project's missing samples. Each is
 // shown with the exact path the project expects it at, and (once the library is
@@ -27,6 +27,8 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
   const load = useCallback(async (probe: boolean) => {
     const r = await api.projectMissing(item.path, probe);
     setMiss(r.missing); setPresent(r.present_count); setProbed(r.probed);
+    // Files pointed at before are remembered by the app, so they show again here.
+    setPointed(Object.fromEntries(r.missing.filter((m) => m.pointed).map((m) => [m.expected_path, m.pointed as string])));
     return r;
   }, [item.path]);
 
@@ -79,8 +81,9 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
   }
 
   const working = busy !== null;
-  const recoverable = (miss ?? []).filter((m) => m.recoverable).length;
-  const lost = (miss ?? []).length - recoverable;
+  const recoverable = (miss ?? []).filter((m) => m.recoverable && !pointed[m.expected_path]).length;
+  const handPickedCount = (miss ?? []).filter((m) => pointed[m.expected_path]).length;
+  const lost = (miss ?? []).length - recoverable - handPickedCount;
 
   return (
     <div className="miss">
@@ -93,10 +96,12 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
               ? <span className="ok">Nothing missing — every sample is where the project expects it.</span>
               : !probed
               ? <>{miss.length} sample{miss.length === 1 ? "" : "s"} the project can’t find on disk · <span className="dim">checking your library…</span></>
+              : lost === 0 && recoverable === 0
+              ? <span className="found">You pointed out {handPickedCount === 1 ? "the missing sample" : `all ${handPickedCount}`} — backups use the file{handPickedCount === 1 ? "" : "s"} you chose.</span>
               : recoverable > 0 && lost > 0
               ? <><span className="found">{recoverable} found in your library</span> · <span className="lost">{lost} need you to point them out</span></>
               : lost === 0
-              ? <span className="found">All {miss.length} are in your library — Find missing samples backs them up.</span>
+              ? <span className="found">All {recoverable}{handPickedCount ? " left" : ""} are in your library — Find missing samples backs them up.</span>
               : <span className="lost">{lost} couldn’t be found anywhere — point me to them.</span>}
           </div>
         </div>
@@ -115,7 +120,7 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
       <p className="miss-trust">
         Files <strong>{item.name}</strong> uses that aren’t where it expects them.
         {item.backed_up ? " Your last backup still holds a checked copy of everything else." : ""}
-        {" "}<strong>Fix now</strong> searches your sample folders from Settings, your project folders and FL Studio’s own folder.
+        {" "}<strong>Find missing samples</strong> searches your sample folders from Settings, your project folders and FL Studio’s own folder.
         For anything it can’t find, <strong>Point to file</strong> lets you choose the exact one.
       </p>
 

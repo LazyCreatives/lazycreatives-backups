@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld("ablebackup", {
   material: argValue("--lc-material") || "none",
   pickFolder: () => ipcRenderer.invoke("pick-folder"),
   pickFile: () => ipcRenderer.invoke("pick-file"),
+  pickImage: () => ipcRenderer.invoke("pick-image"),
+  readImage: (p) => ipcRenderer.invoke("read-image", p),
   revealPath: (target) => ipcRenderer.invoke("reveal-path", target),
   openProject: (target) => ipcRenderer.invoke("open-project", target),
   openExternal: (url) => ipcRenderer.invoke("open-external", url),

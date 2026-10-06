@@ -11,6 +11,7 @@ import { ProBadge } from "../components/ProBadge";
 import { Icon, type IconName } from "../components/Icon";
 import { SlothSpot } from "../components/SlothSpot";
 import { Cover } from "../components/Cover";
+import { CoverShelf } from "../components/CoverShelf";
 import { genreColor, useLook } from "../look";
 import { GlyphPicker } from "../components/Marks";
 import { ThemePicker } from "../components/LookPicker";
@@ -45,6 +46,16 @@ export function Sources() {
   const [connectErr, setConnectErr] = useState<string | null>(null);
   const [openAtLogin, setOpenAtLogin] = useState<boolean | null>(null);
   const [ov, setOv] = useState<Overview | null>(null);
+  // a real project to show the cover pictures on (Settings, Covers)
+  const [coverSample, setCoverSample] = useState<{ name: string; genre?: string | null } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api.library().then((l) => {
+      const p = l.projects.find((x) => x.genre) ?? l.projects[0];
+      if (alive && p) setCoverSample({ name: p.name, genre: p.genre });
+    }).catch(() => { /* the shelf shows a stand-in name */ });
+    return () => { alive = false; };
+  }, []);
   useEffect(() => { api.overview().then(setOv).catch(() => {}); }, [cfg.dest]);  // null = unknown (dev page)
   const { allows, beta } = useEntitlement();
   const words = osWords();
@@ -225,6 +236,12 @@ export function Sources() {
       </SetRow>
       <SetRow title="Rating mark" help="What ratings are drawn with. Rate a project from its row, or right-click it.">
         <GlyphPicker />
+      </SetRow>
+
+      <SetGroup title="Covers" />
+      <SetRow title="Your pictures"
+        help="Put your own pictures on project covers: behind the drawing, or as the whole cover. Change one project from its page or by right-clicking it.">
+        <CoverShelf sample={coverSample?.name ?? "Your project"} sampleGenre={coverSample?.genre} />
       </SetRow>
 
       <SetGroup title="Your music" />

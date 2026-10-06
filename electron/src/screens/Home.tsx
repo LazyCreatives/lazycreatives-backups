@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { pickCover } from "../components/CoverPick";
 import { makeApi } from "../api";
 import type { Overview, LibraryItem } from "../types";
 import type { BackupProgress } from "../useProgress";
@@ -236,6 +237,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
     { label: `Open in ${dawLabel(it.daw)}`, onClick: () => { if (it.path) bridge()?.openProject?.(it.path); } },
     { label: it.backed_up && !it.changed ? "Back up again" : "Back up now", onClick: () => { fixOne(it); }, disabled: fixing.has(it.project_id) },
     { label: pins.includes(it.project_id) ? "Unpin" : "Pin to the top", onClick: () => togglePin(it.project_id) },
+    { label: "Change cover…", onClick: () => { pickCover({ title: it.name, name: it.name, genre: it.genre }); } },
     "-",
     { label: `Show in ${osWords().fileManager}`, onClick: () => { if (it.path) bridge()?.revealPath?.(it.path); } },
     { label: "Copy project path", onClick: () => { copyText(it.path); } },

@@ -181,16 +181,17 @@ def _resolve_parsed(project_path: Path, raw_refs: list[FileRef], locate,
     )
 
 
-def _scan_safely(project_path: Path, locate) -> Optional[ProjectScan]:
+def _scan_safely(project_path: Path, locate, overrides=None) -> Optional[ProjectScan]:
     """scan_one but swallow per-file failures (serial path)."""
     try:
-        return scan_one(project_path, locate=locate)
+        return scan_one(project_path, locate=locate, overrides=overrides)
     except _BAD_FILE:
         return None
 
 
 def scan_projects(roots: list[Path], progress: ProgressCb = None,
-                  locate=None, stats: Optional[dict] = None) -> list[ProjectScan]:
+                  locate=None, stats: Optional[dict] = None,
+                  pointed: Optional[dict] = None) -> list[ProjectScan]:
     """Discover and resolve every project under the roots (all DAWs).
 
     Counting project files up front lets us emit a real progress bar (scan_start/
@@ -201,7 +202,11 @@ def scan_projects(roots: list[Path], progress: ProgressCb = None,
     (filesystem stat + the unpicklable locator) stays in this process. Results are
     returned in discovery order; progress ticks are emitted here as each project
     finishes, so `done` still climbs 1..total with the last tick at total.
+
+    `pointed` ({project file: {expected path: chosen file}}) carries the files the
+    producer pointed at for missing samples, so those count as found.
     """
+    pointed = pointed or {}
     # With progress (or a stats request), walk once with live ticks + skip counting;
     # without either (plain tests), the simple walk.
     if progress is not None or stats is not None:
@@ -251,7 +256,8 @@ def scan_projects(roots: list[Path], progress: ProgressCb = None,
                     scan = None
                     if raw is not None:
                         try:
-                            scan = _resolve_parsed(project_files[idx], raw["refs"], locate, raw.get("meta"))
+                            scan = _resolve_parsed(project_files[idx], raw["refs"], locate, raw.get("meta"),
+                                                   pointed.get(str(project_files[idx])))
                         except _BAD_FILE:
                             scan = None
                     _tick(idx, scan)
@@ -261,10 +267,10 @@ def scan_projects(roots: list[Path], progress: ProgressCb = None,
             # their result; we only sweep the ones left as None.
             for idx, pf in enumerate(project_files):
                 if not _was_ticked[idx]:
-                    _tick(idx, _scan_safely(pf, locate))
+                    _tick(idx, _scan_safely(pf, locate, pointed.get(str(pf))))
     else:
         for idx, pf in enumerate(project_files):
-            _tick(idx, _scan_safely(pf, locate))
+            _tick(idx, _scan_safely(pf, locate, pointed.get(str(pf))))
 
     projects = [s for s in results if s is not None]  # discovery order, failures dropped
     if progress:
