@@ -4,7 +4,7 @@
 
 <h1 align="center">Lazy Creatives — Backups</h1>
 
-<p align="center"><b>Every music project you've made, in one place to browse — plus verified backups that you own.</b></p>
+<p align="center"><b>Stop digging through folders and copying projects by hand.</b><br>Browse every project you've made in one place, no backup needed. Back up only if you want to, with checked copies.</p>
 
 <p align="center">
   <a href="https://lazycreatives.github.io/#download"><b>Download</b></a> ·
@@ -22,7 +22,16 @@ Not ready to back up? Skip that step and just **browse**: every project in one
 list whatever app made it, searchable by name, tempo or genre, with the songs you
 exported ready to play. Turn backups on later, to a drive, NAS, Dropbox or Google Drive.
 
-> Cloud DAW-sync tools can't make these claims structurally. This can.
+## What you stop doing by hand
+
+| The job | By hand | With Backups |
+|---|---|---|
+| Seeing everything you've made | Projects spread across drives, folders and music programs | One library to browse, with tempo, genre and each project's songs. No backup needed |
+| Finding an old project | Click through folders on every drive | Every project from every music program in one searchable list |
+| Backing up | Copy folders and hope the samples came too | Every sample followed, the whole project copied, only changes after the first time |
+| Checking the backup works | Find out the day you need it | Every copy read back to check it opens |
+| Missing samples | Open the project and hunt for files | Shows what's missing, finds what moved, backs it up |
+| Which song came from which project | Guess from file names | Each project lists the songs exported from it |
 
 Part of [**Lazy Creatives**](https://lazycreatives.github.io) — tools that take the boring,
 behind-the-scenes work of making music off your plate. *Looks lazy. Works obsessively.*

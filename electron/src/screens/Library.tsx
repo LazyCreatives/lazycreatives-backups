@@ -645,7 +645,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
       ) : items.length === 0 ? (
         <EmptyState pose="searching" title="No projects here yet" say="Empty crate. Let’s go digging."
           action={<Button size="sm" onClick={() => runScan()} disabled={scanning}>{scanning ? "Scanning…" : "Scan now"}</Button>}>
-          Pick where to look above, then scan. Backups finds Ableton, FL Studio, Logic Pro, Studio One, Reaper, Audacity, Bitwig and DAWproject projects.
+          Pick where to look above, then scan. Backups finds every Ableton, FL Studio, Logic Pro, Studio One, Reaper, Audacity, Bitwig and DAWproject project in those folders, with the songs you exported from each.
         </EmptyState>
       ) : columns ? (
         <ColumnBrowse genres={browse.genres} years={browse.years} total={browse.total} inGenre={browse.inGenre}

@@ -367,6 +367,9 @@ export function Sources() {
       )}
 
       <SetGroup title="About" />
+      <SetRow title="What it does" help="Lazy Creatives · Looks lazy. Works obsessively.">
+        <p className="set-about">Backups lays out every music project on this computer to browse, with the songs you exported from each. Turn backups on and it keeps checked copies too. It only reads your projects; it never changes them.</p>
+      </SetRow>
       <SetRow title="Updates" help="The app checks for a new version on its own. Press the button to check right now.">
         <UpdateCheck />
       </SetRow>

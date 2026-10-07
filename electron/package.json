@@ -1,7 +1,7 @@
 {
   "name": "lazycreatives-backups",
   "productName": "LazyCreatives Backups",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "LazyCreatives Backups — verified, deduplicated backups for Ableton & FL Studio projects",
   "main": "electron/main.js",
   "scripts": {

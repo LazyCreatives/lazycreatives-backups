@@ -60,8 +60,8 @@ export function Setup({ onDone }: { onDone: (c: Config, skipped: boolean) => voi
 
   if (step === 1) {
     return (
-      <WelcomeCard app="Backups" step={1} title="Every project, in one place"
-        sub="Backups finds every project on your computer and lays them all out to browse. When you're ready, it keeps safe, checked copies too."
+      <WelcomeCard app="Backups" step={1} title="Browse every project. No backup needed."
+        sub="Backups finds every project on your computer, from every music program, and lays them out to browse straight away. Backing up is optional: turn it on now, later or never, and it keeps checked copies so you never copy a project by hand again."
         foot={<>{back}<Button onClick={() => setStep(2)}>Next</Button></>}>
         <div className="pitch">
           <div className="pitch__col">
@@ -69,15 +69,15 @@ export function Setup({ onDone }: { onDone: (c: Config, skipped: boolean) => voi
             <ul>
               <li>Every project in one list, whatever app made it</li>
               <li>Search by name, tempo or genre</li>
-              <li>Play the songs you exported</li>
+              <li>Play the songs each project exported</li>
             </ul>
           </div>
           <div className="pitch__col">
-            <div className="pitch__head"><Icon name="check" size={15} />Back up</div>
+            <div className="pitch__head"><Icon name="check" size={15} />Back up, if you want</div>
             <ul>
-              <li>Every sample followed, none go missing</li>
-              <li>Each copy re-opened to prove it works</li>
-              <li>To your own drive, Dropbox or Google Drive</li>
+              <li>Every sample followed, none left behind</li>
+              <li>Each copy read back to check it opens</li>
+              <li>Runs on its own, as often as you choose</li>
             </ul>
           </div>
         </div>

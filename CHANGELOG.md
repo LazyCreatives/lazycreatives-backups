@@ -15,6 +15,11 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.2.3 (7 October 2026)
+
+### Better
+- **Clearer words about what Backups does for you.** The welcome screen, the empty Library and a new "What it does" line in Settings, under About, now say plainly which jobs it takes off your hands, and that you can browse all your projects without ever backing up.
+
 ## 0.2.2 (7 October 2026)
 
 ### New
