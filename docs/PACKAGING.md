@@ -18,6 +18,12 @@ The wiring is already in place:
   via `ABLEBACKUP_RCLONE`, so cloud copies (Google Drive, Dropbox, OneDrive, S3…) work
   without the user installing anything. Skip it and the app falls back to an rclone the
   user installed themselves (PATH, Homebrew and other usual folders).
+- The player's decoder: `imageio-ffmpeg` (a backend dependency) ships one ffmpeg
+  executable per platform, and `sidecar.spec` collects it. `playback.py` (identical in
+  both apps) runs it only for formats Chromium can't play, decoding into memory through
+  a pipe; nothing is written to disk. ffmpeg runs as a separate program and is
+  licensed under the GPL (source: https://ffmpeg.org/download.html). The installers'
+  sidecar check fails if it is missing (`/health` reports `player`).
 
 ## Build (unsigned — works today, no accounts needed)
 

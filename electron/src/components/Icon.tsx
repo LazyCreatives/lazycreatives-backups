@@ -37,6 +37,7 @@ const PATHS = {
   comment: "M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z",
   chevronLeft: "M15 6l-6 6 6 6",
   chevronDown: "M6 9l6 6 6-6",
+  chevronUp: "M6 15l6-6 6 6",
   plus: "M12 5v14M5 12h14",
   link: "M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1",
   lock: "M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3",
@@ -57,6 +58,7 @@ const PATHS = {
   pin: "M9 3h6M10 3v6l-3 4h10l-3-4V3M12 13v8",        // keep the narrow window on top
   palette: "M12 21a9 9 0 1 1 9-9c0 2-1.5 3-3 3h-2a2 2 0 0 0-1.5 3.3c.4.5.5 1 .5 1.4 0 .7-.9 1.3-3 1.3ZM7.5 11h.01M10 7.5h.01M14.5 7.5h.01",
   image: "M4 5h16v14H4ZM4 16l5-5 4 4 2-2 5 5M15.5 9.5h.01",  // a picture (Change cover)
+  plug: "M9 3v5M15 3v5M6.5 8h11v3.5a5.5 5.5 0 0 1-11 0V8ZM12 17v4",  // a plug-in (Backups' Plugins page)
 } as const;
 
 export type IconName = keyof typeof PATHS;

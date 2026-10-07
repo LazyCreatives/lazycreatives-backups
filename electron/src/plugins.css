@@ -1,0 +1,78 @@
+/* Plugins page (Backups only). Crate: one long track-list, stripe = instrument or effect.
+   Sleeve: one shelf per maker, rounder rows with a small tile instead of the stripe.
+   Every row has the same columns, and each format keeps its own slot in the Formats
+   column, so VST3 / AU / CLAP line up straight down the page. */
+.plugins { --fmt-w: 46px; }
+.plug-table { --fmts-w: calc(var(--fmts, 4) * var(--fmt-w) + (var(--fmts, 4) - 1) * 4px); }
+/* stripe · plugin · maker · formats · used in · where · open */
+.plug-cols { --cols: 4px minmax(0, 1.4fr) minmax(0, 1fr) var(--fmts-w) 104px minmax(0, 1.2fr) 16px; }
+/* Sleeve: the maker is the shelf's heading, so no maker column */
+.plug-cols--grouped { --cols: 34px minmax(0, 1.6fr) var(--fmts-w) 104px minmax(0, 1.2fr) 16px; }
+/* the default 1100px window drops Where so maker names fit; it shows from 1101px */
+@media (max-width: 1100px) {
+  .plug-cols { --cols: 4px minmax(0, 1.4fr) minmax(0, 1fr) var(--fmts-w) 104px 16px; }
+  .plug-cols--grouped { --cols: 34px minmax(0, 1.6fr) var(--fmts-w) 104px 16px; }
+  .plug-cols > :nth-last-child(2) { display: none; }
+}
+.plug-row { cursor: pointer; padding-right: 14px; }
+.plug-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.plug-chev { color: var(--text-faint); transition: transform var(--dur-quick) var(--ease-lazy); }
+.plug-item--open .plug-chev { transform: rotate(180deg); color: var(--text); }
+.plug-where { font-size: 12.5px; }
+
+/* one colour per format, for its chip */
+[data-format="VST3"] { --fmt: var(--accent); }
+[data-format="AU"] { --fmt: color-mix(in srgb, var(--accent) 45%, #c58af0); }
+[data-format="CLAP"] { --fmt: var(--warn); }
+[data-format="VST2"] { --fmt: var(--text-dim); }
+[data-format="AAX"] { --fmt: var(--danger); }
+[data-format="LV2"] { --fmt: var(--text-faint); }
+/* Crate stripe and Sleeve tile: blue for instruments, green for effects */
+[data-kind="Instrument"] { --kind: var(--accent); }
+[data-kind="Effect"] { --kind: var(--accent-2); }
+[data-kind=""] { --kind: var(--idle); }
+.plug-stripe { background: var(--kind); }
+.plug-formats { display: grid; grid-template-columns: repeat(var(--fmts, 4), var(--fmt-w)); gap: 4px; }
+.tag.plug-fmt { justify-content: center; color: var(--fmt); border-color: color-mix(in srgb, var(--fmt) 45%, transparent);
+  background: color-mix(in srgb, var(--fmt) 10%, transparent); }
+.plug-fmt--none { height: 20px; }
+
+/* what opens under a row: where each copy is, and the projects that use it */
+.plug-detail {
+  display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px;
+  padding: 12px 18px 16px 22px; border-top: 1px solid var(--border); background: var(--surface);
+}
+.plug-place { display: grid; grid-template-columns: var(--fmt-w) minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 32px; font-size: 12.5px; color: var(--text-dim); }
+.plug-used { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; }
+.plug-proj { cursor: pointer; color: var(--text); }
+.plug-proj:hover { border-color: var(--accent); color: var(--accent); }
+.plug-note { margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; }
+.plug-err { display: flex; align-items: center; gap: 8px; color: var(--warn); font-size: 13px; }
+
+/* Where Backups looks: folder · path · whose · count · remove */
+.plug-folders { margin-top: 32px; }
+.plug-folder { --cols: 16px minmax(0, 1fr) 110px 150px 80px; font-size: 13px; }
+
+/* Crate: square, a solid line between plugins, every other one shaded */
+.table--crate.plug-table > .plug-item { border-top: 1px solid var(--border-strong); }
+.table--crate.plug-table > .plug-item:nth-child(odd) > .row { background: var(--zebra-crate); }
+.table--crate.plug-table > .plug-item > .row:hover { background: var(--hover-crate); }
+.table--crate.plug-table > .plug-item > .row { min-height: 46px; padding-left: 0; border: 0; }
+[data-look="crate"] .tag.plug-fmt, [data-look="crate"] .plug-detail { border-radius: 0; }
+
+/* Sleeve: a shelf per maker, its name as the heading, softer rows */
+.plug-shelf { margin-bottom: 22px; }
+.plug-shelf__head { display: flex; align-items: baseline; gap: 10px; margin: 0 2px 8px; }
+.plug-shelf__head h2 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -0.01em; }
+.plug-shelf__head span { font-size: 12.5px; }
+.plug-table:not(.table--crate) > .plug-item { border-top: 1px solid var(--border); }
+.plug-table:not(.table--crate) > .cols-head + .plug-item { border-top-color: var(--border); }
+.plug-table:not(.table--crate) > .plug-item > .row { border: 0; min-height: 52px; }
+.plug-tile {
+  display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px;
+  font: 700 12px var(--font); letter-spacing: 0.02em; text-transform: uppercase;
+  color: var(--kind); background: color-mix(in srgb, var(--kind) 14%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--kind) 30%, transparent);
+}
+[data-look="sleeve"] .tag.plug-fmt { border-radius: 999px; }
+[data-look="sleeve"] .plug-detail { padding-left: 62px; }

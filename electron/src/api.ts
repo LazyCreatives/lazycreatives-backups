@@ -1,4 +1,4 @@
-import type { CloudFolder, Config, SuggestedFolder, ProjectExports, Entitlement, JobStatus, LibraryItem, Overview, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, TidyBatch, TidyDone, TidyOptions, TidyPlan, UnmatchedSong, VerifyResult } from "./types";
+import type { CloudFolder, Config, SuggestedFolder, ProjectExports, Entitlement, JobStatus, LibraryItem, Overview, PluginList, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, TidyBatch, TidyDone, TidyOptions, TidyPlan, UnmatchedSong, VerifyResult } from "./types";
 import type { CoverSource } from "./coverArt";
 
 function base() {
@@ -139,11 +139,15 @@ export function makeApi() {
       return req("GET", `/api/exports/peaks?path=${encodeURIComponent(path)}`);
     },
     // <audio> can't send headers, so the token rides in the query (sidecar only
-    // serves files already linked as exports).
-    exportAudioUrl(path: string): string {
-      return `${base()}/api/exports/audio?path=${encodeURIComponent(path)}&t=${encodeURIComponent(token())}`;
+    // serves files already linked as exports). `decode` asks the sidecar to decode the
+    // file for the player even when it looked playable as it is.
+    exportAudioUrl(path: string, decode = false): string {
+      return `${base()}/api/exports/audio?path=${encodeURIComponent(path)}&t=${encodeURIComponent(token())}${decode ? "&decode=1" : ""}`;
     },
     // Tidy names: preview changes nothing; apply renames; undo puts every name back.
+    // Plug-ins installed on this computer; the last look is kept, refresh looks again.
+    async plugins(refresh = false): Promise<PluginList> { return req("GET", `/api/plugins${refresh ? "?refresh=true" : ""}`); },
+    async setPluginFolders(folders: string[]): Promise<PluginList> { return req("PUT", "/api/plugins/folders", { folders }); },
     async tidyPreview(o: TidyOptions): Promise<TidyPlan> { return req("POST", "/api/tidy/preview", o); },
     async tidyApply(o: TidyOptions): Promise<TidyDone> { return req("POST", "/api/tidy/apply", o); },
     async tidyLast(projectId: string): Promise<{ batch: TidyBatch | null }> {

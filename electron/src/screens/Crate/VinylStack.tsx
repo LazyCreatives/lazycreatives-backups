@@ -7,6 +7,7 @@ import { useLook } from "../../look";
 import { Vinyl } from "./Vinyl";
 import { Tonearm } from "./Tonearm";
 import { useIdle } from "./hooks/useIdle";
+import { digKey } from "./digKeys";
 
 const WINDOW = 10;                     // virtualise to ±10 (≤21 mounted nodes)
 const IDLE_MS = 8000;                  // the crate starts to sway after this long untouched
@@ -75,6 +76,28 @@ export function VinylStack({ list, active, setActive, reduce, onOpenProject }: {
         e.preventDefault(); if (list[active]) onOpenProject?.(list[active].name); break;
     }
   }
+
+  // The same keys from anywhere else on the page: opening Dig leaves focus on the
+  // Crates button, and the arrows used to do nothing until you clicked a record.
+  const keyState = useRef({ active, list, onOpenProject });
+  keyState.current = { active, list, onOpenProject };
+  useEffect(() => {
+    function onWindowKey(e: KeyboardEvent) {
+      if (stageRef.current?.contains(e.target as Node)) return;  // the stage handles its own
+      const act = digKey(e, e.target);
+      if (!act) return;
+      const { active: a, list: l, onOpenProject: open } = keyState.current;
+      if (!l.length) return;
+      e.preventDefault();
+      if (act === "prev") setActive((x) => clamp(x - 1, 0, l.length - 1));
+      else if (act === "next") setActive((x) => clamp(x + 1, 0, l.length - 1));
+      else if (act === "first") setActive(0);
+      else if (act === "last") setActive(l.length - 1);
+      else if (l[a]) open?.(l[a].name);
+    }
+    window.addEventListener("keydown", onWindowKey);
+    return () => window.removeEventListener("keydown", onWindowKey);
+  }, [setActive]);
 
   function onDragEnd(_: unknown, info: PanInfo) {
     const steps = Math.round(-info.offset.x / 90 + -info.velocity.x / 1200);

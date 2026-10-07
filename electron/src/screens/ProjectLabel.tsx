@@ -210,7 +210,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
   ];
 
   const song = item.latest_export ?? null;
-  const songMeta = { title: song?.name ?? "", project: item.name, genre: item.genre };
+  const songMeta = { title: song?.name ?? "", project: item.name, projectId: item.project_id, genre: item.genre };
   const marks = useProjectMarks(item.path, song?.path ?? null);
   const markNote = marks.length > 0 && (
     <div className="wave-legend">

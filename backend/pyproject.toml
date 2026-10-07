@@ -8,6 +8,7 @@ dependencies = [
     "uvicorn>=0.27",
     "websockets>=12",  # uvicorn needs a WS library to serve /ws/progress live
     "apscheduler>=3.10,<4",
+    "imageio-ffmpeg>=0.5",  # ships ffmpeg, so the player can read AIFF, Apple Lossless, WMA...
 ]
 
 [project.optional-dependencies]

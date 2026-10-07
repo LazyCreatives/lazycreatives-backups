@@ -228,3 +228,25 @@ export interface TidyOptions {
 }
 export interface TidyDone { batch_id: string; renamed: number; id_map: Record<string, string>; summary: string }
 export interface TidyBatch { id: string; at: string; summary: string; count: number }
+
+// A plug-in installed on this computer (the Plugins page). One row however many
+// formats it comes in; places says where each one is.
+export type PluginFormat = "VST3" | "AU" | "CLAP" | "VST2" | "AAX" | "LV2";
+export interface PluginRow {
+  id: string;
+  name: string;
+  maker: string;                 // "" when the plug-in doesn't say and its folder doesn't either
+  kind: "" | "Instrument" | "Effect";
+  formats: PluginFormat[];
+  places: { format: PluginFormat; path: string }[];
+  used_in: number;               // scanned projects that use it
+  used_by: string[];             // a few of their names
+}
+export interface PluginFolder { path: string; yours: boolean; exists: boolean; count: number }
+export interface PluginList {
+  plugins: PluginRow[];
+  folders: PluginFolder[];
+  scanned_at: number;
+  complete: boolean;
+  projects_scanned: number;
+}

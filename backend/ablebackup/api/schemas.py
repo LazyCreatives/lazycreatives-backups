@@ -85,3 +85,7 @@ class TidyRequest(BaseModel):
 
 class TidyUndoRequest(BaseModel):
     batch_id: str = Field(..., min_length=1, max_length=64)
+
+
+class PluginFoldersRequest(BaseModel):
+    folders: list[str] = Field(default_factory=list, max_length=200)  # the user's own plug-in folders

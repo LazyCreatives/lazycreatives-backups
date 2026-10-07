@@ -27,6 +27,8 @@ import { BPM_BANDS, FIRST_DIR, NO_FILTERS, applyFilters, describeFilters, yearOf
 import { openMenu, toast, type MenuItem, toastWarn } from "../components/Desktop";
 import { copyText, keep, recall } from "../desktop";
 import { pinnedFirst, renamePins, setPins, togglePin, usePins } from "../pins";
+import { renameRecents } from "../recents";
+import { NoteOpened } from "../components/Recents";
 import { TidyNames } from "./TidyNames";
 import type { TidyBatch, TidyDone } from "../types";
 import { EmptyState } from "../components/SlothSpot";
@@ -191,6 +193,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   // file is: carry pins and the open page over to it.
   async function afterRename(idMap: Record<string, string>) {
     renamePins(idMap);
+    renameRecents(idMap);
     renameRatings(idMap);
     setPicked(new Set());
     await load();
@@ -421,6 +424,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
     const it = openItem;
     return (
       <>
+        <NoteOpened id={it.project_id} name={it.name} cover={it.name} genre={it.genre} />
         <button className="lib-back" onClick={onClose}><Icon name="arrowLeft" size={14} />Library</button>
         <TidyUndo projectId={it.project_id} tick={tidyTick} onUndone={afterRename} />
         <ProjectLabel item={it}
@@ -722,7 +726,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
               ...items.slice(5),
               { label: "Copy project path", onClick: () => { copyText(it.path); } },
             ] as MenuItem[]);
-            const meta = it.latest_export ? { title: it.latest_export.name, project: it.name, genre: it.genre } : undefined;
+            const meta = it.latest_export ? { title: it.latest_export.name, project: it.name, projectId: it.project_id, genre: it.genre } : undefined;
             const isPin = pins.includes(it.project_id);
             const star = (
               <button type="button" className={`pinbtn${isPin ? " pinbtn--on" : ""}`} aria-pressed={isPin}

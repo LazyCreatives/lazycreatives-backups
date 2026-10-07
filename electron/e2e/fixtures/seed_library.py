@@ -10,12 +10,14 @@ Creates <workdir>/home (a fake $HOME) holding:
   Music/Splice/...                                    (shared sample library, absolute refs)
   plus exported songs (<Name> v3.wav etc., real audio so waveforms draw) next to
   about half of the projects, a few projects with missing samples, and file times
-  spread over the last ~10 months.
+  spread over the last ~10 months. Also some installed plug-ins (.vst3, .clap, .vst,
+  .lv2 and "Mac Plugins/Components") for the Plugins page.
 Stdlib only; deterministic (seeded RNG).
 """
 import gzip
 import math
 import os
+import plistlib
 import random
 import struct
 import sys
@@ -187,6 +189,55 @@ def set_times(path: Path, ts: float) -> None:
     os.utime(path, (ts, ts))
 
 
+# Installed plug-ins for the Plugins page: (file name, maker, formats, kind). The
+# Linux folders (~/.vst3, ~/.clap, ~/.lv2) are where Backups looks by itself; the AU
+# copies go in "Mac Plugins/Components", which the picture tests add as a folder.
+INSTALLED = [
+    ("Serum", "Xfer Records", "vst3 au vst2", "Instrument"), ("OTT", "Xfer Records", "vst3 au", "Fx"),
+    ("LFOTool", "Xfer Records", "vst3 au", "Fx"), ("Vital", "Vital Audio", "vst3 clap vst2", "Instrument"),
+    ("FabFilter Pro-Q 3", "FabFilter", "vst3 au clap", "Fx"), ("FabFilter Pro-L 2", "FabFilter", "vst3 au clap", "Fx"),
+    ("FabFilter Saturn 2", "FabFilter", "vst3 au clap", "Fx"), ("ValhallaVintageVerb", "Valhalla DSP", "vst3 au clap", "Fx"),
+    ("Decapitator", None, "vst3 au", "Fx"), ("Kontakt 7", "Native Instruments", "vst3 au", "Instrument"),
+    ("Massive X", "Native Instruments", "vst3 au", "Instrument"), ("Omnisphere", "Spectrasonics", "vst3 au vst2", "Instrument"),
+    ("RC-20 Retro Color", "XLN Audio", "vst3 au", "Fx"), ("Pigments", "Arturia", "vst3 au", "Instrument"),
+    ("Diva", "u-he", "vst3 au clap", "Instrument"), ("Ozone 11 Maximizer", "iZotope", "vst3 au", "Fx"),
+    ("Trackspacer", "Wavesfactory", "vst3 au", "Fx"), ("Surge XT", "Surge Synth Team", "vst3 clap lv2", "Instrument"),
+    ("Dexed", None, "vst3 au", "Instrument"), ("TDR Nova", "Tokyo Dawn Records", "vst3 au clap", "Fx"),
+    ("Phase Plant", "Kilohearts", "vst3 au clap", "Instrument"), ("LABS", "Spitfire Audio", "vst3 au", "Instrument"),
+]
+
+
+def seed_plugins(home: Path) -> int:
+    made = 0
+    for name, maker, formats, kind in INSTALLED:
+        for fmt in formats.split():
+            if fmt == "vst3":
+                # makers without a description file are known by the folder they sit in
+                base = home / ".vst3" / ("Soundtoys" if name == "Decapitator" else "")
+                res = base / f"{name}.vst3" / "Contents" / "Resources"
+                res.mkdir(parents=True, exist_ok=True)
+                if maker:
+                    (res / "moduleinfo.json").write_text(
+                        '{"Factory Info": {"Vendor": "%s"}, "Classes": [{"Sub Categories": ["%s"]}]}' % (maker, kind))
+            elif fmt == "au":
+                c = home / "Mac Plugins" / "Components" / f"{name}.component" / "Contents"
+                c.mkdir(parents=True, exist_ok=True)
+                short = name.replace("FabFilter ", "")
+                au_name = f"{maker or ('Soundtoys' if name == 'Decapitator' else 'Digital Suburban')}: {short}"
+                with (c / "Info.plist").open("wb") as fh:
+                    plistlib.dump({"AudioComponents": [{"name": au_name, "type": "aumu" if kind == "Instrument" else "aufx"}]}, fh)
+            elif fmt == "clap":
+                (home / ".clap").mkdir(parents=True, exist_ok=True)
+                (home / ".clap" / f"{name}.clap").write_bytes(b"\0")
+            elif fmt == "vst2":
+                (home / ".vst").mkdir(parents=True, exist_ok=True)
+                (home / ".vst" / f"{name}.so").write_bytes(b"\0")
+            elif fmt == "lv2":
+                (home / ".lv2" / f"{name}.lv2").mkdir(parents=True, exist_ok=True)
+        made += 1
+    return made
+
+
 def main(workdir: str) -> None:
     root = Path(workdir).resolve()
     home = root / "home"
@@ -253,6 +304,7 @@ def main(workdir: str) -> None:
         set_times(folder, ts)
         made += 1
     print(f"seeded {made} projects under {music}")
+    print(f"seeded {seed_plugins(home)} plug-ins under {home}")
 
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ export interface PaletteItem {
   cover?: { name: string; genre?: string | null };  // a project's or track's cover instead
   words?: string[];     // other words it should be found by
   quiet?: boolean;      // only shown once something is typed (a long list of projects)
+  idle?: boolean;       // only shown before anything is typed (recently opened)
   run: () => void;
 }
 
@@ -40,7 +41,7 @@ export function paletteResults(items: PaletteItem[], q: string): PaletteItem[] {
     if (query) {
       list = list
         .map((it, n) => ({ it, n, s: fuzzyScore(query, [it.label, ...(it.words ?? [])]) }))
-        .filter((x) => x.s > 0)
+        .filter((x) => x.s > 0 && !x.it.idle)
         .sort((a, b) => b.s - a.s || a.n - b.n)
         .map((x) => x.it);
     } else list = list.filter((i) => !i.quiet);

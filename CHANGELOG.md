@@ -15,6 +15,20 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.2.2 (7 October 2026)
+
+### New
+- **Plugins page.** A new page in the sidebar lists every plugin on your computer: its name, who makes it, the formats you have it in (VST3, AU, CLAP, VST2, AAX, LV2), where it lives and how many of your projects use it. Search it, filter by format or by "not used in any project", and open a plugin to see each copy's folder and the projects that use it. Backups looks in the usual plugin folders on Windows, Mac and Linux; add your own folders at the bottom of the page.
+- **Recently opened.** The last five projects you opened sit in the sidebar under the menu, newest first, so you can jump back in with one click; Find anything (Ctrl+K / Cmd+K) lists them before you type. Right-click to take one off or clear the list. Kept on this computer only.
+- **A bigger player.** Point at the cover in the player along the bottom and press the up arrow (or click the cover) to open a large Now playing view with a big cover, the waveform to scrub and the play button. The down arrow or Escape shrinks it back.
+
+### Better
+- **Click the song's name in the player** to open the project it came from.
+
+### Fixed
+- **The arrow keys flip records on the Dig page again** as soon as you open a crate, without clicking a record first. Enter opens the record on the deck.
+- **Nearly every audio file now plays** in the player: AIFF, Apple Lossless, WMA, AC-3, WavPack, CAF, 64-bit and compressed WAVs and more, where you used to see "Couldn't play this file". Your files are only read, never changed or copied.
+
 ## 0.2.1 (6 October 2026)
 
 ### New

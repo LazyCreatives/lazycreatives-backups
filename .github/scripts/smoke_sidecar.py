@@ -1,5 +1,5 @@
 """Boot the frozen sidecar and fail unless /health answers 200 within 60s."""
-import os, subprocess, sys, tempfile, time, urllib.request
+import json, os, subprocess, sys, tempfile, time, urllib.request
 
 exe = sys.argv[1]
 port = "8770"
@@ -14,6 +14,9 @@ try:
         try:
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as r:
                 if r.status == 200:
+                    # the bundled ffmpeg must run, or AIFF / Apple Lossless won't play
+                    if not json.load(r).get("player"):
+                        sys.exit("sidecar's audio decoder (ffmpeg) is missing or won't run")
                     print("sidecar /health OK")
                     sys.exit(0)
         except OSError:

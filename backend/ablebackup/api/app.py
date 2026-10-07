@@ -2,24 +2,22 @@
 import asyncio
 import hmac
 import json
-import mimetypes
 import os
 import threading
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 
-from ablebackup import covers, entitlement, exports, markers, tidy, waveform
+from ablebackup import covers, entitlement, exports, markers, playback, plugins, tidy, waveform
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
 from ablebackup.api.schemas import (
     ActivateRequest, BackupRequest, CloudConnectRequest, CloudDisconnectRequest,
     Config, ExportFoldersRequest, ExportIgnoreRequest, ExportLinkRequest, GenreRequest,
-    RestoreRequest, ScanRequest, TidyRequest, TidyUndoRequest,
+    PluginFoldersRequest, RestoreRequest, ScanRequest, TidyRequest, TidyUndoRequest,
 )
 from ablebackup.catalog import Catalog
 from ablebackup.scheduler import BackupScheduler
@@ -140,7 +138,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
 
     @app.get("/health")
     def health():
-        return {"status": "ok"}
+        # `player`: the bundled decoder for AIFF, Apple Lossless... is there
+        return {"status": "ok", "player": bool(playback.ffmpeg())}
 
     def _tier() -> str:
         # verify_stored rejects a hand-edited/forged entitlement row -> 'free'.
@@ -448,6 +447,34 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         the folder it's in, and how many songs were linked last time."""
         return exports.progress()
 
+    # ---- plug-ins installed on this computer (the Plugins page) ----------------
+    plugin_lock = threading.Lock()
+
+    def _plugins(refresh: bool) -> dict:
+        cat = app.state.catalog
+        with plugin_lock:
+            found = None if refresh else cat.get_setting("plugin_scan")
+            if not found:
+                found = plugins.scan(cat.get_setting("plugin_folders") or [])
+                cat.set_setting("plugin_scan", found)
+        rows = [dict(r) for r in found["plugins"]]
+        projects = cat.library()
+        plugins.used_in(rows, projects)
+        return {**found, "plugins": rows, "projects_scanned": len(projects)}
+
+    @app.get("/api/plugins", dependencies=[Depends(require_token)])
+    def plugin_list(refresh: bool = False):
+        """Every plug-in found in the usual plug-in folders (and the user's own), each
+        with its formats, where it lives and how many projects use it. The last look
+        is kept, so the page opens straight away; refresh=true looks again."""
+        return _plugins(refresh)
+
+    @app.put("/api/plugins/folders", dependencies=[Depends(require_token)])
+    def plugin_set_folders(req: PluginFoldersRequest):
+        folders = list(dict.fromkeys(f for f in req.folders if f.strip()))
+        app.state.catalog.set_setting("plugin_folders", folders)
+        return _plugins(True)
+
     @app.post("/api/exports/link", dependencies=[Depends(require_token)])
     def exports_link(req: ExportLinkRequest):
         p = Path(req.path)
@@ -492,17 +519,21 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         return (cat.is_export(path) or cat.is_unmatched(path)) and os.path.isfile(path)
 
     @app.get("/api/exports/audio")
-    def exports_audio(path: str, t: str = ""):
+    def exports_audio(request: Request, path: str, t: str = "", decode: int = 0):
         """Stream a linked export for the in-app player. An <audio> element can't send
         the auth header, so the token rides in the query; and only files already in the
-        exports list are served, so this can't be used to read anything else."""
+        exports list are served, so this can't be used to read anything else. Formats
+        the player can't read (AIFF, Apple Lossless, WMA...) are decoded in memory;
+        `decode=1` asks for that even when the file looked playable."""
         expected = app.state.token
         if expected and not hmac.compare_digest(t or "", expected):
             raise HTTPException(status_code=401, detail="invalid or missing token")
         if not _known_song(path):
             raise HTTPException(status_code=404, detail="not a linked export")
-        media = mimetypes.guess_type(path)[0] or "application/octet-stream"
-        return FileResponse(path, media_type=media)
+        try:
+            return playback.response(path, request.headers.get("range"), force=bool(decode))
+        except playback.CannotPlay:
+            raise HTTPException(status_code=415, detail="this file can't be played") from None
 
     @app.get("/api/exports/peaks", dependencies=[Depends(require_token)])
     def exports_peaks(path: str):

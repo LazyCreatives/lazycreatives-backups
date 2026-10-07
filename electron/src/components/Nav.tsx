@@ -5,16 +5,19 @@ import { useEntitlement } from "../entitlement";
 import { openPalette } from "./Palette";
 import { IS_MAC } from "../desktop";
 import { COMPANION_KEYS, openCompanion } from "../companion";
+import { NavRecents } from "./Recents";
 
 const ITEMS: { id: Tab; label: string; icon: IconName }[] = [
   { id: "home", label: "Home", icon: "home" },
   { id: "library", label: "Library", icon: "library" },
   { id: "dig", label: "Dig", icon: "dig" },
+  { id: "plugins", label: "Plugins", icon: "plug" },
   { id: "settings", label: "Settings", icon: "settings" },
 ];
 
-export function Nav({ tab, onNavigate, busy, flowActive }: {
+export function Nav({ tab, onNavigate, busy, flowActive, onOpenRecent, openId }: {
   tab: Tab; onNavigate: (t: Tab) => void; busy?: boolean; flowActive?: boolean;
+  onOpenRecent: (id: string) => void; openId?: string | null;  // the project page showing now
 }) {
   const { beta, tier } = useEntitlement();
   const plan = beta ? "free beta" : tier === "free" ? "free plan" : `${tier} plan`;
@@ -35,6 +38,7 @@ export function Nav({ tab, onNavigate, busy, flowActive }: {
           </button>
         );
       })}
+      <NavRecents onOpen={onOpenRecent} current={openId} />
       <div className="nav__spacer" />
       <NarrowWindowButton />
     </nav>

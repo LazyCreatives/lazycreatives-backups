@@ -6,6 +6,7 @@ import { Sources } from "./screens/Sources";
 import { BackupFlow } from "./screens/BackupFlow";
 import { Library } from "./screens/Library";
 import { Dig } from "./screens/Dig";
+import { Plugins } from "./screens/Plugins";
 import { LcBrand } from "./components/LcBrand";
 import { FirstBackupModal } from "./components/FirstBackupModal";
 import { WhatsNewHost, openWhatsNew } from "./components/WhatsNew";
@@ -28,14 +29,15 @@ import { IS_MAC } from "./desktop";
 import { COMPANION_KEYS, openCompanion, useCompanionCommand } from "./companion";
 import { NO_FILTERS, type LibFilters } from "./libraryFilter";
 import { dawLabel } from "./format";
+import { getRecents, openedWhen } from "./recents";
 import type { LibraryItem } from "./types";
 
 const api = makeApi();
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-export type Tab = "home" | "library" | "dig" | "settings";
+export type Tab = "home" | "library" | "dig" | "plugins" | "settings";
 export type FlowStep = "scan" | "review" | "progress";
-const TABS: Tab[] = ["home", "library", "dig", "settings"];
+const TABS: Tab[] = ["home", "library", "dig", "plugins", "settings"];
 const LAST_PAGE = "lc-last-page";
 
 // Project files Backups knows; dropping one adds the folder it sits in. A Logic
@@ -99,11 +101,15 @@ export default function App() {
   };
   const paletteItems = (): PaletteItem[] => {
     const mod = IS_MAC ? "Cmd" : "Ctrl";
-    const pages: [Tab, string, PaletteItem["icon"]][] = [["home", "Home", "home"], ["library", "Library", "library"], ["dig", "Dig", "dig"], ["settings", "Settings", "settings"]];
+    const pages: [Tab, string, PaletteItem["icon"]][] = [["home", "Home", "home"], ["library", "Library", "library"], ["dig", "Dig", "dig"], ["plugins", "Plugins", "plug"], ["settings", "Settings", "settings"]];
     const list = paletteProjects.current;
     const genres = [...new Set(list.map((i) => i.genre || "").filter(Boolean))].sort((a, b) => a.localeCompare(b));
     const other = getLook() === "crate" ? "sleeve" : "crate";
     return [
+      // the last few opened, ready before anything is typed
+      ...getRecents().slice(0, 4).map((r) => ({ id: `recent-${r.id}`, group: "Recently opened", label: r.name, cover: { name: r.cover, genre: r.genre },
+        hint: openedWhen(r.at).replace(/^o/, "O"), idle: true,
+        run: () => setTab("library", r.id) })),
       ...pages.map(([t, label, icon], i) => ({ id: `go-${t}`, group: "Go to", label, icon, keys: `${mod} + ${i + 1}`, run: () => setTab(t) })),
       { id: "backup", group: "Actions", label: "Back up now", icon: "refresh", words: ["scan", "save"], run: () => setFlow("scan") },
       { id: "look", group: "Actions", label: `Switch to the ${other === "sleeve" ? "Sleeve" : "Crate"} look`, icon: "palette", words: ["look", "theme", "crate", "sleeve"], run: () => setLook(other) },
@@ -265,7 +271,8 @@ export default function App() {
   return (
     <div className="app">
       <Nav tab={tab} flowActive={!!flow} busy={busy}
-        onNavigate={(t) => setTab(t)} />
+        onNavigate={(t) => setTab(t)}
+        onOpenRecent={(id) => setTab("library", id)} openId={tab === "library" && !flow ? sub : null} />
       <div className="main">
         <div className="content">
           <div key={flow ?? (tab === "settings" ? `settings-${settingsKey}` : tab)} className="view-enter">
@@ -303,13 +310,15 @@ export default function App() {
           ) : tab === "dig" ? (
             <Dig openCrate={sub} onOpenCrate={(key) => setTab("dig", key)} onCloseCrate={closeSub}
               onOpenProject={(name) => setTab("library", name)} />
+          ) : tab === "plugins" ? (
+            <Plugins onOpenProject={(name) => setTab("library", name)} />
           ) : (
             <Sources />
           )}
           </div>
         </div>
       </div>
-      <PlayerBar />
+      <PlayerBar onOpenProject={(key) => setTab("library", key)} />
       <WhatsNewHost setUp={setUpAtOpen.current === true} />
       <ContextMenuHost />
       <ToastHost />

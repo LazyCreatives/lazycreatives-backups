@@ -27,7 +27,7 @@ const folderName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 // newest first, with a play button, its SoundCloud link when Uploader has posted it,
 // and the controls to fix a wrong or missed match.
 export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChanged?: () => void }) {
-  const songMeta = (title: string) => ({ title, project: item.name, genre: item.genre });
+  const songMeta = (title: string) => ({ title, project: item.name, projectId: item.project_id, genre: item.genre });
   const [data, setData] = useState<Data | null>(null);
   const [folders, setFolders] = useState<{ folders: string[]; found_folders?: string[]; ignored?: string[]; uploader_folders: string[] } | null>(null);
   const [err, setErr] = useState<string | null>(null);

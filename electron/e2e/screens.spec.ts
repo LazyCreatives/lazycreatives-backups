@@ -7,7 +7,7 @@ import { FAKE_HOME, WORK_DIR, closeApp, launchApp, type RunningApp } from "./app
 
 const LOOKS = ["crate", "sleeve"] as const;
 type Look = (typeof LOOKS)[number];
-const SCREENS = ["home", "library", "dig", "settings"] as const;
+const SCREENS = ["home", "library", "dig", "plugins", "settings"] as const;
 
 let running: RunningApp | undefined;
 
@@ -86,6 +86,8 @@ async function fillLibrary(port: string, token: string): Promise<void> {
   const now = new Date();
   for (const p of paths) if (["Midnight Drive", "Afterglow", "Acid Test 303"].some((k) => p.includes(k))) utimesSync(p, now, now);
   await call("POST", "/api/scan", { sources, find_missing: false });
+  // the Mac-style plug-ins (Audio Units) sit in a folder of their own
+  await call("PUT", "/api/plugins/folders", { folders: [path.join(FAKE_HOME, "Mac Plugins", "Components")] });
 }
 
 test("first run: welcome", async () => {

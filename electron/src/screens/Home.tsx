@@ -173,7 +173,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   const total = counts.all;
   const spaceSaved = ov.pool_known ? fmtSize(ov.saved_bytes) + (savedPct > 0 ? ` · ${savedPct}%` : "") : "…";
   const meta = (it: LibraryItem): SongMeta | undefined =>
-    it.latest_export ? { title: it.latest_export.name, project: it.name, genre: it.genre } : undefined;
+    it.latest_export ? { title: it.latest_export.name, project: it.name, projectId: it.project_id, genre: it.genre } : undefined;
   const subLine = (it: LibraryItem) => [it.genre, it.bpm ? `${Math.round(it.bpm)} BPM` : "", dawLabel(it.daw)].filter(Boolean).join(" · ");
   // Pinned projects first (in pin order), then the most recently saved, six in all.
   const pinnedItems = pins.map((id) => items.find((i) => i.project_id === id)).filter((i): i is LibraryItem => !!i);
