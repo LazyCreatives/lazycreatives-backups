@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CopyButton, openMenu, toast } from "../components/Desktop";
-import { baseName, copyText } from "../desktop";
+import { PAUSE_ON_MINIMIZE, baseName, copyText, keep, pausesOnMinimize } from "../desktop";
 import { makeApi } from "../api";
 import type { Config, Overview } from "../types";
 import { Button } from "../components/Button";
@@ -20,6 +20,7 @@ import { useEntitlement } from "../entitlement";
 import { fmtInterval, fmtClock, fmtSize } from "../format";
 import { osWords } from "../platform";
 import { useCloudFolders } from "../components/DestChoices";
+import { EXPORT_FOLDER_FROM, exportFolderRows } from "../exportFolders";
 
 const api = makeApi();
 
@@ -45,6 +46,7 @@ export function Sources() {
   const [connectMsg, setConnectMsg] = useState<string | null>(null);
   const [connectErr, setConnectErr] = useState<string | null>(null);
   const [openAtLogin, setOpenAtLogin] = useState<boolean | null>(null);
+  const [pauseMin, setPauseMin] = useState(pausesOnMinimize);
   const [ov, setOv] = useState<Overview | null>(null);
   // a real project to show the cover pictures on (Settings, Covers)
   const [coverSample, setCoverSample] = useState<{ name: string; genre?: string | null } | null>(null);
@@ -231,7 +233,7 @@ export function Sources() {
           ))}
         </div>
       </SetRow>
-      <SetRow title="Light or dark" help="Ink or paper, in either look. Match my computer follows your computer's own setting.">
+      <SetRow title="Light or dark" help="Ink or paper, in either look.">
         <ThemePicker />
       </SetRow>
       <SetRow title="Rating mark" help="What ratings are drawn with. Rate a project from its row, or right-click it.">
@@ -248,6 +250,12 @@ export function Sources() {
       <SetRow title="Project folders" help="Backups looks in these folders for your projects.">
         <FolderTable paths={cfg.sources} loaded={loaded} empty="No folders yet." onRemove={removeSource} />
         <Button variant="ghost" size="sm" onClick={addSource} disabled={!loaded}><Icon name="plus" size={14} />Add folder</Button>
+      </SetRow>
+
+      <SetRow title="Export folders"
+        help="Where your finished songs get saved. Backups finds each song here and puts it with its project, so you don't have to."
+        info="Backups always looks in each project's own folder, plus folders named like Exports or Bounces near your projects. Add any other place you save songs. It only reads these folders; it never moves or changes a file. Uploader uses the same list.">
+        <ExportFolders />
       </SetRow>
 
       <SetRow title="Sample folders"
@@ -366,12 +374,26 @@ export function Sources() {
         </SetRow>
       )}
 
+      <SetGroup title="Listening" />
+      <SetRow title="Pause when minimized"
+        help="Stops the music when you minimize the window. Press play to carry on.">
+        <div className="seg" role="group" aria-label="Pause when minimized" style={{ alignSelf: "flex-start" }}>
+          <button className={`seg__opt${pauseMin ? " seg__opt--on" : ""}`} onClick={() => { keep(PAUSE_ON_MINIMIZE, true); setPauseMin(true); }}>On</button>
+          <button className={`seg__opt${!pauseMin ? " seg__opt--on" : ""}`} onClick={() => { keep(PAUSE_ON_MINIMIZE, false); setPauseMin(false); }}>Off</button>
+        </div>
+      </SetRow>
+
       <SetGroup title="About" />
       <SetRow title="What it does" help="Lazy Creatives · Looks lazy. Works obsessively.">
         <p className="set-about">Backups lays out every music project on this computer to browse, with the songs you exported from each. Turn backups on and it keeps checked copies too. It only reads your projects; it never changes them.</p>
       </SetRow>
       <SetRow title="Updates" help="The app checks for a new version on its own. Press the button to check right now.">
         <UpdateCheck />
+      </SetRow>
+      <SetRow title="Something not working?"
+        help="Opens a short report on GitHub with your app version and computer type filled in. You read it before you send it. If the app ever crashes, it offers the same report the next time it opens.">
+        <button type="button" className="btn btn--ghost btn--sm" style={{ alignSelf: "flex-start" }}
+          onClick={() => (window as any).ablebackup?.reportProblem?.()}>Report a problem</button>
       </SetRow>
     </div>
   );
@@ -419,6 +441,75 @@ function FolderTable({ paths, loaded, empty, onRemove, icon = "folder" }: {
         </div>
       ))}
     </div>
+  );
+}
+
+// Where exported songs are looked for: the user's own folders, the ones Backups
+// found by itself, and Uploader's (shown only, so people see why a song was found).
+type ExportFolderSet = Awaited<ReturnType<ReturnType<typeof makeApi>["exportFolders"]>>;
+export function ExportFolders() {
+  const [f, setF] = useState<ExportFolderSet | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const load = () => api.exportFolders().then(setF).catch(() => setErr("Couldn't load your export folders."));
+  useEffect(() => { load(); }, []);
+
+  async function run(fn: () => Promise<unknown>, done?: string) {
+    setBusy(true); setErr(null);
+    try { await fn(); await load(); if (done) toast(done); }
+    catch (e: any) { setErr(e?.message ? `Couldn't change that: ${e.message}` : "Couldn't change that. Try again."); }
+    finally { setBusy(false); }
+  }
+  const mine = f?.folders ?? [];
+  const ignored = f?.ignored ?? [];
+  async function add() {
+    const dir: string | null = await (window as any).ablebackup?.pickFolder?.();
+    if (dir && !mine.includes(dir)) run(() => api.setExportFolders([...mine, dir]), `Looking for songs in ${baseName(dir)}.`);
+  }
+  function remove(p: string) {
+    run(() => api.setExportFolders(mine.filter((x) => x !== p)));
+    toast(`Stopped looking for songs in ${baseName(p)}.`, { label: "Undo", onClick: () => run(() => api.setExportFolders(mine)) });
+  }
+  function ignore(p: string) {
+    run(() => api.setExportFolders(mine, [...ignored, p]));
+    toast(`Won't look in ${baseName(p)} again.`, { label: "Undo", onClick: () => run(() => api.setExportFolders(mine, ignored)) });
+  }
+
+  const rows = exportFolderRows(f).map((r) => ({
+    ...r, from: EXPORT_FOLDER_FROM[r.kind],
+    act: r.kind === "mine" ? ["Remove", () => remove(r.path)] as const
+      : r.kind === "found" ? ["Don't look here", () => ignore(r.path)] as const : undefined,
+  }));
+  return (
+    <>
+      {rows.length === 0
+        ? <p className="faint" style={{ margin: 0, fontSize: 13 }}>{f ? "None yet. Backups still looks in each project's own folder." : "Loading…"}</p>
+        : (
+          <div className="table exportfolder-cols">
+            {rows.map((r) => (
+              <div key={r.path} className="row cols">
+                <Icon name="folder" size={15} className="faint" />
+                <span className="pathline" onContextMenu={(e) => openMenu(e, [
+                  { label: `Show in ${osWords().fileManager}`, onClick: () => (window as any).ablebackup?.revealPath?.(r.path) },
+                  { label: "Copy folder path", onClick: () => { copyText(r.path); } },
+                  ...(r.act ? ["-" as const, { label: r.act[0], onClick: r.act[1], danger: true }] : []),
+                ])}>
+                  <span className="mono col-trunc" style={{ fontSize: 12.5, color: "var(--text-dim)" }} title={r.path}>{r.path}</span>
+                  <CopyButton text={r.path} what="folder path" size={13} />
+                </span>
+                <span className="faint col-trunc" style={{ fontSize: 12.5 }}>{r.from}</span>
+                <span className="col-act">{r.act && <Button variant="quiet" size="sm" disabled={busy} onClick={r.act[1]}>{r.act[0]}</Button>}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      {err && <div className="sub" style={{ color: "var(--danger)", margin: 0, fontSize: 12.5 }}>{err}</div>}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Button variant="ghost" size="sm" onClick={add} disabled={!f || busy}><Icon name="plus" size={14} />Add an export folder</Button>
+        <Button variant="ghost" size="sm" disabled={!f || busy} title="Look through these folders again for songs saved since"
+          onClick={() => run(() => api.refreshExports(), "Looking through your export folders again.")}>Look again</Button>
+      </div>
+    </>
   );
 }
 

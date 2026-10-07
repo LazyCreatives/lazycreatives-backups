@@ -31,6 +31,17 @@ export function keep(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage full or off: skip */ }
 }
 
+// ── pause when minimized ─────────────────────────────────────────────────────
+
+// Settings > "Pause when minimized": off unless switched on, kept between launches.
+export const PAUSE_ON_MINIMIZE = "lc-pause-on-minimize";
+export const pausesOnMinimize = () => recall(PAUSE_ON_MINIMIZE, false, (v) => typeof v === "boolean");
+
+// Calls `cb` each time the window is minimized (see sendWindowMinimized in desktop.js).
+export function onWindowMinimized(cb: () => void): () => void {
+  return bridge()?.onWindowMinimized?.(cb) ?? (() => {});
+}
+
 // ── keyboard shortcuts ───────────────────────────────────────────────────────
 
 export type Command = "find" | "palette" | "settings" | "back" | "forward" | "play" | "whats-new" | "shortcuts" | `page-${number}`;

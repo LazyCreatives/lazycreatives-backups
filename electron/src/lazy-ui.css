@@ -245,6 +245,9 @@ button.row:hover { background: var(--row-hover); }
 /* fixed columns: each list sets --cols (Robert's rule: tables line up) */
 .cols { display: grid; grid-template-columns: var(--cols); align-items: center; column-gap: 14px; }
 .cols > * { min-width: 0; }
+/* a column whose cells and heading sit in its middle (the rating marks) */
+.cols > .rating { justify-self: center; }
+.cols-head .col-mid { justify-self: center; justify-content: center; text-align: center; }
 .col-trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* long names get a second line before they are cut short */
 .col-wrap2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-width: 0; line-height: 1.3; overflow-wrap: anywhere; }
@@ -539,11 +542,12 @@ label.field > span, div.field > span { font-weight: 500; }
 /* the player along the bottom */
 .playerbar {
   position: fixed; left: var(--nav-w); right: 0; bottom: 0; z-index: 40; height: 72px;
-  display: grid; grid-template-columns: 44px minmax(120px, 220px) 38px 40px minmax(0, 1fr) 40px 32px;
+  display: grid; grid-template-columns: 44px minmax(120px, 220px) auto 40px minmax(0, 1fr) 40px 32px;
   align-items: center; gap: 14px; padding: 0 22px;
   background: var(--player-bg); border-top: 1px solid var(--border-strong);
 }
 .playerbar__what { min-width: 0; }
+.playerbar__transport { display: flex; align-items: center; gap: 4px; }
 .playerbar__title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .playerbar__sub { color: var(--text-faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .playbtn.playerbar__play { width: 38px; height: 38px; background: var(--text); border-color: var(--text); color: var(--bg); }
@@ -598,7 +602,7 @@ label.field > span, div.field > span { font-weight: 500; }
 [data-look="crate"] .nowplaying__title { font-size: 22px; }
 /* Crate: two level meters by the clock, segmented like a mixer's (green, then gold, then red) */
 .meter { display: none; }
-[data-look="crate"] .playerbar { grid-template-columns: 44px minmax(120px, 220px) 38px 40px minmax(0, 1fr) 40px 64px 32px; }
+[data-look="crate"] .playerbar { grid-template-columns: 44px minmax(120px, 220px) auto 40px minmax(0, 1fr) 40px 64px 32px; }
 [data-look="crate"] .meter { display: grid; gap: 3px; }
 .meter__ch {
   position: relative; display: block; height: 5px; overflow: hidden;

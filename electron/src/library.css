@@ -11,8 +11,8 @@
 .lib-row { padding-right: 14px; }
 /* stripe · tick · play · cover · pin · name · rating · latest song · BPM · backup · last backup · main button · menu
    (the same order as Uploader's lists: the genre stripe first, then the tick) */
-.lib-cols { --cols: 4px 24px 28px 36px 24px minmax(0, 1fr) 78px minmax(120px, 190px) 44px 128px 118px 150px 32px; }
-.lib-cols--nosongs { --cols: 4px 24px 28px 36px 24px minmax(0, 1fr) 78px 150px 44px 128px 118px 150px 32px; }
+.lib-cols { --cols: 4px 24px 28px 36px 24px minmax(0, 1fr) 84px minmax(120px, 190px) 44px 128px 118px 150px 32px; }
+.lib-cols--nosongs { --cols: 4px 24px 28px 36px 24px minmax(0, 1fr) 84px 150px 44px 128px 118px 150px 32px; }
 .lib-cols.cols-head { padding-right: 14px; }
 /* the pin star has its own column, so the "Project" heading starts where the names do */
 .lib-cols.lib-row, .lib-cols.cols-head { column-gap: 10px; }
@@ -20,7 +20,7 @@
    then play and BPM) so the project name always keeps room and the row's button stays
    on screen. A hidden cell leaves the grid, so its gap goes with it. */
 @media (max-width: 1360px) {
-  .lib-cols, .lib-cols--nosongs { --cols: 4px 24px 28px 36px 24px minmax(0, 1fr) 78px 44px 128px 118px 150px 32px; }
+  .lib-cols, .lib-cols--nosongs { --cols: 4px 24px 28px 36px 24px minmax(0, 1fr) 84px 44px 128px 118px 150px 32px; }
   .lib-cols > :nth-child(8) { display: none; }
 }
 @media (max-width: 1099px) {

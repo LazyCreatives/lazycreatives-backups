@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 // Shared by Backups and Uploader, like desktop.ts itself.
-import { baseName, folderOf, isInside, keep, pageNumber, recall, shortcutFor } from "../src/desktop";
+import { PAUSE_ON_MINIMIZE, baseName, folderOf, isInside, keep, onWindowMinimized, pageNumber, pausesOnMinimize, recall, shortcutFor } from "../src/desktop";
 // desktop.js is the main-process side (CommonJS); only its pure screen check is used here.
 // @ts-ignore - untyped JS module imported for its runtime behaviour
 import * as desktopMain from "../electron/desktop";
 
-const { onAScreen, windowChromeOptions, windowMaterial } = desktopMain as any;
+const { onAScreen, sendWindowMinimized, windowChromeOptions, windowMaterial } = desktopMain as any;
 
 const press = (k: Record<string, unknown>) => ({
   key: "", code: "", altKey: false, metaKey: false, ctrlKey: false, shiftKey: false, target: null, ...k,
@@ -64,6 +64,46 @@ describe("remembered between launches", () => {
     delete (globalThis as any).localStorage;
     expect(recall("lc-test", "home")).toBe("home");   // storage switched off: still works
     expect(() => keep("lc-test", "x")).not.toThrow();
+  });
+});
+
+describe("pause when minimized", () => {
+  it("is off until switched on in Settings", () => {
+    const store = new Map<string, string>();
+    (globalThis as any).localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => { store.set(k, v); },
+    };
+    expect(pausesOnMinimize()).toBe(false);
+    keep(PAUSE_ON_MINIMIZE, true);
+    expect(pausesOnMinimize()).toBe(true);
+    store.set(PAUSE_ON_MINIMIZE, '"yes"');
+    expect(pausesOnMinimize()).toBe(false);
+    delete (globalThis as any).localStorage;
+  });
+  it("the window tells the page when it is minimized, and only then", () => {
+    const handlers: Record<string, () => void> = {};
+    const sent: string[] = [];
+    const win = { on: (ev: string, f: () => void) => { handlers[ev] = f; }, isDestroyed: () => false,
+      webContents: { send: (ch: string) => sent.push(ch) } };
+    sendWindowMinimized(win);
+    expect(Object.keys(handlers)).toEqual(["minimize"]);
+    handlers.minimize();
+    expect(sent).toEqual(["window-minimized"]);
+  });
+  it("the page hears about it through the app's bridge, and does nothing without one", () => {
+    let heard: (() => void) | undefined;
+    const before = (globalThis as any).window;
+    (globalThis as any).window = { ablebackup: { onWindowMinimized: (cb: () => void) => { heard = cb; return () => { heard = undefined; }; } } };
+    let calls = 0;
+    const stop = onWindowMinimized(() => { calls++; });
+    heard?.();
+    expect(calls).toBe(1);
+    stop();
+    expect(heard).toBeUndefined();
+    (globalThis as any).window = {};
+    expect(() => onWindowMinimized(() => {})()).not.toThrow();
+    (globalThis as any).window = before;
   });
 });
 

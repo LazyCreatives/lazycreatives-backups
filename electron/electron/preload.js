@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("ablebackup", {
   revealPath: (target) => ipcRenderer.invoke("reveal-path", target),
   openProject: (target) => ipcRenderer.invoke("open-project", target),
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
+  reportProblem: () => ipcRenderer.invoke("report-problem"),
   openFdaSettings: () => ipcRenderer.invoke("open-fda-settings"),
   platform: process.platform,
   getOpenAtLogin: () => ipcRenderer.invoke("get-open-at-login"),
@@ -41,6 +42,12 @@ contextBridge.exposeInMainWorld("ablebackup", {
   // Light or dark (Settings > Look): the window and title strip follow it (desktop.js).
   setTheme: (choice, theme) => ipcRenderer.invoke("set-theme", choice, theme),
   pathForFile: (file) => { try { return webUtils.getPathForFile(file) || ""; } catch { return ""; } },
+  // Settings > "Pause when minimized" (see sendWindowMinimized in desktop.js).
+  onWindowMinimized: (cb) => {
+    const h = () => cb();
+    ipcRenderer.on("window-minimized", h);
+    return () => ipcRenderer.removeListener("window-minimized", h);
+  },
   onMenuCommand: (cb) => {
     const h = (_e, cmd) => cb(cmd);
     ipcRenderer.on("menu-command", h);

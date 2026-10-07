@@ -23,6 +23,8 @@ const PATHS = {
   close: "M6 6l12 12M18 6 6 18",
   play: "M7 4v16l13-8L7 4Z",
   pause: "M8 5v14M16 5v14",
+  skipBack: "M18 5v14L8 12l10-7ZM6 5v14",
+  skipNext: "M6 5v14l10-7L6 5ZM18 5v14",
   refresh: "M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4",
   arrowLeft: "M19 12H5M11 18l-6-6 6-6",
   arrowDown: "M12 5v14M6 13l6 6 6-6",

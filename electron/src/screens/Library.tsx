@@ -799,7 +799,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                         onChange={(e) => setPicked((s) => { const n = new Set(s); list.forEach((i) => e.target.checked ? n.add(i.project_id) : n.delete(i.project_id)); return n; })} />
                     </span>
                     <span /><span /><span />
-                    {([["name", "Project", ""], ["rating", "Rating", ""], ["song", "Latest song", ""], ["bpm", "BPM", " col-num"], ["status", "Backup", ""], ["backup", "Last backup", " col-num"]] as [SortKey, string, string][]).map(([k, label, cls]) => {
+                    {([["name", "Project", ""], ["rating", "Rating", " col-mid"], ["song", "Latest song", ""], ["bpm", "BPM", " col-num"], ["status", "Backup", ""], ["backup", "Last backup", " col-num"]] as [SortKey, string, string][]).map(([k, label, cls]) => {
                       const on = sort?.key === k;
                       return (
                         <button key={k} className={`lib-sort${cls}${on ? " lib-sort--on" : ""}`} onClick={() => sortBy(k)}

@@ -598,6 +598,16 @@ class Catalog:
             cur["latest"] = dict(r)  # ASC => the newest wins
         return out
 
+    def album_candidates(self) -> list[dict]:
+        """Every linked song (no stems) with its project, for putting on an album."""
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT e.path, e.name, e.mtime, d.project_id, d.name AS project, d.daw, d.bpm, d.genre "
+                "FROM exports e JOIN discovered d ON d.project_id = e.project_id "
+                "WHERE e.hidden = 0 AND e.kind != 'stem' ORDER BY d.name COLLATE NOCASE, e.mtime DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def link_export(self, path: str, project_id: str, name: str, size, mtime,
                     kind: str = "song") -> None:
         with self._lock:

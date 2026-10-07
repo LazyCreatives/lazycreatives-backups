@@ -13,7 +13,26 @@ How to keep this up to date:
   The checks on pull requests fail if the app's version has no section here.
 -->
 
-## Unreleased
+## 0.2.4 (8 October 2026)
+
+### New
+- **Albums: plan what comes out next.** A new Albums page holds each album you're putting together: songs from your projects' exports in order (drag to reorder), the release day with a countdown, whether each project is backed up, and what each song still needs before then, like a WAV, a proper title, or a fresh export after the project changed. Albums are shared with Uploader, so a change in one app shows in the other.
+- **Hear the whole album, with crossfade.** Play album runs it top to bottom with the songs blending into each other, anywhere from Off to 12 seconds, the way Spotify or Apple Music would play it. Mark songs that should run straight into the next one, and "Play joins only" plays just the seconds around each change. It only changes how the album plays; your files stay exactly as they are.
+- **Report a problem in one click.** Help, Report a problem (or the new button at the bottom of Settings) opens a short report on GitHub with your app version and computer type already filled in. You read it before you send it.
+- **Crashes offer to report themselves.** If the app runs into an error, its engine stops or it closes suddenly, it says so and offers that same report, with what went wrong filled in. Nothing is ever sent by itself, and no music, project files or file lists are included.
+- **Choose your export folders in Settings.** Under Your music, see every place Backups looks for your finished songs, add the folders you save them to, and drop any it shouldn't look in. Uploader picks up the same folders. Backups only reads them; your files stay exactly as they are.
+- **Pause the music when you minimize.** A new switch in Settings, under Listening, pauses whatever is playing when you minimize the window. It's off unless you turn it on, and the music waits for you to press play again.
+
+### Better
+- **Whole names on the big-type covers.** Covers that print a project's name in big letters now size each word to fit, so "Chrome Hearts" no longer reads "CHROI HEART".
+- **No repeats on Home (Crate).** "Recently worked on" skips projects already listed under Changed or Needs a look just above it, so you see more of your other work.
+- **Stems are spotted more surely.** Songs and their separate parts are told apart by the same checker Uploader now uses, so both apps agree: FL Studio's "Song_Insert 3" and names like "Night Drive - Vocals" count as stems, while a song genuinely called "Deep Bass" stays a song.
+
+### Fixed
+- **Tidier project page and Home.** In Crate the tempo, tracks, size and backups box no longer squashes its numbers onto two lines, and the record label on the right has room for its small print. In Sleeve the Back up button comes first instead of sitting alone on its own line, the big numbers stay on one line in a narrow window, and the Home cards keep their button and folder side by side. The welcome headline and the Crate and Sleeve picture cards line up properly.
+- **The level meters keep time with the music.** The two little meters in the player bar now listen to the song as it plays, so they jump with every beat, show left and right separately and fall the moment you pause, instead of drifting out of step.
+- **Ratings sit in the middle of their column.** In the Library list, the rating marks and the Rating heading are centred, and all five marks fit.
+- **No keychain password prompts on Mac.** Backups never asks your Mac's keychain for anything, so an update can't bring up a "wants to use your confidential information" box.
 
 ## 0.2.3 (7 October 2026)
 

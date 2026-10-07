@@ -14,3 +14,11 @@ os.environ.setdefault("ABLEBACKUP_UPLOADER_DB", os.path.join(os.sep, "nonexisten
 # Don't go looking for exports folders around the shared temp directory (other tests'
 # folders live there); the tests for that turn it back on.
 os.environ.setdefault("ABLEBACKUP_FIND_EXPORT_FOLDERS", "0")
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _own_albums_list(tmp_path, monkeypatch):
+    """Albums are shared with Uploader in a file outside the app; tests get their own."""
+    monkeypatch.setenv("LC_ALBUMS_DB", str(tmp_path / "shared-albums.db"))

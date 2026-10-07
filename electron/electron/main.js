@@ -6,7 +6,8 @@ const { createTray } = require("./tray");
 const { createCompanion } = require("./companion");
 const { isOpenAtLogin, setOpenAtLogin, initOpenAtLogin } = require("./startup");
 const { startUpdater } = require("./updater");
-const { windowMaterial, windowChromeOptions, installTextMenu, windowStateOptions, installAppMenu, registerDesktopIpc, showWindow } = require("./desktop");
+const report = require("./report");
+const { windowMaterial, windowChromeOptions, installTextMenu, windowStateOptions, installAppMenu, registerDesktopIpc, sendWindowMinimized, showWindow } = require("./desktop");
 
 const isDev = !!process.env.ABLEBACKUP_DEV;
 let win = null;
@@ -15,6 +16,16 @@ let tray = null;
 let companion = null; // the narrow window beside the music program (companion.js)
 let isQuitting = false;
 let stopping = null; // set to the shutdown promise once a quit begins
+
+// Crashes are noted on this computer only; the app then offers a filled-in report
+// the person reads and sends themselves (report.js). Must start before "ready".
+report.startCrashCatcher({ appName: "LazyCreatives Backups", repo: "lazycreatives-backups" });
+
+// Never ask the Mac's Keychain for anything. The window's own storage would
+// otherwise keep its key there, and because the installers are unsigned, macOS treats
+// every update as a new app and asks for your keychain password. Nothing secret lives
+// in the window's storage, so a fixed local key is enough.
+if (process.platform === "darwin") app.commandLine.appendSwitch("use-mock-keychain");
 
 // Single-instance: opening the app again brings the running window forward rather
 // than starting a second copy (which would fight over the same catalog), as Uploader does.
@@ -71,6 +82,7 @@ function createWindow() {
   });
   placement.track(win);
   installTextMenu(win);
+  sendWindowMinimized(win);
   if (process.platform === "darwin" && app.dock && hasIcon()) {
     try { app.dock.setIcon(ICON); } catch (err) { console.error("[main] dock icon:", err.message); }
   }
@@ -90,7 +102,14 @@ function createWindow() {
   });
   win.webContents.on("render-process-gone", (_e, details) => {
     console.error("[renderer GONE]", JSON.stringify(details));
+    if (isQuitting || details.reason === "clean-exit") return;
+    report.recordProblem("window", `The window stopped (${details.reason}, exit code ${details.exitCode}).`);
+    // Bring the window back once, then offer the report.
+    if (!win.__reloaded) { win.__reloaded = true; loadPage(win); }
+    report.offerReport(win);
   });
+  // A problem noted last time (or a sudden close) is offered once the window is up.
+  win.webContents.once("did-finish-load", () => setTimeout(() => report.offerReport(win), 1500));
 
   // Side mouse buttons and the keyboard's Back/Forward keys reach Windows and Linux
   // apps as window commands; the page treats them like its own back/forward.
@@ -169,6 +188,23 @@ ipcMain.handle("open-project", (_e, target) => {
   return "not a project file";
 });
 
+ipcMain.handle("report-problem", () => report.reportProblem());
+
+// If the engine stops on its own (not because the app is quitting), note why and offer
+// the report. Its last few error lines say what went wrong.
+function watchSidecar(sc) {
+  let tail = "";
+  sc.proc.stderr.on("data", (d) => {
+    const useful = d.toString().split("\n").filter((l) => l.trim() && !/^INFO:/.test(l)).join("\n");
+    if (useful) tail = (tail + "\n" + useful).slice(-1500);
+  });
+  sc.proc.on("exit", (code, signal) => {
+    if (isQuitting || stopping) return;
+    report.recordProblem("engine", `The engine stopped (${signal ? `signal ${signal}` : `exit code ${code}`}).\n${tail.trim()}`);
+    report.offerReport(win);
+  });
+}
+
 ipcMain.handle("open-external", (_e, url) => {
   if (typeof url === "string" && /^https?:\/\//.test(url)) shell.openExternal(url);
 });
@@ -224,6 +260,7 @@ app.whenReady().then(async () => {
       sidecarOpts = { backendDir: backendDir(), dbPath: dbPath(), pythonCmd };
     }
     sidecar = await startSidecar(sidecarOpts);
+    watchSidecar(sidecar);
     createWindow();
     installAppMenu({ appName: "LazyCreatives Backups", website: "https://lazycreatives.github.io/", getWindow: () => win });
     companion = createCompanion({
@@ -255,10 +292,7 @@ app.whenReady().then(async () => {
   } catch (err) {
     // A dead-silent launch (sidecar spawn failed / health timed out) is the worst
     // failure for a paid app — surface it instead of showing nothing.
-    dialog.showErrorBox("LazyCreatives Backups couldn't start",
-      "The backup engine failed to start.\n\n" +
-      String((err && (err.stack || err.message)) || err) +
-      "\n\nIf this persists, please reinstall.");
+    report.startFailed(err);
     isQuitting = true; app.quit();
   }
 });
@@ -279,7 +313,8 @@ app.on("before-quit", (e) => {
 process.on("unhandledRejection", (reason) => console.error("[unhandledRejection]", reason));
 process.on("uncaughtException", (err) => {
   console.error("[uncaughtException]", err);
-  try { if (app.isReady()) dialog.showErrorBox("LazyCreatives Backups error", String((err && err.stack) || err)); } catch { /* ignore */ }
+  report.recordProblem("error", String((err && err.stack) || err));
+  if (app.isReady()) report.offerReport(win);
 });
 
 // Last-resort *synchronous* kill on any node exit path we did not anticipate.

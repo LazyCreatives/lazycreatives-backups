@@ -11,6 +11,7 @@ const ITEMS: { id: Tab; label: string; icon: IconName }[] = [
   { id: "home", label: "Home", icon: "home" },
   { id: "library", label: "Library", icon: "library" },
   { id: "dig", label: "Dig", icon: "dig" },
+  { id: "albums", label: "Albums", icon: "music" },
   { id: "plugins", label: "Plugins", icon: "plug" },
   { id: "settings", label: "Settings", icon: "settings" },
 ];

@@ -180,6 +180,9 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   const recent = [...pinnedItems, ...[...items].filter((i) => !pins.includes(i.project_id)).sort((a, b) => b.mtime - a.mtime)]
     .slice(0, Math.max(6, pinnedItems.length));
   const recentTitle = pinnedItems.length ? "Pinned and recently worked on" : "Recently worked on";
+  // Crate's list under the two above leaves out what they already show (pins stay)
+  const shown = new Set([...changedItems, ...lookItems].map((i) => i.project_id));
+  const recentRows = [...pinnedItems, ...[...items].filter((i) => !pins.includes(i.project_id) && !shown.has(i.project_id)).sort((a, b) => b.mtime - a.mtime)];
   const savedWhen = (it: LibraryItem) => {
     const d = new Date(it.mtime * 1000), p2 = (n: number) => String(n).padStart(2, "0");
     return fmtDate(`${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}`);
@@ -510,14 +513,14 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
               </>)}
             </section>
 
-            {recent.length > 0 && (
+            {recentRows.length > 0 && (
               <section className="section">
                 <div className="section__head">
                   <h2>{recentTitle}</h2>
                   <button className="linkbtn" onClick={onOpenHistory}>Open the library</button>
                 </div>
                 <div className="table table--crate">
-                  {recent.slice(0, pinnedItems.length > 4 ? pinnedItems.length : 4).map((it) => {
+                  {recentRows.slice(0, pinnedItems.length > 4 ? pinnedItems.length : 4).map((it) => {
                     const pinned = pins.includes(it.project_id);
                     const st = it.missing_count > 0 ? ["dot--warn", `${fmtCap(it.missing_count)} missing`]
                       : it.changed ? ["dot--accent", "Changed"] : it.backed_up ? ["dot--ok", "Safe"] : ["", "Not backed up"];

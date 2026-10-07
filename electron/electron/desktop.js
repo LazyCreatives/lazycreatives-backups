@@ -190,7 +190,7 @@ function installAppMenu({ appName, website, getWindow }) {
         { label: "Keyboard shortcuts", click: send("shortcuts") },
         { type: "separator" },
         { label: "Lazy Creatives website", click: () => shell.openExternal(website) },
-        { label: "Report a problem", click: () => shell.openExternal(`${website}#contact`) },
+        { label: "Report a problem", click: () => require("./report").reportProblem() },
       ],
     },
   ];
@@ -282,6 +282,12 @@ function registerDesktopIpc(getWindow) {
   });
 }
 
+// Tells the page when the window is minimized, so Settings > "Pause when minimized"
+// can pause the music. Only minimizing: hiding to the tray or switching apps doesn't count.
+function sendWindowMinimized(win) {
+  win.on("minimize", () => { if (!win.isDestroyed()) win.webContents.send("window-minimized"); });
+}
+
 // A window that was hidden to the tray comes back where it was.
 function showWindow(win) {
   if (!win) return;
@@ -290,4 +296,4 @@ function showWindow(win) {
   win.focus();
 }
 
-module.exports = { windowMaterial, windowChromeOptions, titleBarFor, savedTheme, textMenuTemplate, installTextMenu, windowStateOptions, savedWindowState, onAScreen, installAppMenu, registerDesktopIpc, showWindow };
+module.exports = { windowMaterial, windowChromeOptions, titleBarFor, savedTheme, textMenuTemplate, installTextMenu, windowStateOptions, savedWindowState, onAScreen, installAppMenu, registerDesktopIpc, sendWindowMinimized, showWindow };

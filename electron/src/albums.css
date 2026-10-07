@@ -1,0 +1,127 @@
+/* Albums page (components/Albums.tsx), both looks.
+   SHARED FILE: the same file lives in Backups and Uploader (electron/src/albums.css). */
+
+.alb__back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; margin: 0 0 14px; color: var(--text-dim); }
+.alb__wait { padding: 14px 16px; font-size: 13px; }
+.alb__err { display: flex; gap: 8px; align-items: center; color: var(--danger); font-size: 13px; margin: 8px 0 12px; }
+
+/* ---- the list (Crate rows) ---- */
+.alb-cols { --cols: 4px 36px minmax(160px, 3fr) minmax(150px, 1.6fr) 56px 76px 128px 112px; }
+@media (max-width: 900px) {
+  .alb-cols { --cols: 4px 36px minmax(140px, 3fr) minmax(110px, 1.4fr) 128px; }
+  .alb-cols > :nth-child(5), .alb-cols > :nth-child(6), .alb-cols > :nth-child(8) { display: none; }
+}
+.alb-row { cursor: pointer; }
+.alb-stripe { background: var(--accent); }
+.alb-when { font-size: 12px; }
+.alb-ready { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.alb-ready__bar { flex: 0 0 64px; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.alb-ready__bar i { display: block; height: 100%; background: var(--accent-2); border-radius: 3px; }
+.alb-ready__n { font-size: 12px; color: var(--text-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.alb-pill { justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill.alb-pill--ok { --dot: var(--accent-2); color: var(--text-dim); background: none; }
+.pill.alb-pill--warn { --dot: var(--warn); color: var(--text); background: none; }
+.pill.alb-pill--quiet { --dot: var(--idle); color: var(--text-faint); background: none; }
+button.alb-pill { border: 0; font: inherit; font-size: 12.5px; cursor: pointer; text-align: left; }
+button.alb-pill:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ---- making one ---- */
+.alb-compose { margin: 0 0 18px; }
+.alb-compose--first { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 6px 18px 20px; }
+.alb-compose--first .empty { padding-bottom: 8px; }
+.alb-compose__row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.alb-compose--first .alb-compose__row { justify-content: center; }
+.alb-compose__row input[type="text"] { flex: 1 1 260px; max-width: 420px; }
+.alb-compose__date { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
+
+/* ---- one album ---- */
+.albpage__head { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: end; margin-bottom: 18px; }
+.albpage__info { min-width: 0; display: grid; gap: 4px; }
+.albpage__info .eyebrow { margin: 0; }
+.albpage__title { margin: 0; font-size: 26px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
+.albpage__rename { font-size: 22px; font-weight: 600; width: min(520px, 100%); }
+.albpage__line { color: var(--text-dim); font-size: 13px; }
+.albpage__date { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+.albpage__actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+
+/* Sleeve: the album page opens like a record sleeve, with its name on the spine */
+.albpage--sleeve .albpage__head { gap: 28px; }
+.albpage__sleeve {
+  display: grid; grid-template-columns: 22px auto; border-radius: 3px; overflow: hidden;
+  box-shadow: 0 14px 30px rgb(var(--shade-rgb) / calc(0.4 * var(--shade-k)));
+}
+.albpage__sleeve .cover { border-radius: 0; }
+.albpage__spine {
+  writing-mode: vertical-rl; transform: rotate(180deg); background: var(--surface-2); color: var(--text-dim);
+  font-size: 10px; letter-spacing: .12em; text-transform: uppercase; text-align: center; padding: 8px 0;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-left: 1px solid var(--border);
+}
+.albpage--sleeve .albpage__title { font-family: var(--display); font-weight: 400; font-size: 64px; line-height: .95; letter-spacing: .02em; }
+.albpage--sleeve .alb-songs, .albpage--sleeve .alb-mixer, .albpage--sleeve .alb-add { border-radius: 14px; }
+
+/* ---- the crossfade ---- */
+.alb-mixer {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 0 0 14px; padding: 10px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface);
+}
+.alb-mixer__label { font-weight: 600; font-size: 13px; }
+.alb-mixer input[type="range"] {
+  width: 160px; height: 4px; appearance: none; -webkit-appearance: none; border-radius: 2px; cursor: pointer;
+  background: linear-gradient(to right, var(--accent) var(--fill), var(--surface-2) var(--fill));
+}
+.alb-mixer input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--text); border: 0;
+}
+.alb-mixer input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; }
+.alb-mixer__val { width: 42px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.alb-mixer__note { font-size: 12px; margin-left: auto; }
+[data-look="crate"] .alb-mixer input[type="range"]::-webkit-slider-thumb { border-radius: 3px; width: 10px; height: 18px; }
+
+/* ---- the songs ---- */
+.alb-song-cols { --cols: 14px 22px 28px 36px minmax(160px, 2.4fr) 52px 112px minmax(120px, 1.2fr) 32px; }
+.alb-songs--backups .alb-song-cols { --cols: 14px 22px 28px 36px minmax(150px, 2.2fr) 52px 112px 104px minmax(120px, 1.2fr) 32px; }
+.alb-song--now { background: var(--row-selected) !important; }
+.alb-song--now .row__title { color: var(--accent); }
+.alb-grip { color: var(--text-faint); cursor: grab; display: grid; place-items: center; opacity: .55; }
+.alb-drag:hover .alb-grip, .alb-drag:focus-visible .alb-grip { opacity: 1; }
+.alb-drag { position: relative; }
+.alb-drag:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.alb-drag--lifted { opacity: .45; }
+.alb-drag--above::before, .alb-drag--below::after {
+  content: ""; position: absolute; left: 8px; right: 8px; height: 2px; background: var(--accent); border-radius: 2px; pointer-events: none;
+}
+.alb-drag--above::before { top: -1px; }
+.alb-drag--below::after { bottom: -1px; }
+.alb-proj { font-size: inherit; color: inherit; text-align: left; }
+.alb-join {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; margin-left: -6px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--text-dim); font: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap;
+}
+.alb-join:hover { background: var(--surface-2); color: var(--text); }
+.alb-join__mark { color: var(--accent); flex: none; }
+.alb-join--gapless .alb-join__mark { color: var(--text-faint); }
+.alb-status { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.alb-status .alb-pill { min-width: 0; display: block; position: relative; padding-left: 15px; }
+.alb-status .alb-pill::before { position: absolute; left: 0; top: 50%; transform: translateY(-50%); }
+.alb-more { font-size: 12px; }
+
+/* ---- adding songs ---- */
+.alb-add { margin-top: 22px; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.alb-add__head { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.alb-add__head h2 { margin: 0; font-size: 14px; font-weight: 600; margin-right: auto; }
+.alb-search { flex: 0 1 300px; position: relative; display: flex; align-items: center; color: var(--text-faint); }
+.alb-search > svg { position: absolute; left: 11px; pointer-events: none; }
+.alb-search input[type="search"] { width: 100%; padding-left: 34px; }
+.alb-add__list { max-height: 360px; overflow-y: auto; }
+.alb-add__row {
+  display: grid; grid-template-columns: 32px minmax(0, 1.4fr) minmax(0, 1fr) 52px 26px; gap: 12px; align-items: center; width: 100%;
+  padding: 7px 14px; border: 0; border-top: 1px solid var(--border); background: transparent; color: var(--text);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.alb-add__row:first-child { border-top: 0; }
+.alb-add__row:hover { background: var(--row-hover); }
+.alb-add__row:hover .alb-add__plus { color: var(--accent); border-color: var(--accent); }
+.alb-add__meta { font-size: 12.5px; }
+.alb-add__len { font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; }
+.alb-add__plus { width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--border-strong); border-radius: 50%; color: var(--text-dim); }
+[data-look="crate"] .alb-add__plus { border-radius: 4px; }

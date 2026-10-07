@@ -84,11 +84,18 @@ export function Cover({ name, genre, size, className = "", label = true, colour,
   const photo = a?.style === "photo";
   const shapes: JSX.Element[] = [];
   if (kind === 0) {
-    // the name, set big and cropped by the edge of the sleeve
+    // the name, set big like a gig poster: each word as large as fits across the sleeve,
+    // so short words shout and long ones still read whole
     const words = name.toUpperCase().split(/\s+/).filter(Boolean).slice(0, 3);
-    words.forEach((w, i) =>
-      shapes.push(<text key={i} x={-3} y={36 + i * 29} fontFamily={FONT} fontWeight={700} fontSize={34}
-        letterSpacing={-1.6} fill={i === 0 ? c : shade(c, 0.55)}>{w}</text>));
+    const sizes = words.map((w) => Math.max(12, Math.min(34, (94 / w.length + 1.4) / 0.8)));
+    let y = Math.max(4, (100 - sizes.reduce((t, fs) => t + fs * 0.86 + 2, 0)) / 2);  // the stack sits in the middle
+    words.forEach((w, i) => {
+      const fs = sizes[i];
+      y += fs * 0.86;
+      shapes.push(<text key={i} x={3} y={y} fontFamily={FONT} fontWeight={700} fontSize={fs}
+        letterSpacing={fs * -0.045} fill={i === 0 ? c : shade(c, 0.55)}>{w}</text>);
+      y += 2;
+    });
   } else if (kind === 1) {
     // a record half out of its sleeve (the sleeve lets a picture show through)
     const cy = 44 + r() * 12;

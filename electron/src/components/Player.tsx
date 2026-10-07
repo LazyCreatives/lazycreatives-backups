@@ -5,7 +5,8 @@ import { Cover } from "./Cover";
 import { Icon } from "./Icon";
 import { Wave, type WaveMark } from "./Wave";
 import { AUDITION_DELAY, AUDITION_FROM, auditionOn, bindAuditionKeys, useAuditionMode } from "../audition";
-import { Meter } from "./Meter";
+import { Meter, listenTo } from "./Meter";
+import { onWindowMinimized, pausesOnMinimize } from "../desktop";
 
 const api = makeApi();
 
@@ -13,7 +14,9 @@ const api = makeApi();
 // Components subscribe to know whether *their* file is the one playing; the player
 // bar along the bottom shows whatever is loaded.
 // `projectId` opens the project from the player bar (the name is used when it's missing).
-export interface SongMeta { title: string; project?: string; projectId?: string; genre?: string | null }
+// `sub` replaces the line under the name (an album shows where you are in it), and the
+// song's own title then leads.
+export interface SongMeta { title: string; project?: string; projectId?: string; genre?: string | null; sub?: string }
 type State = {
   path: string | null; playing: boolean; error: string | null;
   meta: SongMeta | null; time: number; duration: number;
@@ -24,7 +27,7 @@ let state: State = { path: null, playing: false, error: null, meta: null, time: 
 // The song that was in the player bar before a preview took over, put back (paused)
 // when the preview ends.
 let before: { path: string; meta: SongMeta | null; time: number } | null = null;
-let fade = 0;
+let previewFade = 0;
 const subs = new Set<(s: State) => void>();
 
 function set(next: Partial<State>) {
@@ -32,28 +35,39 @@ function set(next: Partial<State>) {
   subs.forEach((f) => f(state));
 }
 
+// Two players, so an album can blend one song into the next (see "albums" below).
+// `audio` is always the one in the player bar; the other is the song fading out, or
+// the next song waiting. Events from the one not in the bar are ignored.
+let other: HTMLAudioElement | null = null;
+
+function make(): HTMLAudioElement {
+  const a = new Audio();
+  // asks the app's own service for permission to read the sound, so the level meters can
+  a.crossOrigin = "anonymous";
+  const mine = () => a === audio;
+  a.addEventListener("playing", () => { if (mine()) set({ playing: true, error: null }); });
+  a.addEventListener("pause", () => { if (mine()) set({ playing: false }); });
+  a.addEventListener("ended", () => { if (mine() && !albumEnded()) set({ playing: false }); });
+  a.addEventListener("timeupdate", () => { if (mine()) set({ time: a.currentTime }); });
+  a.addEventListener("durationchange", () => { if (mine()) set({ duration: a.duration || 0 }); });
+  a.addEventListener("error", () => {
+    if (!mine()) return;
+    // The sidecar already decodes the formats the player is known to refuse. If one
+    // still fails, ask once for it decoded before giving up.
+    if (state.path && !a.src.includes("&decode=1")) {
+      const at = a.currentTime;
+      a.src = api.exportAudioUrl(state.path, true);
+      if (at) a.addEventListener("loadedmetadata", () => { a.currentTime = at; }, { once: true });
+      if (wanted) a.play().catch(() => {}); else a.load();
+      return;
+    }
+    set({ playing: false, error: "Couldn't play this file" });
+  });
+  return a;
+}
+
 function el(): HTMLAudioElement {
-  if (!audio) {
-    audio = new Audio();
-    audio.addEventListener("playing", () => set({ playing: true, error: null }));
-    audio.addEventListener("pause", () => set({ playing: false }));
-    audio.addEventListener("ended", () => set({ playing: false }));
-    audio.addEventListener("timeupdate", () => set({ time: audio!.currentTime }));
-    audio.addEventListener("durationchange", () => set({ duration: audio!.duration || 0 }));
-    audio.addEventListener("error", () => {
-      // The sidecar already decodes the formats the player is known to refuse. If one
-      // still fails, ask once for it decoded before giving up.
-      const a = audio!;
-      if (state.path && !a.src.includes("&decode=1")) {
-        const at = a.currentTime;
-        a.src = api.exportAudioUrl(state.path, true);
-        if (at) a.addEventListener("loadedmetadata", () => { a.currentTime = at; }, { once: true });
-        if (wanted) a.play().catch(() => {}); else a.load();
-        return;
-      }
-      set({ playing: false, error: "Couldn't play this file" });
-    });
-  }
+  if (!audio) audio = make();
   return audio;
 }
 
@@ -68,16 +82,18 @@ function start(a: HTMLAudioElement): Promise<void> {
 export function toggle(path: string, meta?: SongMeta) {
   const a = el();
   if (state.auditioning) {
-    window.clearInterval(fade); a.volume = 1; before = null;
+    window.clearInterval(previewFade); a.volume = 1; before = null;
     // pressing play on the song being previewed keeps it playing, now for real
     if (state.path === path) { set({ auditioning: false }); if (a.paused) start(a); return; }
     set({ auditioning: false });
   }
-  if (state.path === path && !a.paused) { wanted = false; a.pause(); return; }
+  if (state.path === path && !a.paused) { wanted = false; settle(); a.pause(); return; }
   if (state.path !== path) {
+    leaveAlbum();
     a.src = api.exportAudioUrl(path);
     set({ path, error: null, meta: meta ?? { title: path.split(/[\\/]/).pop() || "Song" }, time: 0, duration: 0 });
   }
+  listenTo(a);
   start(a);
 }
 
@@ -95,11 +111,13 @@ export function now(): number {
 }
 
 export function seek(fraction: number) {
+  settle();
   if (audio && state.duration) audio.currentTime = fraction * state.duration;
 }
 
 export function stop() {
   wanted = false;
+  settle();
   if (audio) audio.pause();
 }
 
@@ -108,16 +126,17 @@ export function audition(path: string, meta: SongMeta) {
   const a = el();
   if (state.path === path && !a.paused) return;
   if (state.path && !state.auditioning && !before) before = { path: state.path, meta: state.meta, time: a.currentTime };
-  window.clearInterval(fade);
+  settle();
+  window.clearInterval(previewFade);
   a.volume = 0;
   a.src = api.exportAudioUrl(path);
   set({ path, error: null, meta, time: 0, duration: 0, auditioning: true });
   const jump = () => { if (state.path === path && a.duration) a.currentTime = a.duration * AUDITION_FROM; };
   a.addEventListener("loadedmetadata", jump, { once: true });
   start(a).then(() => {
-    fade = window.setInterval(() => {
+    previewFade = window.setInterval(() => {
       a.volume = Math.min(1, a.volume + 0.1);
-      if (a.volume >= 1) window.clearInterval(fade);
+      if (a.volume >= 1) window.clearInterval(previewFade);
     }, 30);
   }).catch(() => set({ playing: false, auditioning: false }));
 }
@@ -126,7 +145,7 @@ export function audition(path: string, meta: SongMeta) {
 // was in the player bar before, paused where it was.
 export function endAudition(path: string) {
   if (!state.auditioning || state.path !== path || !audio) return;
-  window.clearInterval(fade);
+  window.clearInterval(previewFade);
   wanted = false;
   audio.pause();
   audio.volume = 1;
@@ -166,7 +185,162 @@ export function AuditionDiv({ song, meta, ...rest }: React.HTMLAttributes<HTMLDi
   return <div {...rest} {...a} />;
 }
 
+// ── albums: play songs one after another, each blending into the next ───────────
+// Playback only: two players overlap for the crossfade, turning one down as the other
+// comes up. Nothing is mixed into a file. `from` (seconds; below 0 = that long before
+// the end) and `until` let "Play joins only" play just the seconds around each change.
+// `join` is how a song hands over to the next: blended over the album's crossfade,
+// straight in with no gap, or after a short pause (between joins).
+export interface QueueSong { path: string; meta: SongMeta; from?: number; until?: number; join?: "fade" | "gapless" | "cut" }
+type AlbumRun = { key: string; songs: QueueSong[]; at: number; fade: number; loaded: boolean; waiting: boolean };
+let album: AlbumRun | null = null;
+let blend = 0;   // turns the two players up and down while songs overlap
+let watch = 0;   // checks often whether the next song is due
+const albumSubs = new Set<() => void>();
+const tellAlbum = () => albumSubs.forEach((f) => f());
+
+function loadInto(a: HTMLAudioElement, song: QueueSong) {
+  a.preload = "auto";
+  a.src = api.exportAudioUrl(song.path);
+  const from = song.from;
+  if (from) a.addEventListener("loadedmetadata", () => {
+    a.currentTime = from < 0 ? Math.max(0, a.duration + from) : from;
+  }, { once: true });
+}
+
+// Finish any blend at once: the song fading out stops, the one in the bar is full up.
+function settle() {
+  window.clearInterval(blend);
+  if (other) { other.pause(); other.volume = 1; }
+  if (audio) audio.volume = 1;
+}
+
+function leaveAlbum() {
+  if (!album) return;
+  album = null;
+  window.clearInterval(watch);
+  settle();
+  tellAlbum();
+}
+
+function handOver(run: AlbumRun, secs: number) {
+  const out = audio!;
+  const inc = other ?? make();
+  const next = run.songs[run.at + 1];
+  if (!run.loaded) loadInto(inc, next);
+  window.clearInterval(blend);
+  run.at += 1; run.loaded = false; run.waiting = false;
+  audio = inc; other = out;
+  inc.volume = secs > 0 ? 0 : 1;
+  set({ path: next.path, meta: next.meta, time: inc.currentTime, duration: inc.duration || 0, error: null });
+  start(inc);
+  tellAlbum();
+  if (secs <= 0) { out.pause(); out.volume = 1; return; }
+  const t0 = performance.now();
+  blend = window.setInterval(() => {
+    const x = Math.min(1, (performance.now() - t0) / (secs * 1000));
+    inc.volume = Math.sin((x * Math.PI) / 2);   // equal power: no dip in the middle
+    out.volume = Math.cos((x * Math.PI) / 2);
+    if (x >= 1) { window.clearInterval(blend); out.pause(); out.volume = 1; }
+  }, 30);
+}
+
+function tick() {
+  const run = album, a = audio;
+  if (!run || !a || run.waiting || state.auditioning || a.paused) return;
+  const song = run.songs[run.at];
+  if (state.path !== song?.path) return;
+  const end = song.until ?? (a.duration && isFinite(a.duration) ? a.duration : 0);
+  if (!end) return;
+  const next = run.songs[run.at + 1];
+  const join = song.join ?? "fade";
+  const lead = join === "fade" ? Math.min(run.fade, end / 2) : join === "gapless" ? 0.04 : 0;
+  const left = end - a.currentTime;
+  if (next && !run.loaded && left <= lead + 6) { other ??= make(); loadInto(other, next); run.loaded = true; }
+  if (left > lead) return;
+  if (!next) { if (song.until != null) { wanted = false; a.pause(); leaveAlbum(); } return; }
+  if (join === "cut") {
+    run.waiting = true;
+    a.pause();
+    window.setTimeout(() => { if (album === run) handOver(run, 0); }, 700);
+    return;
+  }
+  handOver(run, lead);
+}
+
+// The song in the bar reached its end: carry on with the album if there's more.
+function albumEnded(): boolean {
+  const run = album;
+  if (!run) return false;
+  if (run.songs[run.at + 1] && !run.waiting) { handOver(run, 0); return true; }
+  if (!run.songs[run.at + 1]) leaveAlbum();
+  return false;
+}
+
+// Play an album from song `at`, blending songs over `fade` seconds (0 = one after another).
+export function playAlbum(key: string, songs: QueueSong[], at = 0, fade = 0) {
+  if (!songs[at]) return;
+  settle();
+  window.clearInterval(previewFade);
+  before = null;
+  album = { key, songs, at, fade, loaded: false, waiting: false };
+  const a = el();
+  other ??= make();
+  listenTo(a); listenTo(other);
+  a.volume = 1;
+  loadInto(a, songs[at]);
+  set({ path: songs[at].path, meta: songs[at].meta, time: 0, duration: 0, error: null, auditioning: false });
+  start(a);
+  window.clearInterval(watch);
+  watch = window.setInterval(tick, 50);
+  tellAlbum();
+}
+
+// Change the crossfade or the running order while it plays; the song playing carries on.
+export function updateAlbum(key: string, songs: QueueSong[], fade: number) {
+  if (!album || album.key !== key) return;
+  const at = songs.findIndex((x) => x.path === state.path);
+  if (at < 0) return;
+  album.songs = songs; album.at = at; album.fade = fade; album.loaded = false;
+  tellAlbum();
+}
+
+export function albumStep(dir: 1 | -1) {
+  if (!album) return;
+  const at = album.at + dir;
+  if (album.songs[at]) playAlbum(album.key, album.songs, at, album.fade);
+}
+
+export function stopAlbum() {
+  if (!album) return;
+  leaveAlbum();
+  wanted = false;
+  audio?.pause();
+}
+
+// Which album is playing and which song of it, for the album page and the player bar.
+export function useAlbumPlaying(): { key: string; at: number; count: number } | null {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const f = () => bump((n) => n + 1);
+    albumSubs.add(f);
+    return () => { albumSubs.delete(f); };
+  }, []);
+  return album ? { key: album.key, at: album.at, count: album.songs.length } : null;
+}
+
+// Settings > "Pause when minimized": a preview just ends, a song pauses where it is.
+// It stays paused until you press play again.
+export function pause() {
+  if (!audio) return;
+  if (state.auditioning && state.path) { endAudition(state.path); return; }
+  wanted = false;
+  settle();
+  audio.pause();
+}
+
 export function close() {
+  leaveAlbum();
   wanted = false;
   if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); audio.volume = 1; }
   set({ path: null, playing: false, meta: null, time: 0, duration: 0, error: null, auditioning: false });
@@ -299,9 +473,11 @@ const clock = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60))
 // The project's name opens its page; the cover (or its up arrow) opens the big view.
 export function PlayerBar({ onOpenProject }: { onOpenProject?: (key: string) => void }) {
   const s = usePlayerState();
+  const run = useAlbumPlaying();
   const { peaks } = usePeaks(s.path);
   const [big, setBig] = useState(false);
   const shown = !!s.path && !s.auditioning;
+  useEffect(() => onWindowMinimized(() => { if (pausesOnMinimize()) pause(); }), []);
   useEffect(() => {
     document.documentElement.classList.toggle("has-player", shown);
     if (!shown) setBig(false);
@@ -310,27 +486,34 @@ export function PlayerBar({ onOpenProject }: { onOpenProject?: (key: string) => 
   const m = s.meta;
   const key = m.projectId ?? m.project;
   const open = key && onOpenProject ? () => { setBig(false); onOpenProject(key); } : undefined;
-  const name = m.project ?? m.title;
+  const name = m.sub ? m.title : m.project ?? m.title;
+  const coverName = m.project ?? m.title;
   const played = s.duration ? s.time / s.duration : 0;
-  const color = coverColor(m.genre, name);
+  const color = coverColor(m.genre, coverName);
   return (
     <>
       <div className="playerbar" role="region" aria-label="Now playing">
         <button type="button" className="playerbar__art" onClick={() => setBig(true)}
           aria-label="Make the player bigger" title="Make the player bigger">
-          <Cover name={name} genre={m.genre} size={44} label={false} />
+          <Cover name={coverName} genre={m.genre} size={44} label={false} />
           <span className="playerbar__grow"><Icon name="chevronUp" size={14} /></span>
         </button>
         <div className="playerbar__what">
           {open
             ? <button type="button" className="playerbar__title playerbar__link" onClick={open} title={`Open ${name}`}>{name}</button>
             : <div className="playerbar__title">{name}</div>}
-          <div className="playerbar__sub">{s.error ?? `${m.title} · latest song`}</div>
+          <div className="playerbar__sub">{s.error ?? m.sub ?? `${m.title} · latest song`}</div>
         </div>
+        <div className="playerbar__transport">
+        {run && <button type="button" className="iconbtn" onClick={() => albumStep(-1)} disabled={run.at === 0}
+          aria-label="Previous song on the album" title="Previous song"><Icon name="skipBack" size={14} /></button>}
         <button type="button" className="playbtn playerbar__play" onClick={() => toggle(s.path!, m)}
           aria-label={s.playing ? "Pause" : "Play"}>
           <Icon name={s.playing ? "pause" : "play"} size={14} />
         </button>
+        {run && <button type="button" className="iconbtn" onClick={() => albumStep(1)} disabled={run.at >= run.count - 1}
+          aria-label="Next song on the album" title="Next song"><Icon name="skipNext" size={14} /></button>}
+        </div>
         <span className="playerbar__time">{clock(s.time)}</span>
         <Wave peaks={peaks} color={color} played={played}
           height={36} onSeek={seek} duration={s.duration} className="playerbar__wave" />
@@ -340,8 +523,8 @@ export function PlayerBar({ onOpenProject }: { onOpenProject?: (key: string) => 
       </div>
       {big && (
         <NowPlaying color={color} onClose={() => setBig(false)}
-          art={<Cover name={name} genre={m.genre} className="nowplaying__cover" />}
-          title={name} sub={s.error ?? `${m.title} · latest song`} open={open} openLabel="Open project"
+          art={<Cover name={coverName} genre={m.genre} className="nowplaying__cover" />}
+          title={name} sub={s.error ?? m.sub ?? `${m.title} · latest song`} open={open} openLabel="Open project"
           playing={s.playing} onPlay={() => toggle(s.path!, m)}
           wave={<Wave peaks={peaks} color={color} played={played} height={88} onSeek={seek} duration={s.duration} className="nowplaying__wave" />}
           time={s.time} duration={s.duration}

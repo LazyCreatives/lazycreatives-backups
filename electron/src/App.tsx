@@ -7,6 +7,7 @@ import { BackupFlow } from "./screens/BackupFlow";
 import { Library } from "./screens/Library";
 import { Dig } from "./screens/Dig";
 import { Plugins } from "./screens/Plugins";
+import { Albums } from "./components/Albums";
 import { LcBrand } from "./components/LcBrand";
 import { FirstBackupModal } from "./components/FirstBackupModal";
 import { WhatsNewHost, openWhatsNew } from "./components/WhatsNew";
@@ -35,9 +36,9 @@ import type { LibraryItem } from "./types";
 const api = makeApi();
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-export type Tab = "home" | "library" | "dig" | "plugins" | "settings";
+export type Tab = "home" | "library" | "dig" | "albums" | "plugins" | "settings";
 export type FlowStep = "scan" | "review" | "progress";
-const TABS: Tab[] = ["home", "library", "dig", "plugins", "settings"];
+const TABS: Tab[] = ["home", "library", "dig", "albums", "plugins", "settings"];
 const LAST_PAGE = "lc-last-page";
 
 // Project files Backups knows; dropping one adds the folder it sits in. A Logic
@@ -101,7 +102,7 @@ export default function App() {
   };
   const paletteItems = (): PaletteItem[] => {
     const mod = IS_MAC ? "Cmd" : "Ctrl";
-    const pages: [Tab, string, PaletteItem["icon"]][] = [["home", "Home", "home"], ["library", "Library", "library"], ["dig", "Dig", "dig"], ["plugins", "Plugins", "plug"], ["settings", "Settings", "settings"]];
+    const pages: [Tab, string, PaletteItem["icon"]][] = [["home", "Home", "home"], ["library", "Library", "library"], ["dig", "Dig", "dig"], ["albums", "Albums", "music"], ["plugins", "Plugins", "plug"], ["settings", "Settings", "settings"]];
     const list = paletteProjects.current;
     const genres = [...new Set(list.map((i) => i.genre || "").filter(Boolean))].sort((a, b) => a.localeCompare(b));
     const other = getLook() === "crate" ? "sleeve" : "crate";
@@ -273,7 +274,7 @@ export default function App() {
       <Nav tab={tab} flowActive={!!flow} busy={busy}
         onNavigate={(t) => setTab(t)}
         onOpenRecent={(id) => setTab("library", id)} openId={tab === "library" && !flow ? sub : null} />
-      <div className="main">
+      <main className="main">
         <div className="content">
           <div key={flow ?? (tab === "settings" ? `settings-${settingsKey}` : tab)} className="view-enter">
           {flow ? (
@@ -310,6 +311,11 @@ export default function App() {
           ) : tab === "dig" ? (
             <Dig openCrate={sub} onOpenCrate={(key) => setTab("dig", key)} onCloseCrate={closeSub}
               onOpenProject={(name) => setTab("library", name)} />
+          ) : tab === "albums" ? (
+            <Albums app="backups" open={sub} onOpen={(id) => setTab("albums", id)} onClose={() => setTab("albums")}
+              metaFor={(s, a, i) => ({ title: s.title, project: s.project || undefined, projectId: s.project_id ?? undefined,
+                sub: `${a.title} · ${i + 1} of ${a.songs.length}` })}
+              onOpenProject={(s) => { if (s.project_id) setTab("library", s.project_id); }} />
           ) : tab === "plugins" ? (
             <Plugins onOpenProject={(name) => setTab("library", name)} />
           ) : (
@@ -317,7 +323,7 @@ export default function App() {
           )}
           </div>
         </div>
-      </div>
+      </main>
       <PlayerBar onOpenProject={(key) => setTab("library", key)} />
       <WhatsNewHost setUp={setUpAtOpen.current === true} />
       <ContextMenuHost />

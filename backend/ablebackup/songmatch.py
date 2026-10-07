@@ -10,6 +10,11 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+# Telling a stem (one part of a song) from a whole song lives in ablebackup.stems,
+# shared word for word with Uploader so both apps agree. Re-exported here because
+# this is where the rest of the matching clues are.
+from .stems import is_stem, stem_folder_name  # noqa: F401
+
 # ---- other ways of reading a file name ----------------------------------------
 _DASH = re.compile(r"\s+[-–—]\s+")
 _TRACK_NO = re.compile(r"^\s*\d{1,2}\s*[.)_-]?\s+(?=\S)")
@@ -57,75 +62,6 @@ def _distance(a: str, b: str, limit: int) -> int:
             return limit + 1
         prev = cur
     return prev[-1]
-
-
-# ---- stems ---------------------------------------------------------------------
-# Words that name one part of a song. A render whose name adds one of these to the
-# project's name ("Night Drive Kick", "Night Drive 3-Bass") is a stem.
-_PARTS = {
-    "kick", "kicks", "snare", "snares", "clap", "claps", "hat", "hats", "hihat", "hihats",
-    "perc", "percs", "percussion", "drum", "drums", "bass", "sub", "808", "808s", "vox",
-    "vocal", "vocals", "voc", "acapella", "acappella", "adlib", "adlibs", "synth", "synths",
-    "lead", "leads", "pad", "pads", "keys", "piano", "rhodes", "organ", "chord", "chords",
-    "arp", "pluck", "plucks", "guitar", "gtr", "strings", "brass", "horns", "fx", "sfx",
-    "riser", "risers", "impact", "atmos", "atmosphere", "ambience", "texture", "shaker",
-    "ride", "crash", "cymbal", "tom", "toms", "top", "tops", "bus", "group", "return",
-    "reverb", "delay", "choir", "bells", "flute", "sax", "melody", "stem", "stems", "audio",
-    "midi",
-}
-# Words that make it a version of the whole song instead ("Night Drive Bass Edit").
-_SONG = {
-    "mix", "remix", "master", "mastered", "edit", "version", "dub", "extended", "instrumental",
-    "radio", "club", "vip", "bootleg", "rework", "demo", "full", "final", "reprise", "live",
-    "mixdown", "bounce", "render", "export",
-}
-_STEM_DIR = re.compile(r"stems?\b|multi[\s_-]?tracks?|individual", re.I)
-_ABLETON_PART = re.compile(r"\s\d{1,3}-\S")  # Ableton's "Song 3-Kick" for each track
-
-
-def _words(s: str) -> list[str]:
-    return re.findall(r"[a-z0-9]+", s.lower())
-
-
-def is_stem(path: Path, root: Path | None = None, project: str = "") -> bool:
-    """True when an audio file is one part of a song rather than the whole song: it
-    sits in a folder called "Stems" (or "Multitracks"), or its name adds a part
-    ("Kick", "Vocals", Ableton's "3-Bass") to the project's name."""
-    try:
-        rel = path.parent.relative_to(root) if root else Path(path.parent.name)
-    except ValueError:
-        rel = Path(path.parent.name)
-    if any(_STEM_DIR.search(part) for part in rel.parts):
-        return True
-    if _ABLETON_PART.search(path.stem):
-        return True
-    words = _words(path.stem)
-    for w in _words(project):
-        if w in words:
-            words.remove(w)
-    if any(w in _SONG for w in words):
-        return False
-    return any(w in _PARTS for w in words)
-
-
-def stem_folder_name(path: Path, root: Path) -> str | None:
-    """For a file inside a stems folder in an exports folder, the song name that
-    folder carries: "Night Drive Stems/Kick.wav" -> "Night Drive", and
-    "Night Drive/Stems/Kick.wav" -> "Night Drive"."""
-    try:
-        parts = path.parent.relative_to(root).parts
-    except ValueError:
-        return None
-    for i in range(len(parts) - 1, -1, -1):
-        if _STEM_DIR.search(parts[i]):
-            rest = _STEM_DIR.sub(" ", parts[i])
-            rest = re.sub(r"[\s_-]+", " ", rest).strip(" -_")
-            if len(rest) >= 3:
-                return rest
-            if i > 0:
-                return parts[i - 1]
-            return None
-    return None
 
 
 # ---- when things were saved ----------------------------------------------------

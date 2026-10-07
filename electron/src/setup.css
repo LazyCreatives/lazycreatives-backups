@@ -56,3 +56,4 @@
 [data-look="sleeve"] .suggest__row { border: 1px solid var(--border-strong); border-radius: 10px; padding: 13px 16px; }
 [data-look="sleeve"] .suggest__row + .suggest__row { border-top: 1px solid var(--border-strong); }
 [data-look="sleeve"] .suggest__row--on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.welcome h1 { text-wrap: balance; }

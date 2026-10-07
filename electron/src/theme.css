@@ -257,6 +257,8 @@
 .set-about { margin: 0; max-width: 60ch; font-size: 13.5px; line-height: 1.5; color: var(--text-dim); }
 .folder-cols { --cols: 16px minmax(0, 1fr) 84px; }
 .folder-cols .row { padding: 7px 12px; }
+.exportfolder-cols { --cols: 16px minmax(0, 1fr) 112px 128px; }
+.exportfolder-cols .row { padding: 7px 12px; }
 @media (max-width: 880px) {
   .set-row { grid-template-columns: minmax(0, 1fr); row-gap: 12px; }
 }
@@ -292,3 +294,6 @@
 /* the "i" dot draws at 14px but takes pointer clicks and hovers over a 26px circle
    (belongs with .info in lazy-ui.css; kept here until that shared file is next changed) */
 .info::before { content: ""; position: absolute; inset: -6px; border-radius: 50%; }
+/* the two look cards share their rows (picture, then words) so "Crate" and "Sleeve" line up */
+.lookpick:not(.themepick) { grid-template-rows: auto auto; row-gap: 0; }
+.lookpick:not(.themepick) > .lookpick__opt { grid-row: span 2; grid-template-rows: subgrid; align-items: start; }

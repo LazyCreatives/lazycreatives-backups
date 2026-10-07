@@ -12,6 +12,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSock
 from fastapi.middleware.cors import CORSMiddleware
 
 from ablebackup import covers, entitlement, exports, markers, playback, plugins, tidy, waveform
+from ablebackup.albums import LOSSLESS, Albums
+from ablebackup.albums_api import make_router as albums_router
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
 from ablebackup.api.schemas import (
@@ -516,7 +518,28 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     def _known_song(path: str) -> bool:
         """A song Backups found itself: linked to a project, or waiting for one."""
         cat = app.state.catalog
-        return (cat.is_export(path) or cat.is_unmatched(path)) and os.path.isfile(path)
+        return ((cat.is_export(path) or cat.is_unmatched(path) or path in albums.paths())
+                and os.path.isfile(path))
+
+    # ---- albums: one list shared with Uploader (see albums.py) ----------------
+    albums = Albums()
+
+    def _album_candidates() -> list[dict]:
+        """Songs that could go on an album: each project's exports, one file per song
+        (a WAV and an MP3 of the same export count once, the WAV wins)."""
+        best: dict[tuple, dict] = {}
+        for r in app.state.catalog.album_candidates():
+            p = Path(r["path"])
+            key = (r["project_id"], str(p.with_suffix("")).lower())
+            lossless = p.suffix.lower() in LOSSLESS
+            cur = best.get(key)
+            if cur is None or (lossless and not cur["lossless"]):
+                best[key] = {"path": r["path"], "title": p.stem, "project": r["project"],
+                             "project_id": r["project_id"], "daw": r["daw"] or "", "bpm": r["bpm"],
+                             "genre": r["genre"] or "", "exported": r["mtime"], "lossless": lossless}
+        return list(best.values())
+
+    app.include_router(albums_router(require_token, lambda: Path(db_path), _album_candidates, albums))
 
     @app.get("/api/exports/audio")
     def exports_audio(request: Request, path: str, t: str = "", decode: int = 0):
