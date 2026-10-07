@@ -1,0 +1,80 @@
+name: release
+
+# The Release button. Runs only on the public repo (free Actions): Actions tab >
+# "release" > Run workflow > type the version (e.g. 0.2.3) > Run. It copies that version
+# of the private dev repo's master into this repo as one "Release vX.Y.Z" commit and tag,
+# then starts the installers, which publish the Release and the download files.
+#
+# Setup (once): a fine-grained access token that can read the private dev repos'
+# contents, stored here as the DEV_READ_TOKEN secret. The dev repo's master must already carry the
+# new version in electron/package.json and its section in CHANGELOG.md.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 0.2.3"
+        required: true
+
+concurrency: release
+
+permissions:
+  contents: write   # push the Release commit and tag here
+  actions: write    # start the installers
+
+jobs:
+  release:
+    if: ${{ !endsWith(github.repository, '-dev') }}
+    runs-on: ubuntu-latest
+    env:
+      VER: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check the version
+        run: |
+          [[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Type the version like 0.2.3"; exit 1; }
+          echo "TAG=v$VER" >> "$GITHUB_ENV"
+          echo "DEV_REPO=${GITHUB_REPOSITORY}-dev" >> "$GITHUB_ENV"
+
+      - name: Fetch dev master
+        env:
+          TOKEN: ${{ secrets.DEV_READ_TOKEN }}
+        run: |
+          test -n "$TOKEN" || { echo "::error::DEV_READ_TOKEN secret is not set"; exit 1; }
+          if git ls-remote --exit-code --tags "https://github.com/$GITHUB_REPOSITORY.git" "refs/tags/$TAG" >/dev/null; then
+            echo "::error::$TAG is already released"; exit 1
+          fi
+          git clone --quiet --depth 1 --branch master "https://x-access-token:$TOKEN@github.com/$DEV_REPO.git" src
+          have=$(node -p "require('./src/electron/package.json').version")
+          [ "$have" = "$VER" ] || { echo "::error::The app on master is version $have, not $VER. Bump the version first."; exit 1; }
+          python3 src/.github/scripts/release_notes.py "$VER" --check
+          echo "Releasing $DEV_REPO master $(git -C src rev-parse --short HEAD) as $TAG"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          path: pub
+
+      - name: Build and push the Release commit
+        run: |
+          # Replace this repo's tree with dev master, minus the paths that never go public
+          # (the EXCLUDE list in the dev repo's public-mirror.yml).
+          git -C pub rm -rq --ignore-unmatch .
+          git -C src archive HEAD | tar -x -C pub
+          awk '/^  EXCLUDE: \|/{on=1; next} on && /^    [^ ]/{sub(/^    /,""); print; next} on{exit}' \
+            src/.github/workflows/public-mirror.yml | while IFS= read -r p; do
+            [ -n "$p" ] && rm -rf "pub/$p"
+          done
+          cd pub
+          git add -A
+          git -c user.name="Lazy Creatives" -c user.email="219992112+rshearer1@users.noreply.github.com" \
+            commit --quiet --allow-empty -m "Release $TAG"
+          git tag "$TAG"
+          git show --stat --format='%h %s' HEAD | tail -3
+          git push origin "HEAD:refs/heads/master" "refs/tags/$TAG"
+
+      # A push made by this job doesn't start other jobs by itself, so start the
+      # installers on the new tag; they publish the Release when all three are built.
+      - name: Start installers
+        run: |
+          gh workflow run installers.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
+          echo "Installers started: https://github.com/$GITHUB_REPOSITORY/actions/workflows/installers.yml"
