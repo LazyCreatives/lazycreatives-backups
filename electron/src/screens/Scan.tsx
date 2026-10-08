@@ -14,6 +14,7 @@ import { Cover } from "../components/Cover";
 import { Icon } from "../components/Icon";
 import { coverColor, useLook } from "../look";
 import { EmptyState } from "../components/SlothSpot";
+import { ScanSloth } from "../components/ScanSloth";
 import { useGenres } from "../useGenres";
 import { rowKey } from "../components/a11y";
 
@@ -173,6 +174,7 @@ export function Scan({ projects, onProjects, scan, onBackup, onReview }: {
         </div>
       )}
 
+      {!projects && scanning && <ScanSloth scan={scan} />}
       {!projects && !scanning && <EmptyState pose="searching" title="Ready when you are" say="No rush.">Press Scan now to find the projects in your folders.</EmptyState>}
       {projects && projects.length === 0 && !scanning && <EmptyState pose="empty-crate" title="No projects found" say="Couldn’t find any. Point me at a folder?">Check the project folders in Settings, or drop a project folder onto this window.</EmptyState>}
 

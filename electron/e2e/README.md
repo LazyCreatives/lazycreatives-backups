@@ -15,12 +15,20 @@ difference. They catch layout and styling changes you did not mean to make.
    Python, and all app data goes into the scratch folder.
 4. Take a picture of the first-run welcome, then fill the library (folders, a scan,
    one backup) and take pictures of **Home**, **Library**, **Dig** and **Settings**.
-5. Do all of that in both looks, **crate** and **sleeve**. The look is set the same
-   way the app keeps it: `lc-look` in the page's localStorage (see `src/look.ts`).
+   Then: one project's own page (**Midnight Drive**), every main screen and that
+   project page again in **light** mode, the Library and the project page in the
+   **narrow window** (760 px wide, the smallest the window goes; the narrow layout
+   starts at 1099 px), and last **Albums**: the list and one open album (two albums
+   made through the API from the exported songs).
+5. Do all of that in both looks, **crate** and **sleeve**. The look and light/dark
+   are set the same way the app keeps them: `lc-look` and `lc-theme` in the page's
+   localStorage (see `src/look.ts`).
 
 Things that change from run to run are covered with a solid box before the picture
 is taken: dates and times, "last backup" times, waveforms and meters, and folder
-paths. Animations are switched off for the picture.
+paths. Animations are switched off for the picture. For the album pictures the
+page's clock is stopped at 1 Oct 2026 (Playwright's `page.clock`), so "44 days to
+go" and the release date never change.
 
 The pictures are of the page inside the window only. Native window parts do **not**
 appear: no title bar or its buttons, no window frame or shadow, no Mica (Windows) or
@@ -50,7 +58,7 @@ On Linux without a screen (a server, CI), wrap it in a virtual one:
 xvfb-run -a -s "-screen 0 1440x900x24" npm run test:screens
 ```
 
-A run takes about a minute. When something differs, open the report:
+A run takes about two minutes. When something differs, open the report:
 
 ```bash
 npx playwright show-report e2e/playwright-report

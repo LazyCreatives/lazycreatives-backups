@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { pickCover } from "../components/CoverPick";
-import { CopyButton } from "../components/Desktop";
+import { openMenu, type MenuItem } from "../components/Desktop";
+import { copyText } from "../desktop";
+import { MoreMenu, type MoreItem } from "../components/MoreMenu";
+import { osWords } from "../platform";
 import { makeApi } from "../api";
 import type { LibraryItem, Snapshot, SnapshotDiff } from "../types";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
-import { fmtSize, dawLabel, fmtDay, fmtCount } from "../format";
+import { fmtSize, dawLabel, fmtDay, fmtCount, shortPath } from "../format";
 import { parseStamp } from "./Crate/types";
 import { Cover } from "../components/Cover";
 import { SleeveWear } from "../components/SleeveWear";
@@ -45,8 +48,12 @@ export interface ProjectTab { key: string; label: string; count?: number; conten
 
 // The project page: a header with what it is and how it stands, tabs for its songs,
 // backups, missing samples and history, and a column of plain facts on the right.
-export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actions }: {
-  item: LibraryItem; onOpenInDaw: () => void; onReveal: () => void; onGenre?: () => void; tabs: ProjectTab[]; actions?: ReactNode;
+// The head keeps two buttons (the main one, and Open in its DAW); everything else is in
+// its "··· More" menu, which is also what right-clicking the head shows.
+export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actions, more = [] }: {
+  item: LibraryItem; onOpenInDaw: () => void; onReveal: () => void; onGenre?: () => void; tabs: ProjectTab[];
+  actions?: ReactNode;    // the main button (Back up now), when there is one
+  more?: MoreItem[];      // the page's own extra actions for the menu (Tidy names…)
 }) {
   const [snaps, setSnaps] = useState<Snapshot[]>([]);
   const [diffs, setDiffs] = useState<Record<number, SnapshotDiff>>({});
@@ -173,7 +180,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
     { key: "history", label: "History", count: events.length ? snaps.length : undefined, content: (
       events.length > 0 ? (
         <>
-          <p className="faint" style={{ margin: "0 0 14px", fontSize: 12.5 }}>Every backup is compared with the one before, so the project's whole life is on the record.</p>
+          <p className="faint" style={{ margin: "0 0 14px", fontSize: 12 }}>Every backup is compared with the one before, so the project's whole life is on the record.</p>
           <ul className="tl">
             {events.map((e, i) => (
               <li key={i} className={e.kind}>
@@ -190,24 +197,39 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
   const active = allTabs.find((t) => t.key === tab) ?? allTabs[0];
   const meta = [crate !== "Untagged" ? crate : "", item.bpm ? `${Math.round(item.bpm)} BPM` : "",
     item.tracks ? `${item.tracks} tracks` : "", dawLabel(item.daw)].filter(Boolean).join(" · ");
+  // The facts column holds only what the head doesn't already show: the head has the
+  // tempo, tracks, backups, the music program, the status and the genre.
   const facts: [string, ReactNode, string?][] = [
-    ["Made in", dawLabel(item.daw)],
-    ...(item.bpm || item.tracks ? [["Tempo · tracks",
-      [item.bpm ? `${Math.round(item.bpm)} BPM` : "", item.tracks ? `${item.tracks} tracks` : ""].filter(Boolean).join(" · ")] as [string, string]] : []),
-    ["Size on disk", `${fmtSize(item.size)}${latest ? ` · ${fmtCount(latest.file_count)} files` : ""}`],
+    ...(look === "sleeve"
+      ? [["Size on disk", `${fmtSize(item.size)}${latest ? ` · ${fmtCount(latest.file_count)} files` : ""}`] as [string, string]]
+      : latest ? [["Files", fmtCount(latest.file_count)] as [string, string]] : []),
     ["First on record", created ? fmtD(created) : "—"],
-    ["Backups", fmtCount(item.snapshot_count)],
     ["Last checked", lastVerifiedSnap ? fmtDT(parseStamp(lastVerifiedSnap.timestamp)) : "Never", lastVerifiedSnap ? "" : "faint"],
-    ["Missing samples", warn ? `${warn}` : "None", warn ? "warn" : ""],
-    ["Genre", onGenre
-      ? <button type="button" className="linkbtn dl-genre" onClick={onGenre}
-          title={item.genre_by_you ? "Set by you. Click to change" : "Guessed from tempo and name. Click to correct it"}>
-          <span className={item.genre_by_you || !item.genre ? "" : "genre-guess"}>{crate}</span>
-          <span className="faint">{item.genre ? (item.genre_by_you ? " · set by you" : " · guessed") : ""}</span>
-        </button>
-      : crate],
+    ...(item.path ? [["Lives in", <span title={item.path}>{shortPath(item.path.replace(/[/\\][^/\\]*$/, ""))}</span>] as [string, ReactNode]] : []),
+    ...(onGenre ? [] : [["Genre", crate] as [string, string]]),
     ["Catalogue no.", cat],
   ];
+  const menu: MoreItem[] = [
+    { label: `Show in ${osWords().fileManager}`, onClick: onReveal },
+    { label: "Copy project path", onClick: () => { copyText(item.path); } },
+    { label: "Change cover…", onClick: () => { pickCover({ title: item.name, name: item.name, genre: item.genre }); } },
+    ...(onGenre ? [{ label: item.genre ? "Change genre…" : "Set genre…", onClick: onGenre }] : []),
+    ...more,
+    { label: "Save liner notes", onClick: exportLiner },
+    { label: "Save label data", onClick: exportLabel },
+  ];
+  const onHeadMenu = (e: React.MouseEvent) => {
+    // a right-click on a link or button inside the head keeps its own menu
+    if ((e.target as HTMLElement).closest("input, textarea")) return;
+    openMenu(e, [{ label: `Open in ${dawLabel(item.daw)}`, onClick: onOpenInDaw }, "-", ...menu] as MenuItem[]);
+  };
+  const headButtons = (
+    <>
+      {actions}
+      <Button variant="ghost" onClick={onOpenInDaw}>Open in {dawLabel(item.daw)}</Button>
+      <MoreMenu items={menu} name={item.name} button />
+    </>
+  );
 
   const song = item.latest_export ?? null;
   const songMeta = { title: song?.name ?? "", project: item.name, projectId: item.project_id, genre: item.genre };
@@ -227,16 +249,11 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
     : item.backed_up ? <span className="fact-chip fact-chip--ok"><span className="dot dot--ok" />Safe, opens</span>
     : <span className="fact-chip">Not backed up yet</span>;
 
-  const coverBtn = (
-    <Button variant="ghost" onClick={() => pickCover({ title: item.name, name: item.name, genre: item.genre })}>
-      <Icon name="image" size={15} />Change cover
-    </Button>
-  );
   const chip = onGenre && <GenreChip genre={item.genre ?? null} setByYou={!!item.genre_by_you} onClick={onGenre} />;
   return (
     <>
       {look === "sleeve" ? (
-        <header className="proj-hero" style={{ ["--tint" as string]: tint }}>
+        <header className="proj-hero" style={{ ["--tint" as string]: tint }} onContextMenu={onHeadMenu}>
           <div className="proj-hero__sleeve">
             {/* the spine, printed like a record's: catalogue number and title */}
             <span className="proj-hero__spine" aria-hidden="true"><b>{cat}</b><span className="proj-hero__spinename">{item.name}</span></span>
@@ -252,7 +269,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
               <div><dt>Made in</dt><dd className="proj-spec__word">{dawLabel(item.daw)}</dd></div>
             </dl>
             <div className="proj-hero__meta">
-              {statusText}{created ? <span className="faint"> · started {fmtD(created)}</span> : null}
+              {statusText}
             </div>
             {chip && <div className="proj-hero__genre">{chip}</div>}
             {song && (
@@ -265,18 +282,12 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
                 </div>
               </div>
             )}
-            <div className="proj-hero__actions">
-              <Button variant="ghost" onClick={onOpenInDaw}>Open in {dawLabel(item.daw)}</Button>
-              <Button variant="ghost" onClick={onReveal}><Icon name="folder" size={15} />Show in folder</Button>
-              <CopyButton text={item.path} what="project path" size={15} className="copybtn--big" />
-              {coverBtn}
-              {actions}
-            </div>
+            <div className="proj-hero__actions">{headButtons}</div>
           </div>
         </header>
       ) : (
         <>
-          <header className="deck-head">
+          <header className="deck-head" onContextMenu={onHeadMenu}>
             <span className="worn"><Cover name={item.name} genre={item.genre} size={124} label={false} /><SleeveWear name={item.name} /></span>
             <div style={{ minWidth: 0 }}>
               <h1 className="col-trunc" title={item.name}>{item.name}</h1>
@@ -293,13 +304,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
                 <span className="fact-chip">{dawLabel(item.daw)}</span>
               </div>
             </div>
-            <div className="page-head__actions">
-              <Button variant="ghost" onClick={onReveal}><Icon name="folder" size={15} />Show in folder</Button>
-              <CopyButton text={item.path} what="project path" size={15} className="copybtn--big" />
-              <Button variant="ghost" onClick={onOpenInDaw}>Open in {dawLabel(item.daw)}</Button>
-              {coverBtn}
-              {actions}
-            </div>
+            <div className="page-head__actions">{headButtons}</div>
           </header>
           <div className="deck">
             {song ? (
@@ -355,16 +360,12 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
           </dl>
           {!!item.plugins?.length && (
             <div>
-              <div className="faint" style={{ fontSize: 12.5, marginBottom: 7 }}>Plugins</div>
+              <div className="faint" style={{ fontSize: 12, marginBottom: 7 }}>Plugins</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {item.plugins.map((pl) => <span key={pl} className="tag">{pl}</span>)}
               </div>
             </div>
           )}
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <Button variant="quiet" size="sm" onClick={exportLiner} title="A plain text page with the project's facts and history">Save liner notes</Button>
-            <Button variant="quiet" size="sm" onClick={exportLabel} title="The same facts as a data file">Save label data</Button>
-          </div>
         </aside>
       </div>
 

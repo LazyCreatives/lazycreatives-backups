@@ -27,7 +27,7 @@
 
 .cw-section { min-width: 0; }
 .cw-label { margin: 0 0 8px; font: 600 11px var(--font); letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-faint); }
-[data-look="sleeve"] .cw-label { font-size: 13.5px; letter-spacing: 0; text-transform: none; color: var(--text); }
+[data-look="sleeve"] .cw-label { font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--text); }
 
 /* state colours, one per kind of news */
 .cw-tone--ok { color: var(--text-dim); }
@@ -46,13 +46,13 @@
 .cw-glance--changed, .cw-glance--busy { --tone: var(--accent); --tone-soft: var(--accent-soft); }
 .cw-glance--look { --tone: var(--warn); --tone-soft: var(--warn-soft); }
 .cw-glance--error { --tone: var(--danger); --tone-soft: var(--danger-soft); }
-[data-look="crate"] .cw-glance { border-radius: 2px; border-left: 3px solid var(--tone); padding-left: 12px; }
+[data-look="crate"] .cw-glance { border-radius: 2px; }
 [data-look="sleeve"] .cw-glance { border-radius: 12px; background: linear-gradient(var(--tone-soft), var(--tone-soft)), var(--surface); border-color: var(--border); }
 .cw-glance__dot { width: 10px; height: 10px; }
 .cw-glance--busy .cw-glance__dot { animation: cwPulse 1.4s ease-in-out infinite; }
 .cw-glance__text { min-width: 0; }
 .cw-glance__title { font-size: 15px; font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cw-glance__detail { margin-top: 2px; font-size: 12.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cw-glance__detail { margin-top: 2px; font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cw-glance__when { display: grid; justify-items: end; gap: 2px; text-align: right; white-space: nowrap; }
 .cw-glance__when span { font-size: 11px; color: var(--text-faint); }
 .cw-glance__when b { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -80,13 +80,13 @@
 }
 .cw-now__name:hover { color: var(--accent); }
 .cw-now__sub { font-size: 12px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cw-now__state { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; min-width: 0; }
+.cw-now__state { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; min-width: 0; }
 .cw-now__state > :last-child:not(.dot) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cw-now__facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; padding-top: 10px; border-top: 1px solid var(--border); }
 .cw-now__facts dt { font-size: 11px; color: var(--text-faint); }
 .cw-now__facts dd { margin: 1px 0 0; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cw-now__go { width: 100%; height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-.cw-note { font-size: 12.5px; color: var(--text-dim); line-height: 1.4; }
+.cw-note { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
 .cw-note--warn { color: var(--warn); }
 .cw-spin {
   width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent;
@@ -103,7 +103,7 @@
 .cw-cols .cover { border-radius: 2px; }
 .cw-cols__main, .cw-card__main { display: grid; min-width: 0; line-height: 1.3; }
 .cw-cols__name, .cw-card__name { font-size: 13px; font-weight: 500; }
-.cw-cols__when, .cw-card__when { font-size: 11.5px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cw-cols__when, .cw-card__when { font-size: 11px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cw-state { display: flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; min-width: 0; }
 .cw-state > :last-child:not(.dot) { overflow: hidden; text-overflow: ellipsis; }
 
@@ -120,7 +120,11 @@
 
 /* a thin bar under a mix that is going up */
 .cw-mini { display: block; height: 3px; margin-top: 4px; background: var(--surface-3); border-radius: 2px; overflow: hidden; }
-.cw-mini > i { display: block; height: 100%; width: calc(var(--pct, 0) * 1%); background: var(--accent); transition: width 0.4s var(--ease-glide); }
+/* the fill slides with transform, like every other progress fill, instead of resizing */
+.cw-mini > i {
+  display: block; height: 100%; width: 100%; background: var(--accent);
+  transform: translateX(calc(var(--pct, 0) * 1% - 100%)); transition: transform var(--dur-slow) var(--ease-glide);
+}
 
 /* ---- drop zone (Uploader) ---- */
 .cw-drop {

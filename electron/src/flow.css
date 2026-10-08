@@ -5,7 +5,7 @@
 .flowstep + .flowstep::before { content: ""; width: 34px; height: 1px; background: var(--border-strong); margin: 0 12px; }
 .flowstep--done + .flowstep::before { background: var(--accent-2); }
 
-.notice { padding: 11px 14px; border: 1px solid; border-radius: 8px; margin-bottom: 16px; font-size: 13.5px; }
+.notice { padding: 11px 14px; border: 1px solid; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
 .notice--warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: color-mix(in srgb, var(--warn) 6%, transparent); }
 .notice--danger { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
 .flow-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 18px; border-top: 1px solid var(--border); }
@@ -15,7 +15,7 @@
 .pickgroup__head { display: flex; align-items: center; gap: 10px; padding: 6px 2px 8px; }
 .pickgroup__title {
   display: inline-flex; align-items: center; gap: 7px; min-width: 0; flex: 1; text-align: left;
-  background: none; border: 0; padding: 0; color: var(--text); font: 600 13.5px var(--font); cursor: pointer;
+  background: none; border: 0; padding: 0; color: var(--text); font: 600 13px var(--font); cursor: pointer;
 }
 .pickgroup__title svg { color: var(--text-faint); flex: none; }
 .pickgroup__caret { color: var(--text-faint); width: 10px; flex: none; }
@@ -71,7 +71,7 @@
 .run__now .slothspot { margin: 0 0 0 auto; }
 .notice--sloth { display: flex; align-items: center; gap: 12px; }
 .notice--sloth .slothspot { margin: 0; }
-.run__text .eyebrow { margin: 0; font-size: 12.5px; font-weight: 600; }
+.run__text .eyebrow { margin: 0; font-size: 12px; font-weight: 600; }
 .run__title { font-size: 18px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run__name { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run--crate { padding: 14px 18px 16px 0; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); overflow: hidden; }
@@ -88,7 +88,7 @@
 .run-state--working .dot { background: var(--accent); animation: runPulse 1s ease-in-out infinite alternate; }
 .run-state--error { color: var(--danger); }
 .run-state--error .dot { background: var(--danger); }
-.run-why { color: var(--danger); font-size: 12.5px; }
+.run-why { color: var(--danger); font-size: 12px; }
 /* some projects failed: a warning card (no seal), the failed ones and why, and a retry */
 .run-done--warn { align-items: flex-start; border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: var(--warn-soft); }
 .run-done--warn > svg { flex: none; color: var(--warn); margin-top: 2px; }
@@ -98,7 +98,7 @@
 .run-fails li { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 4px 12px; font-size: 13px; }
 .run-fails b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
 .run-fails span { color: var(--text-dim); }
-.run-fails__err { margin-top: 8px; font-size: 12.5px; color: var(--danger); }
+.run-fails__err { margin-top: 8px; font-size: 12px; color: var(--danger); }
 .run-state--skipped { color: var(--text-faint); }
 @keyframes runPulse { from { opacity: 0.35; } to { opacity: 1; } }
 
@@ -108,7 +108,7 @@
 .run-tile .cover { width: 100%; height: auto; aspect-ratio: 1; border-radius: 4px; }
 .run-tile__name { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Sleeve: why a project failed, under its name (not only in the tooltip) */
-.run-tile__why { margin-top: -3px; font-size: 11.5px; line-height: 1.3; color: var(--danger); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.run-tile__why { margin-top: -3px; font-size: 11px; line-height: 1.3; color: var(--danger); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 .run-tile__mark {
   position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
   font: 700 13px var(--font); color: var(--on-status);

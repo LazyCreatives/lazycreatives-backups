@@ -17,7 +17,7 @@
 /* ---- controls ---- */
 .crate-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
 .crate-controls .grow { flex: 1; min-width: 120px; }
-.crate-controls__label { font-size: 12.5px; color: var(--text-dim); }
+.crate-controls__label { font-size: 12px; color: var(--text-dim); }
 .crate-search {
   background: var(--surface-2); color: var(--text); border: 1px solid var(--border-strong);
   border-radius: 8px; padding: 10px 14px; font: inherit; outline: none; min-width: 160px;
@@ -81,7 +81,7 @@
 .bin__foot .cdig { flex: none; }
 .vlabel .ok { color: var(--accent-2); }
 .vlabel .at { color: var(--warn); }
-.cdig { display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px; font-weight: 500; color: var(--accent); white-space: nowrap; }
+.cdig { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 500; color: var(--accent); white-space: nowrap; }
 .bin:hover .cdig { text-decoration: underline; }
 
 /* Sleeve look: a box set whose front is a mosaic of up to four covers */
@@ -285,7 +285,7 @@
 /* Smart crates over the usual ones: a small heading for each shelf */
 .crate-section { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 6px 0 12px; }
 .crate-section h2 { margin: 0; font: 600 15px var(--font); color: var(--text); }
-.crate-section span { font-size: 12.5px; color: var(--text-faint); }
+.crate-section span { font-size: 12px; color: var(--text-faint); }
 .shelf + .crate-section { margin-top: 28px; }
 
 /* More like this: the closest records to the one on deck */
@@ -314,5 +314,5 @@
 .mlt__score { position: absolute; right: 6px; top: 6px; padding: 1px 6px; border-radius: 3px; background: rgba(11, 14, 18, .82);
   color: var(--accent-2); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .mlt__name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mlt__facts { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mlt__facts { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .mlt__card:hover .mlt__art .cover { transform: none; } }

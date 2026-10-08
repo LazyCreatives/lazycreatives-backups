@@ -193,7 +193,7 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
   const shr = selId != null ? shared[selId] : undefined;
 
   if (snaps.length === 0) {
-    return <p className="sub" style={{ margin: 0, fontSize: 12.5 }}>No backups of this project yet.</p>;
+    return <p className="sub" style={{ margin: 0, fontSize: 12 }}>No backups of this project yet.</p>;
   }
   return (
     <>
@@ -221,7 +221,7 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
             <div style={{ minWidth: 0 }}>
               <h2 style={{ margin: 0 }}>{fmtDate(sel.timestamp)}{sel.label ? ` · ${sel.label}` : ""}</h2>
-              <div className="sub" style={{ margin: "5px 0 0", fontSize: 12.5 }}>
+              <div className="sub" style={{ margin: "5px 0 0", fontSize: 12 }}>
                 {fmtCount(sel.file_count)} file{sel.file_count === 1 ? "" : "s"} · {fmtSize(sel.total_size)}
                 {groups.gathered.length > 0 && (
                   <> · {groups.gathered.length} gathered from {locations} location{locations === 1 ? "" : "s"}</>
@@ -266,7 +266,7 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
           {r && !r.error && (
             <div className="note-box" style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <Icon name={r.ok ? "check" : "alert"} size={18} className={r.ok ? "ok-text" : "warn-text"} />
-              <div style={{ fontSize: 12.5 }}>
+              <div style={{ fontSize: 12 }}>
                 <div style={{ color: r.ok ? "var(--accent-2)" : "var(--danger)", fontWeight: 500 }}>
                   {r.ok ? "Checked: every file is there and matches" : "Problems found"}
                 </div>
@@ -288,7 +288,7 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
                   <div className="sub" style={{ margin: 0, fontSize: 12 }}>Nothing changed since the backup before.</div>
                 ) : (
                   <>
-                    <div style={{ display: "flex", gap: 16, fontSize: 12.5, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 16, fontSize: 12, flexWrap: "wrap" }}>
                       <span style={{ color: "var(--accent-2)" }}>{diff.added.length} added</span>
                       <span style={{ color: "var(--warn)" }}>{diff.changed.length} changed</span>
                       <span style={{ color: "var(--danger)" }}>{diff.removed.length} removed</span>

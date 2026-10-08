@@ -102,6 +102,7 @@ export interface LibraryItem {
   snapshot_count: number;
   backed_up: boolean;
   changed?: boolean;           // saved in the DAW since its last backup
+  in_folders?: boolean;        // inside a project folder from Settings (what Home's big button backs up)
   export_count?: number;       // song renders linked to this project
   latest_export?: { path: string; name: string; mtime: number; uploaded: boolean } | null;
 }

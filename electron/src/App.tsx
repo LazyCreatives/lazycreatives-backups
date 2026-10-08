@@ -24,6 +24,7 @@ import { EmptyState } from "./components/SlothSpot";
 import { useBackForwardInput, useNav, type Place } from "./nav";
 import { JUST_BACKED_UP, type LibraryView } from "./libraryFilter";
 import { currentTheme, genreColor, getLook, setLook, toggleTheme, useGenreColors } from "./look";
+import { fadeSwitch } from "./fade";
 import { PaletteHost, openPalette, type PaletteItem } from "./components/Palette";
 import { smartCrates } from "./smart";
 import { IS_MAC } from "./desktop";
@@ -95,15 +96,17 @@ export default function App() {
   const openLibrary = (view: LibraryView) => { setLibraryView(view); setTab("library"); };
   useEffect(() => { keep(LAST_PAGE, tab); }, [tab]);
 
-  // Cmd/Ctrl+K: every page, action, smart crate, genre and project in one list.
-  const paletteProjects = useRef<LibraryItem[]>([]);
+  // Cmd/Ctrl+K: every page, action, smart crate, genre and project in one list. It
+  // opens at once with the projects from last time; the fresh list fills in when it
+  // arrives (a big library takes a moment to load).
   const showPalette = () => {
-    api.library().then((r) => { paletteProjects.current = r.projects; }).catch(() => {}).finally(openPalette);
+    openPalette();
+    api.library().then((r) => setPaletteProjects(r.projects)).catch(() => {});
   };
   const paletteItems = (): PaletteItem[] => {
     const mod = IS_MAC ? "Cmd" : "Ctrl";
     const pages: [Tab, string, PaletteItem["icon"]][] = [["home", "Home", "home"], ["library", "Library", "library"], ["dig", "Dig", "dig"], ["albums", "Albums", "music"], ["plugins", "Plugins", "plug"], ["settings", "Settings", "settings"]];
-    const list = paletteProjects.current;
+    const list = paletteProjects;
     const genres = [...new Set(list.map((i) => i.genre || "").filter(Boolean))].sort((a, b) => a.localeCompare(b));
     const other = getLook() === "crate" ? "sleeve" : "crate";
     return [
@@ -113,7 +116,7 @@ export default function App() {
         run: () => setTab("library", r.id) })),
       ...pages.map(([t, label, icon], i) => ({ id: `go-${t}`, group: "Go to", label, icon, keys: `${mod} + ${i + 1}`, run: () => setTab(t) })),
       { id: "backup", group: "Actions", label: "Back up now", icon: "refresh", words: ["scan", "save"], run: () => setFlow("scan") },
-      { id: "look", group: "Actions", label: `Switch to the ${other === "sleeve" ? "Sleeve" : "Crate"} look`, icon: "palette", words: ["look", "theme", "crate", "sleeve"], run: () => setLook(other) },
+      { id: "look", group: "Actions", label: `Switch to the ${other === "sleeve" ? "Sleeve" : "Crate"} look`, icon: "palette", words: ["look", "theme", "crate", "sleeve"], run: () => fadeSwitch(() => setLook(other)) },
       { id: "theme", group: "Actions", label: `Switch to ${currentTheme() === "light" ? "dark" : "light"}`, icon: "palette", words: ["theme", "light", "dark", "mode"], run: toggleTheme },
       { id: "companion", group: "Actions", label: "Open the narrow window", icon: "narrow", keys: COMPANION_KEYS,
         words: ["companion", "small", "side", "beside", "float", "on top", "mini"], run: openCompanion },
@@ -296,6 +299,7 @@ export default function App() {
             <Home
               backup={live.backup}
               onBackupNow={() => setFlow("scan")}
+              onFindProjects={() => { setScanLibraryNow(true); setTab("library"); }}
               onOpenSettings={() => setTab("settings")}
               onResumeProgress={() => setFlow("progress")}
               onOpenHistory={() => setTab("library")}
@@ -313,7 +317,7 @@ export default function App() {
               onOpenProject={(name) => setTab("library", name)} />
           ) : tab === "albums" ? (
             <Albums app="backups" open={sub} onOpen={(id) => setTab("albums", id)} onClose={() => setTab("albums")}
-              metaFor={(s, a, i) => ({ title: s.title, project: s.project || undefined, projectId: s.project_id ?? undefined,
+              metaFor={(s, a, i) => ({ title: s.title, project: s.project || undefined, projectId: s.project_id ?? undefined, genre: s.genre || null,
                 sub: `${a.title} · ${i + 1} of ${a.songs.length}` })}
               onOpenProject={(s) => { if (s.project_id) setTab("library", s.project_id); }} />
           ) : tab === "plugins" ? (
@@ -331,7 +335,7 @@ export default function App() {
       <ConfirmHost />
       <GenrePickHost />
       <CoverPickHost />
-      <PaletteHost items={paletteItems} />
+      <LivePalette items={paletteItems} />
       <DropZone show={dragging} title="Drop to add" hint="Drop a project folder to add it to the folders Backups looks in." />
       {showKeys && <ShortcutsPanel onClose={() => setShowKeys(false)} />}
       <Exit>{showFirstBackup && (
@@ -343,4 +347,22 @@ export default function App() {
       )}</Exit>
     </div>
   );
+}
+
+// The projects the palette lists. Kept outside App so that when a fresh list arrives
+// only the palette redraws, not the page under it.
+let paletteProjects: LibraryItem[] = [];
+const paletteSubs = new Set<() => void>();
+function setPaletteProjects(list: LibraryItem[]) {
+  paletteProjects = list;
+  paletteSubs.forEach((f) => f());
+}
+function LivePalette({ items }: { items: () => PaletteItem[] }) {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const f = () => bump((n) => n + 1);
+    paletteSubs.add(f);
+    return () => { paletteSubs.delete(f); };
+  }, []);
+  return <PaletteHost items={items} />;
 }

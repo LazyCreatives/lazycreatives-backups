@@ -10,26 +10,46 @@
 
 .lib-row { padding-right: 14px; }
 /* stripe · tick · play · cover · pin · name · rating · latest song · BPM · backup · last backup · main button · menu
-   (the same order as Uploader's lists: the genre stripe first, then the tick) */
-.lib-cols { --cols: 4px 24px 28px 36px 24px minmax(0, 1fr) 84px minmax(120px, 190px) 44px 128px 118px 150px 32px; }
-.lib-cols--nosongs { --cols: 4px 24px 28px 36px 24px minmax(0, 1fr) 84px 150px 44px 128px 118px 150px 32px; }
+   (the same order as Uploader's lists: the genre stripe first, then the tick).
+   Each column that can step out is its own variable; a column that steps out becomes a
+   bare line name ([x]), so it leaves the grid and every row keeps lining up. */
+.lib-cols {
+  --c-play: 28px; --c-rating: 84px; --c-song: minmax(110px, 160px); --c-bpm: 44px; --c-last: 118px;
+  --c-name: minmax(200px, 1fr);
+  --cols: 4px 24px var(--c-play) 36px 24px var(--c-name) var(--c-rating) var(--c-song) var(--c-bpm) 128px var(--c-last) 150px 32px;
+}
 .lib-cols.cols-head { padding-right: 14px; }
 /* the pin star has its own column, so the "Project" heading starts where the names do */
 .lib-cols.lib-row, .lib-cols.cols-head { column-gap: 10px; }
-/* Narrower windows: the least needed columns step out (latest song, then last backup,
-   then play and BPM) so the project name always keeps room and the row's button stays
-   on screen. A hidden cell leaves the grid, so its gap goes with it. */
-@media (max-width: 1360px) {
-  .lib-cols, .lib-cols--nosongs { --cols: 4px 24px 28px 36px 24px minmax(0, 1fr) 84px 44px 128px 118px 150px 32px; }
+/* nothing rated yet: no Rating column. No song exported anywhere yet: no song column. */
+.lib-cols--norating { --c-rating: ; }
+.lib-cols--norating > :nth-child(7) { display: none; }
+.lib-cols--nosongs { --c-song: ; }
+.lib-cols--nosongs > :nth-child(8) { display: none; }
+/* The list measures its own width (not the window's), so the room the sidebar takes is
+   counted. As it narrows, the least needed columns step out in turn: last backup, BPM,
+   rating, the play button (the waveform still plays), then the waveform. The project
+   name keeps at least 180px and the row's button always stays. */
+.lib-wrap { container: libtable / inline-size; }
+@container libtable (max-width: 1117px) {
+  .lib-cols { --c-last: ; }
+  .lib-cols > :nth-child(11) { display: none; }
+}
+@container libtable (max-width: 979px) {
+  .lib-cols { --c-bpm: ; }
+  .lib-cols > :nth-child(9) { display: none; }
+}
+@container libtable (max-width: 925px) {
+  .lib-cols { --c-rating: ; }
+  .lib-cols > :nth-child(7) { display: none; }
+}
+@container libtable (max-width: 831px) {
+  .lib-cols { --c-play: ; --c-name: minmax(180px, 1fr); }
+  .lib-cols > :nth-child(3) { display: none; }
+}
+@container libtable (max-width: 783px) {
+  .lib-cols { --c-song: ; --c-name: minmax(0, 1fr); }
   .lib-cols > :nth-child(8) { display: none; }
-}
-@media (max-width: 1099px) {
-  .lib-cols, .lib-cols--nosongs { --cols: 4px 24px 28px 36px 24px minmax(0, 1fr) 44px 128px 150px 32px; }
-  .lib-cols > :nth-child(7), .lib-cols > :nth-child(11) { display: none; }
-}
-@media (max-width: 1040px) {
-  .lib-cols, .lib-cols--nosongs { --cols: 4px 24px 36px 24px minmax(0, 1fr) 128px 150px 32px; }
-  .lib-cols > :nth-child(3), .lib-cols > :nth-child(9) { display: none; }
 }
 .lib-find__view { margin-left: auto; display: flex; gap: 8px; }
 .sleeve__meta .rating { margin-top: 2px; }
@@ -91,7 +111,7 @@
 .lib-status--error { color: var(--danger); }
 /* why a backup from this card didn't work, under the name */
 .lib-failed { margin-top: 3px; font-size: 12px; line-height: 1.35; color: var(--danger); }
-.lib-status.col-num { font-size: 12.5px; color: var(--text-dim); }
+.lib-status.col-num { font-size: 12px; color: var(--text-dim); }
 
 /* "more" menu */
 .lib-menu { position: relative; flex-shrink: 0; }
@@ -113,7 +133,7 @@
   border: none; background: transparent; color: var(--text-dim); cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; padding: 0;
 }
 .lib-back:hover { color: var(--text); }
-.lib-notice { font-size: 12.5px; color: var(--text-dim); margin: 0; }
+.lib-notice { font-size: 12px; color: var(--text-dim); margin: 0; }
 /* an open menu must paint above the rows below it */
 .lib-row:has(.lib-menu--open) { position: relative; z-index: 30; }
 
@@ -126,7 +146,7 @@
   overflow-wrap: anywhere; line-height: 1.3; margin-bottom: 3px;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
-.linkpill { border: 0; cursor: pointer; padding: 0; font: inherit; font-size: 12.5px; }
+.linkpill { border: 0; cursor: pointer; padding: 0; font: inherit; font-size: 12px; }
 .linkpill:hover { color: var(--text); }
 .linkpill svg { vertical-align: -1px; }
 .song-actions { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
@@ -158,7 +178,7 @@
 /* a project's backups: one row each, the open one highlighted */
 .snap-cols { --cols: 8px minmax(0, 1fr) 64px 80px 150px; }
 .snaprow { width: 100%; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; }
-.note-box { margin-bottom: 12px; padding: 11px 13px; border: 1px solid var(--border); border-radius: var(--radius-lg); font-size: 12.5px; }
+.note-box { margin-bottom: 12px; padding: 11px 13px; border: 1px solid var(--border); border-radius: var(--radius-lg); font-size: 12px; }
 .ok-text { color: var(--accent-2); }
 .miss-cols--short { --cols: minmax(0, 1fr) 112px; }
 
@@ -182,14 +202,14 @@
 .lib-search__x:hover { color: var(--text); background: var(--surface-3); }
 .lib-find__n { color: var(--text-faint); font-family: var(--font-mono); font-size: 12px; margin-left: 4px; }
 .seg__opt--on .lib-find__n { color: var(--text-dim); }
-.lib-pick { width: auto; min-width: 116px; height: 30px; padding-top: 0; padding-bottom: 0; font-size: 12.5px; }
+.lib-pick { width: auto; min-width: 116px; height: 30px; padding-top: 0; padding-bottom: 0; font-size: 12px; }
 .lib-pick--on { border-color: var(--accent); color: var(--text); }
-.lib-find__count { margin-left: auto; font-size: 12.5px; color: var(--text-dim); white-space: nowrap; }
+.lib-find__count { margin-left: auto; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
 .lib-find__count b { color: var(--text); font-weight: 600; }
 .lib-find__clear {
   display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px;
   border: 1px solid var(--border-strong); border-radius: var(--radius); background: transparent;
-  color: var(--text-dim); font: 500 12.5px var(--font); cursor: pointer;
+  color: var(--text-dim); font: 500 12px var(--font); cursor: pointer;
 }
 .lib-find__clear:hover { color: var(--text); border-color: var(--border-interactive); }
 
@@ -208,3 +228,46 @@
 .lib-sort.col-num { justify-content: flex-end; }
 .lib-sort:hover, .lib-sort--on { color: var(--text); }
 .lib-sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+/* "More filters": a button like the pickers beside it, and a small panel under it */
+.lib-more { position: relative; }
+.lib-more__btn {
+  display: inline-flex; align-items: center; gap: 6px; justify-content: space-between; cursor: pointer;
+  background: var(--input-bg); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius);
+  padding: 0 8px 0 10px; font: 400 12px var(--font);
+}
+.lib-more__btn:hover { border-color: var(--border-interactive); }
+.lib-more__btn svg { color: var(--text-faint); }
+.lib-more__n {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--text); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.lib-more__panel {
+  position: absolute; left: 0; top: calc(100% + 6px); z-index: 25; width: 260px; display: grid; gap: 10px; padding: 12px;
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop); animation: ctxIn var(--dur-quick) var(--ease-glide) both; transform-origin: top left;
+}
+.lib-more__field { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); }
+.lib-more__field .lib-pick { width: 100%; }
+[data-look="crate"] .lib-more__btn, [data-look="crate"] .lib-more__panel { border-radius: 2px; }
+.lib-find__row > .smartbar { margin-top: 0; flex-basis: 100%; }
+.lib-find__count.lib-find__showing { margin-left: 4px; }
+
+/* A row's backup just finished and checked out: the status settles to "Safe" with a
+   small seal (a quiet cousin of the big verified seal: the disc stamps, the tick draws),
+   then stays as the usual quiet "Safe". On a Sleeve cover the badge says "Safe" for a
+   moment, then leaves the cover clean again. */
+.doneseal { flex: none; overflow: visible; }
+.doneseal__disc { fill: var(--ok-soft); stroke: var(--accent-2); stroke-width: 1.5; transform-origin: 8px 8px;
+  animation: sealStamp var(--dur-slow) var(--ease-glide) both; }
+.doneseal__tick { fill: none; stroke: var(--accent-2); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 12; stroke-dashoffset: 12; animation: sealDraw var(--dur-slow) var(--dur-base) var(--ease-lazy) forwards; }
+.lib-state--done > .col-trunc { animation: lcFade var(--dur-slow) var(--ease-lazy) both; }
+.sleeve__badge--done { gap: 5px; animation: lcFade var(--dur-base) var(--ease-lazy) both, doneOut var(--dur-slow) var(--ease-leave) 2.1s forwards; }
+@keyframes doneOut { to { opacity: 0; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) {
+  .doneseal__disc, .lib-state--done > .col-trunc, .sleeve__badge--done { animation: none; }
+  .doneseal__tick { animation: none; stroke-dashoffset: 0; }
+}
+/* the "··· More" button in a project page's head */
+.moremenu__btn { display: inline-flex; align-items: center; gap: 6px; }

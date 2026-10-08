@@ -52,7 +52,7 @@ export function Collection({ data }: { data: CollectionData }) {
       <div className="section__head"><h2 id="coll-h">Your collection</h2></div>
       <dl className="coll__figures">
         {data.figures.map((f) => (
-          <div key={f.label} className="coll__fig"><dt>{f.label}</dt><dd>{f.value}</dd>{f.note && <span className="coll__note">{f.note}</span>}</div>
+          <div key={f.label} className="coll__fig"><dt>{f.label}</dt><dd>{f.value}</dd>{f.note && <dd className="coll__note">{f.note}</dd>}</div>
         ))}
       </dl>
       <div className="coll__lists">

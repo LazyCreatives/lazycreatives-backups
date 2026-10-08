@@ -110,7 +110,7 @@ export function Backup({ progress: p, jobId, onRetry }: { progress: BackupProgre
                   {p.completed + p.skipped > 0 ? "Those are safe; the ones below need another go." : "Nothing was changed in your backup."}
                 </div>
                 {p.mirrorFailed > 0 && (
-                  <div style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--warn)" }}>
+                  <div style={{ margin: "6px 0 0", fontSize: 12, color: "var(--warn)" }}>
                     Copying to your second backup place failed for {p.mirrorFailed} {p.mirrorFailed === 1 ? "project" : "projects"}. Check that place in Settings.
                   </div>
                 )}
@@ -137,7 +137,7 @@ export function Backup({ progress: p, jobId, onRetry }: { progress: BackupProgre
                     : p.skipped > 0 ? `All ${p.skipped} already safe, nothing had changed` : "Nothing was backed up"}
                 </div>
                 {p.mirrorFailed > 0 && (
-                  <div style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--warn)" }}>
+                  <div style={{ margin: "6px 0 0", fontSize: 12, color: "var(--warn)" }}>
                     Copying to your second backup place failed for {p.mirrorFailed} {p.mirrorFailed === 1 ? "project" : "projects"}. The main backup is safe; check that place in Settings.
                   </div>
                 )}

@@ -71,9 +71,27 @@ export function extraFilterCount(f: LibFilters): number {
 }
 
 /** Projects that pass the filters (ignoring status when `skipStatus`), best search match first. */
+// How well each project matches the search text, worked out once per list and text:
+// the Library asks several times per key press (the rows, the status counts, the
+// genre and year chips), and with thousands of projects the matching is the slow part.
+let lastScores: { items: LibraryItem[]; q: string; score: Map<LibraryItem, number> } | null = null;
+function queryScores(items: LibraryItem[], q: string): Map<LibraryItem, number> {
+  if (lastScores && lastScores.items === items && lastScores.q === q) return lastScores.score;
+  const score = new Map<LibraryItem, number>();
+  for (const it of items) {
+    // the project's own name counts double, so it beats a genre or song hit
+    const byName = fuzzyScore(q, [it.name]);
+    const s = byName ? byName * 2 : fuzzyScore(q, [it.name, it.genre, it.latest_export?.name, dawLabel(it.daw)]);
+    if (s) score.set(it, s);
+  }
+  lastScores = { items, q, score };
+  return score;
+}
+
 export function applyFilters(items: LibraryItem[], f: LibFilters, skipStatus = false): LibraryItem[] {
   const band = BPM_BANDS.find((b) => b.key === f.bpm);
   const q = f.q.trim();
+  const scores = q ? queryScores(items, q) : null;
   const scored: { it: LibraryItem; score: number; i: number }[] = [];
   items.forEach((it, i) => {
     if (!skipStatus && f.status !== "all" && itemStatus(it) !== f.status) return;
@@ -89,10 +107,8 @@ export function applyFilters(items: LibraryItem[], f: LibFilters, skipStatus = f
     if (f.year && yearOf(it) !== f.year) return;
     if (f.rated && ratingOf(it.project_id) < f.rated) return;
     let score = 1;
-    if (q) {
-      // the project's own name counts double, so it beats a genre or song hit
-      const byName = fuzzyScore(q, [it.name]);
-      score = byName ? byName * 2 : fuzzyScore(q, [it.name, it.genre, it.latest_export?.name, dawLabel(it.daw)]);
+    if (scores) {
+      score = scores.get(it) ?? 0;
       if (!score) return;
     }
     scored.push({ it, score, i });

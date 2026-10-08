@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { pickCover } from "../components/CoverPick";
 import { makeApi } from "../api";
 import type { LibraryItem } from "../types";
@@ -14,6 +14,7 @@ import { AuditionToggle } from "../components/Audition";
 import { MissingSamples } from "./MissingSamples";
 import { currentOs, osWords } from "../platform";
 import { Icon } from "../components/Icon";
+import { MoreMenu as RowMenu } from "../components/MoreMenu";
 import { Cover } from "../components/Cover";
 import { genreColor, useLook } from "../look";
 import { Rating, RowSize, ratingMenu } from "../components/Marks";
@@ -22,7 +23,7 @@ import { pickGenre, pickCrateColor } from "../components/GenrePick";
 import { PageHeader } from "../components/PageHeader";
 import { UnmatchedSongs } from "./UnmatchedSongs";
 import { SmartBar } from "../components/SmartBar";
-import { ColumnBrowse, FacetChips, NO_GENRE, facets } from "../components/Browse";
+import { ColumnBrowse, NO_GENRE, facets } from "../components/Browse";
 import { BPM_BANDS, FIRST_DIR, NO_FILTERS, applyFilters, describeFilters, yearOf, rememberSort, rememberedSort, sortItems, type LibSort, type SortKey, extraFilterCount, isFiltered, countStatuses, statusSummary, rememberFilters, rememberedFilters, type LibFilters, type LibraryView, type StatusFilter, viewFor } from "../libraryFilter";
 import { openMenu, toast, type MenuItem, toastWarn } from "../components/Desktop";
 import { copyText, keep, recall } from "../desktop";
@@ -32,6 +33,7 @@ import { NoteOpened } from "../components/Recents";
 import { TidyNames } from "./TidyNames";
 import type { TidyBatch, TidyDone } from "../types";
 import { EmptyState } from "../components/SlothSpot";
+import { ScanSloth } from "../components/ScanSloth";
 import { rowKey } from "../components/a11y";
 import { backupAndWait, type RunResult } from "../runBackup";
 import "../library.css";
@@ -82,48 +84,28 @@ function statusLine(it: LibraryItem): { tone: "ok" | "warn" | "changed" | "none"
   return { tone: "none", text: "Not backed up yet", when: "—", size };
 }
 
-// The "···" menu on a row: the less common actions, out of the way.
-// From the keyboard: Enter/Space on ··· opens it with the first item focused, Up/Down
-// move, Home/End jump, Escape or Tab closes it and focus goes back to the ··· button.
-function RowMenu({ items, name }: { items: { label: string; onClick: () => void; disabled?: boolean }[]; name: string }) {
+// "More filters": the less used pickers (DAW, tempo, songs, rating) in a small panel,
+// so the Library keeps two rows of controls. `on` counts the ones in use, shown on the
+// button. Escape or a click outside closes it; focus goes back to the button.
+function MoreFilters({ on, children }: { on: number; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
-  const btnRef = useRef<HTMLButtonElement | null>(null);
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const close = (refocus: boolean) => { setOpen(false); if (refocus) btnRef.current?.focus(); };
+  const btn = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     if (!open) return;
-    listRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+    ref.current?.querySelector<HTMLSelectElement>(".lib-more__panel select")?.focus();
     const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
     document.addEventListener("mousedown", onDown);
-    return () => { document.removeEventListener("mousedown", onDown); };
+    return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
-  const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(true); return; }
-    if (e.key === "Tab") { close(false); return; }
-    const btns = Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
-    if (!btns.length) return;
-    const at = btns.indexOf(document.activeElement as HTMLButtonElement);
-    const next = e.key === "ArrowDown" ? (at + 1) % btns.length
-      : e.key === "ArrowUp" ? (at - 1 + btns.length) % btns.length
-      : e.key === "Home" ? 0 : e.key === "End" ? btns.length - 1 : -1;
-    if (next < 0) return;
-    e.preventDefault(); e.stopPropagation();
-    btns[next].focus();
-  };
   return (
-    <div ref={ref} className={`lib-menu${open ? " lib-menu--open" : ""}`} onClick={(e) => e.stopPropagation()}>
-      <button ref={btnRef} className="iconbtn" aria-label={`More actions for ${name}`} aria-haspopup="menu" aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        onKeyDown={(e) => { if (e.key === "ArrowDown" && !open) { e.preventDefault(); setOpen(true); } }}><Icon name="more" /></button>
-      {open && (
-        <div ref={listRef} className="lib-menu__list" role="menu" aria-label={`More actions for ${name}`} onKeyDown={onKey}>
-          {items.map((m) => (
-            <button key={m.label} role="menuitem" className="lib-menu__item" disabled={m.disabled}
-              onClick={() => { close(true); m.onClick(); }}>{m.label}</button>
-          ))}
-        </div>
-      )}
+    <div ref={ref} className="lib-more"
+      onKeyDown={(e) => { if (e.key === "Escape" && open) { e.preventDefault(); e.stopPropagation(); setOpen(false); btn.current?.focus(); } }}>
+      <button ref={btn} type="button" className={`lib-pick lib-more__btn${on ? " lib-pick--on" : ""}`}
+        aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((o) => !o)}>
+        More filters{on > 0 && <span className="lib-more__n">{on}</span>}<Icon name="chevronDown" size={13} />
+      </button>
+      {open && <div className="lib-more__panel" role="dialog" aria-label="More filters">{children}</div>}
     </div>
   );
 }
@@ -131,8 +113,19 @@ function RowMenu({ items, name }: { items: { label: string; onClick: () => void;
 // Which owner groups are folded shut, kept while the app is open so the list looks
 // the same when you come back to it.
 let rememberedCollapsed: Record<string, boolean> = {};
-// The scan reach is saved for the next time the app opens too.
-let rememberedScope = recall("lc-library-scope", "home", (v) => SCOPES.some((s) => s.key === v));
+// The scan reach is saved for the next time the app opens too. Until the person picks
+// one it starts on the folders chosen at setup (what setup scanned), not the whole
+// computer, so unticked folders don't come back and no extra access prompts appear.
+const savedScope = recall<string>("lc-library-scope", "", (v) => SCOPES.some((s) => s.key === v));
+let rememberedScope = savedScope || "sources";
+let savedScopeTouched = false;
+
+// Big libraries: rows are drawn a page at a time, more as the list scrolls near its
+// end, so typing in the search box or changing a filter never waits for thousands of
+// rows. How far it has drawn is kept while the app is open, so coming back to the
+// Library finds the row you came from.
+const PAGE = 120;
+let rememberedLimit = PAGE;
 
 // openProject: the project shown as its own page (its id, or its name when another
 // screen opened it), or null for the list. Opening and closing go through the app's
@@ -149,11 +142,23 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   const [showUnmatched, setShowUnmatched] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scope, setScopeState] = useState(rememberedScope);
-  const setScope = (v: string) => { rememberedScope = v; keep("lc-library-scope", v); setScopeState(v); };
+  const setScope = (v: string) => { rememberedScope = v; savedScopeTouched = true; keep("lc-library-scope", v); setScopeState(v); };
   const [scanning, setScanning] = useState(false);
   const [fdaOk, setFdaOk] = useState(true);
   const [skipped, setSkipped] = useState(0);     // dirs the last scan couldn't read
   const [busy, setBusy] = useState<Set<string>>(new Set());
+  // projects whose backup from this page just finished and checked out: their status
+  // settles to "Safe" with a small seal for a moment
+  const [justDone, setJustDone] = useState<Set<string>>(new Set());
+  const doneTimers = useRef<number[]>([]);
+  useEffect(() => () => doneTimers.current.forEach((t) => clearTimeout(t)), []);
+  const markDone = (ids: string[]) => {
+    if (!ids.length) return;
+    setJustDone((s) => new Set([...s, ...ids]));
+    doneTimers.current.push(window.setTimeout(() => setJustDone((s) => {
+      const n = new Set(s); ids.forEach((id) => n.delete(id)); return n;
+    }), 2600));
+  };
   const [collapsed, setCollapsedState] = useState<Record<string, boolean>>(() => rememberedCollapsed);
   const setCollapsed = (f: (c: Record<string, boolean>) => Record<string, boolean>) =>
     setCollapsedState((c) => (rememberedCollapsed = f(c)));
@@ -205,6 +210,12 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
     await afterRename(r.id_map);
   }
   useEffect(() => { load(); }, []);
+  // No folders were chosen at setup: "My folders" would find nothing, so look in the
+  // whole home folder instead (until the person picks a scope themselves).
+  useEffect(() => {
+    if (savedScope) return;
+    api.getSettings().then((c) => { if (!c.sources?.length && !savedScopeTouched) { rememberedScope = "home"; setScopeState("home"); } }).catch(() => {});
+  }, []);
 
   // Correct the genre of one project (or every ticked one). Covers, stripes and Dig
   // crates follow it, and so does Uploader, which reads the same record.
@@ -264,6 +275,8 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
     if (openProject || !lastOpen.current) return;
     const hit = items.find((i) => i.project_id === lastOpen.current);
     if (hit && collapsed[hit.owner || "system"]) setCollapsed((c) => ({ ...c, [hit.owner || "system"]: false }));
+    const at = owners.flatMap((o) => byOwner[o]).findIndex((i) => i.project_id === lastOpen.current);
+    if (at >= limit) setLimit(() => at + PAGE);
   }, [openProject, items]);
 
   async function runScan(where: string = scope) {
@@ -293,6 +306,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
       toastWarn(`${item.name} couldn't be backed up. ${res.reason}`, { label: "Try again", onClick: () => { backupOne(item, extraLib); } });
     }
     await load();
+    if (res.ok) markDone([item.project_id]);
     return res;
   }
 
@@ -336,7 +350,9 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
         : `The backup didn't finish. ${res.reason}`,
         { label: "Try again", onClick: () => { backupMany(again); } });
     }
-    load();
+    await load();
+    const failedNames = new Set(res.ok ? [] : res.failed.map((f) => f.project_name));
+    if (res.ok || res.failed.length) markDone(targets.filter((t) => !failedNames.has(t.name)).map((t) => t.project_id));
   }
 
   // Point the finder at a folder you think this project's samples are in.
@@ -374,7 +390,10 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   const changedItems = items.filter((i) => i.changed && i.missing_count === 0);
   const pins = usePins();
   const rated = items.map((i) => ratingOf(i.project_id)).join();
-  const shown = useMemo(() => pinnedFirst(sortItems(applyFilters(items, filters), sort), pins), [items, filters, sort, pins, rated]);
+  // The list follows the search a beat behind the box: typing stays instant and the
+  // rows catch up between keys (React drops a half-drawn list when another key lands).
+  const dFilters = useDeferredValue(filters);
+  const shown = useMemo(() => pinnedFirst(sortItems(applyFilters(items, dFilters), sort), pins), [items, dFilters, sort, pins, rated]);
   // Ticked projects, for doing one thing to several at once.
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const togglePick = (id: string) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -382,25 +401,25 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   const picking = picked.size > 0;
   // the status buttons count what the other filters leave, so the numbers add up
   const statusCounts = useMemo(() => {
-    return countStatuses(applyFilters(items, filters, true));
-  }, [items, filters]);
+    return countStatuses(applyFilters(items, dFilters, true));
+  }, [items, dFilters]);
   const allCounts = useMemo(() => countStatuses(items), [items]);
   const dawOptions = useMemo(() => [...new Set(items.map((i) => i.daw || "").filter(Boolean))].sort(), [items]);
-  const genreOptions = useMemo(() => [...new Set(items.map((i) => i.genre || "").filter(Boolean))].sort((a, b) => a.localeCompare(b)), [items]);
-  const yearOptions = useMemo(() => [...new Set(items.map(yearOf).filter(Boolean))].sort().reverse(), [items]);
   const anyRated = rated.replace(/[0,]/g, "") !== "";
   // Genre and Year to browse by, counted over what the other filters leave
   const browse = useMemo(() => {
-    const pool = applyFilters(items, { ...filters, genre: "", year: "" });
-    const inGenre = filters.genre ? applyFilters(pool, { ...NO_FILTERS, genre: filters.genre }).length : pool.length;
-    return { ...facets(pool, (i) => i.genre, yearOf, filters.genre), total: pool.length, inGenre };
-  }, [items, filters, rated]);
+    const pool = applyFilters(items, { ...dFilters, genre: "", year: "" });
+    const inGenre = dFilters.genre ? applyFilters(pool, { ...NO_FILTERS, genre: dFilters.genre }).length : pool.length;
+    return { ...facets(pool, (i) => i.genre, yearOf, dFilters.genre), total: pool.length, inGenre };
+  }, [items, dFilters, rated]);
   const columns = look === "crate" && view === "columns";
+  // the filters tucked behind "More filters" that are on now
+  const moreOn = [filters.daw, filters.bpm, filters.song !== "any", filters.rated > 0].filter(Boolean).length;
   const filtered = isFiltered(filters);
   // only "Missing samples" picked and nothing left: that's good news, not a failed search
   const onlyMissing = filters.status === "missing" && extraFilterCount(filters) === 0 && !filters.q.trim();
-  // With no songs anywhere yet, the song column shrinks so the rest has room.
-  const colsClass = items.some((i) => i.latest_export) ? "lib-cols" : "lib-cols lib-cols--nosongs";
+  // With no songs anywhere yet, or nothing rated yet, those columns leave so the rest has room.
+  const colsClass = `lib-cols${items.some((i) => i.latest_export) ? "" : " lib-cols--nosongs"}${anyRated ? "" : " lib-cols--norating"}`;
   const byOwner = useMemo(() => {
     const m: Record<string, LibraryItem[]> = {};
     for (const it of shown) (m[it.owner || "system"] ||= []).push(it);
@@ -408,11 +427,33 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   }, [shown]);
   const owners = useMemo(() => Object.keys(byOwner).sort(), [byOwner]);
 
+  // How many rows are drawn (see PAGE). Back to one page when the search, a filter
+  // or the sort changes; a page more each time the end of the list comes near.
+  const [limit, setLimitState] = useState(rememberedLimit);
+  const setLimit = (f: (n: number) => number) => setLimitState((n) => (rememberedLimit = f(n)));
+  const firstView = useRef(true);
+  useEffect(() => {
+    if (firstView.current) { firstView.current = false; return; }
+    setLimit(() => PAGE);
+  }, [dFilters, sort]);
+  const openRows = useMemo(() => owners.reduce((n, o) => n + (collapsed[o] ? 0 : byOwner[o].length), 0), [owners, byOwner, collapsed]);
+  const moreRef = useRef<HTMLDivElement | null>(null);
+  const hasMore = openRows > limit;
+  useEffect(() => {
+    const el = moreRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) setLimit((n) => n + PAGE); },
+      { root: document.querySelector(".main"), rootMargin: "0px 0px 1600px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, limit, look]);
+
   // ETA from the parse rate (updates each project tick).
   const elapsed = scan.startedAt ? (Date.now() - scan.startedAt) / 1000 : 0;
   const eta = scan.phase === "parsing" && scan.done > 0 && scan.total > scan.done
     ? fmtEta((elapsed / scan.done) * (scan.total - scan.done)) : "";
   const showProgress = scanning || scan.active;
+  let budget = limit;  // rows still to draw on this pass (see PAGE)
 
   // ── project page: replaces the list, with a way back ──
   const openItem = openProject
@@ -431,17 +472,12 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
           onGenre={() => changeGenre([it])}
           onOpenInDaw={() => openInDaw(it.path)}
           onReveal={() => revealPath(it.path)}
-          actions={<>
-            <Button variant="ghost" onClick={() => setTidyFor([it])}
-              title="Give this song's versions, folder and exported songs matching names">
-              <Icon name="edit" size={15} />Tidy names
+          more={[{ label: "Tidy names…", onClick: () => setTidyFor([it]) }]}
+          actions={(!it.backed_up || it.changed) && (
+            <Button disabled={busy.has(it.project_id)} onClick={() => backupOne(it)}>
+              {busy.has(it.project_id) ? "Backing up…" : "Back up now"}
             </Button>
-            {(!it.backed_up || it.changed) && (
-              <Button disabled={busy.has(it.project_id)} onClick={() => backupOne(it)}>
-                {busy.has(it.project_id) ? "Backing up…" : "Back up now"}
-              </Button>
-            )}
-          </>}
+          )}
           tabs={[
             // missing samples first: it's the thing that needs a decision
             ...(it.missing_count > 0 ? [{ key: "missing", label: "Missing samples", count: it.missing_count,
@@ -483,7 +519,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
         ) : undefined} />
 
       <div className="lib-scan">
-        <span className="faint" style={{ fontSize: 12.5 }}>Look for projects in</span>
+        <span className="faint" style={{ fontSize: 12 }}>Look for projects in</span>
         <select value={scope} onChange={(e) => setScope(e.target.value)} disabled={scanning} aria-label="Look for projects in">
           {SCOPES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
@@ -494,7 +530,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
           <div style={{ flexBasis: "100%", marginTop: 4 }}>
             {scan.phase === "searching" || (!scan.phase && scanning) ? (
               <>
-                <div className="sub" style={{ margin: "0 0 6px", fontSize: 12.5 }}>
+                <div className="sub" style={{ margin: "0 0 6px", fontSize: 12 }}>
                   Searching… {scan.dirs.toLocaleString()} folders · {scan.found} project{scan.found === 1 ? "" : "s"} found
                 </div>
                 <ProgressBar value={1} max={1} active />
@@ -502,8 +538,8 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
             ) : (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <span className="sub" style={{ margin: 0, fontSize: 12.5 }}>Reading projects…</span>
-                  <span className="sub mono" style={{ margin: 0, fontSize: 12.5 }}>
+                  <span className="sub" style={{ margin: 0, fontSize: 12 }}>Reading projects…</span>
+                  <span className="sub mono" style={{ margin: 0, fontSize: 12 }}>
                     {scan.done}/{scan.total}{eta ? ` · ~${eta} left` : ""}
                   </span>
                 </div>
@@ -517,7 +553,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
         )}
         {(skipped > 0 || !fdaOk) && !scanning && (
           <div className="locked-note" style={{ flexBasis: "100%", flexDirection: "column", alignItems: "stretch", gap: 9 }}>
-            <div style={{ fontSize: 12.5 }}>
+            <div style={{ fontSize: 12 }}>
               {IS_MAC ? (
                 <>Skipped {skipped > 0 ? skipped.toLocaleString() + " " : ""}folder{skipped === 1 ? "" : "s"} that macOS hides
                 (Documents / Desktop / Downloads) until you grant this app Full Disk Access.</>
@@ -556,74 +592,83 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                 </button>
               ))}
             </div>
-            {look === "crate" && (
-              <div className="lib-find__view">
-                {!columns && <RowSize value={rows} onChange={setRows} />}
+          </div>
+          {/* the second and last row: genre and year (one place to pick each), the rest
+              behind More filters, the count, then how the list is shown */}
+          <div className="lib-find__row">
+            {browse.genres.length > 0 && (
+              <select className={filters.genre ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.genre} aria-label="Genre" onChange={(e) => setFilters({ genre: e.target.value })}>
+                <option value="">Any genre</option>
+                {browse.genres.map((g) => <option key={g.value} value={g.value}>{g.label} · {fmtCount(g.n)}</option>)}
+                {filters.genre && !browse.genres.some((g) => g.value === filters.genre) && <option value={filters.genre}>{filters.genre === NO_GENRE ? "No genre yet" : filters.genre}</option>}
+              </select>
+            )}
+            {(browse.years.length > 1 || filters.year) && (
+              <select className={filters.year ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.year} aria-label="Year last saved" onChange={(e) => setFilters({ year: e.target.value })}>
+                <option value="">Any year</option>
+                {browse.years.map((y) => <option key={y.value} value={y.value}>Saved in {y.label} · {fmtCount(y.n)}</option>)}
+                {filters.year && !browse.years.some((y) => y.value === filters.year) && <option value={filters.year}>Saved in {filters.year}</option>}
+              </select>
+            )}
+            <MoreFilters on={moreOn}>
+              {dawOptions.length > 1 && (
+                <label className="lib-more__field"><span>Made in</span>
+                  <select className={filters.daw ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.daw} onChange={(e) => setFilters({ daw: e.target.value })}>
+                    <option value="">Any DAW</option>
+                    {dawOptions.map((d) => <option key={d} value={d}>{DAW_NAMES[d] || d}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className="lib-more__field"><span>Tempo</span>
+                <select className={filters.bpm ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.bpm} onChange={(e) => setFilters({ bpm: e.target.value })}>
+                  <option value="">Any BPM</option>
+                  {BPM_BANDS.map((b) => <option key={b.key} value={b.key}>{b.label} BPM</option>)}
+                </select>
+              </label>
+              <label className="lib-more__field"><span>Songs</span>
+                <select className={filters.song !== "any" ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.song} onChange={(e) => setFilters({ song: e.target.value as LibFilters["song"] })}>
+                  <option value="any">Any songs</option>
+                  <option value="has">Has a song</option>
+                  <option value="soundcloud">On SoundCloud</option>
+                  <option value="nosong">No song yet</option>
+                </select>
+              </label>
+              {(anyRated || filters.rated > 0) && (
+                <label className="lib-more__field"><span>Rating</span>
+                  <select className={filters.rated ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.rated} onChange={(e) => setFilters({ rated: Number(e.target.value) })}>
+                    <option value={0}>Any rating</option>
+                    <option value={3}>Rated 3 and up</option>
+                    <option value={4}>Rated 4 and up</option>
+                    <option value={5}>Rated 5</option>
+                  </select>
+                </label>
+              )}
+            </MoreFilters>
+            {filtered && (
+              <>
+                <span className="lib-find__count lib-find__showing">Showing <b>{fmtCount(shown.length)}</b> of {fmtCount(items.length)}</span>
+                <button className="lib-find__clear" onClick={() => setFilters(null)}>
+                  <Icon name="close" size={12} />Clear all
+                </button>
+              </>
+            )}
+            <SmartBar scope="library" filters={filters} blank={NO_FILTERS} canSave={filtered}
+              suggest={(f) => describeFilters(f, (d) => DAW_NAMES[d] || d)}
+              count={(f) => applyFilters(items, f).length}
+              onPick={(f) => setFilters(f ?? null)} />
+            <div className="lib-find__view">
+              <AuditionToggle compact />
+              {look === "crate" && !columns && <RowSize value={rows} onChange={setRows} />}
+              {look === "crate" && (
                 <div className="seg seg--icons" role="radiogroup" aria-label="Show as">
                   {([["list", "library", "List"], ["columns", "columns", "Genre, year, project columns"]] as const).map(([k, icon, label]) => (
                     <button key={k} type="button" role="radio" aria-checked={view === k} title={label} aria-label={label}
                       className={`seg__opt${view === k ? " seg__opt--on" : ""}`} onClick={() => setView(k)}><Icon name={icon} size={14} /></button>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-          <div className="lib-find__row">
-            {dawOptions.length > 1 && (
-              <select className={filters.daw ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.daw} aria-label="DAW" onChange={(e) => setFilters({ daw: e.target.value })}>
-                <option value="">Any DAW</option>
-                {dawOptions.map((d) => <option key={d} value={d}>{DAW_NAMES[d] || d}</option>)}
-              </select>
-            )}
-            {genreOptions.length > 0 && (
-              <select className={filters.genre ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.genre} aria-label="Genre" onChange={(e) => setFilters({ genre: e.target.value })}>
-                <option value="">Any genre</option>
-                {genreOptions.map((g) => <option key={g} value={g}>{g}</option>)}
-                {items.some((i) => !i.genre) && <option value={NO_GENRE}>No genre yet</option>}
-              </select>
-            )}
-            <select className={filters.bpm ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.bpm} aria-label="BPM" onChange={(e) => setFilters({ bpm: e.target.value })}>
-              <option value="">Any BPM</option>
-              {BPM_BANDS.map((b) => <option key={b.key} value={b.key}>{b.label} BPM</option>)}
-            </select>
-            <select className={filters.song !== "any" ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.song} aria-label="Songs" onChange={(e) => setFilters({ song: e.target.value as LibFilters["song"] })}>
-              <option value="any">Any songs</option>
-              <option value="has">Has a song</option>
-              <option value="soundcloud">On SoundCloud</option>
-              <option value="nosong">No song yet</option>
-            </select>
-            {yearOptions.length > 1 && (
-              <select className={filters.year ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.year} aria-label="Year last saved" onChange={(e) => setFilters({ year: e.target.value })}>
-                <option value="">Any year</option>
-                {yearOptions.map((y) => <option key={y} value={y}>Saved in {y}</option>)}
-              </select>
-            )}
-            {(anyRated || filters.rated > 0) && (
-              <select className={filters.rated ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.rated} aria-label="Rating" onChange={(e) => setFilters({ rated: Number(e.target.value) })}>
-                <option value={0}>Any rating</option>
-                <option value={3}>Rated 3 and up</option>
-                <option value={4}>Rated 4 and up</option>
-                <option value={5}>Rated 5</option>
-              </select>
-            )}
-            <span className="lib-find__count">
-              {filtered ? <>Showing <b>{fmtCount(shown.length)}</b> of {fmtCount(items.length)} project{items.length === 1 ? "" : "s"}</> : <>{fmtCount(items.length)} project{items.length === 1 ? "" : "s"}</>}
-            </span>
-            {filtered && (
-              <button className="lib-find__clear" onClick={() => setFilters(null)}>
-                <Icon name="close" size={12} />Clear all
-              </button>
-            )}
-            <AuditionToggle />
-          </div>
-          <SmartBar scope="library" filters={filters} blank={NO_FILTERS} canSave={filtered}
-            suggest={(f) => describeFilters(f, (d) => DAW_NAMES[d] || d)}
-            count={(f) => applyFilters(items, f).length}
-            onPick={(f) => setFilters(f ?? null)} />
-          {look === "sleeve" && (
-            <FacetChips genres={browse.genres} years={browse.years} genre={filters.genre} year={filters.year}
-              onGenre={(g) => setFilters({ genre: g })} onYear={(y) => setFilters({ year: y })} yearTitle="Saved in" />
-          )}
           {unmatched > 0 && (
             <button type="button" className="lib-unmatched" onClick={() => setShowUnmatched(true)}>
               <Icon name="music" size={14} />
@@ -642,6 +687,8 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
           action={<Button size="sm" onClick={() => (window as any).ablebackup?.relaunch?.()}>Restart the app</Button>}>
           Restart the app; your projects are untouched.
         </EmptyState>
+      ) : items.length === 0 && showProgress ? (
+        <ScanSloth scan={scan} />
       ) : items.length === 0 ? (
         <EmptyState pose="searching" title="No projects here yet" say="Empty crate. Let’s go digging."
           action={<Button size="sm" onClick={() => runScan()} disabled={scanning}>{scanning ? "Scanning…" : "Scan now"}</Button>}>
@@ -685,9 +732,14 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
               Try fewer words or a different filter.
             </EmptyState>
       ) : (
-        owners.map((owner) => {
+        <div className="lib-wrap">{owners.map((owner) => {
           const list = byOwner[owner];
           const isCollapsed = collapsed[owner];
+          // the rows of this group that fit in what's left of the page; groups past
+          // the end of it wait until the list scrolls that far
+          if (budget <= 0) return null;
+          const drawn = isCollapsed ? list : list.slice(0, budget);
+          if (!isCollapsed) budget -= drawn.length;
           const ownerBacked = list.filter((i) => i.backed_up).length;
           const rowProps = (it: LibraryItem) => {
             const working = busy.has(it.project_id);
@@ -758,9 +810,10 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
               )}
               {!isCollapsed && look === "sleeve" && (
                 <div className="sleeves">
-                  {list.map((it) => {
+                  {drawn.map((it) => {
                     const st = statusLine(it);
                     const { working, openIt, menu, meta, onContextMenu, star, tick, isPin, failed } = rowProps(it);
+                    const done = !working && !failed && st.tone === "ok" && justDone.has(it.project_id);
                     return (
                       <AuditionDiv key={it.project_id} song={it.latest_export?.path} meta={meta} data-pid={it.project_id} data-nav-key={it.project_id}
                         className={`sleeve${picking ? " sleeve--picking" : ""}${picked.has(it.project_id) ? " sleeve--selected" : ""}${isPin ? " sleeve--pinned" : ""}`} role="button" tabIndex={0}
@@ -768,10 +821,16 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                         <div className="sleeve__art">
                           <Cover name={it.name} genre={it.genre} />
                           <span className="sleeve__tick">{tick}</span>
+                          {/* a safe project's cover stays clean: the badge shows only when something
+                              is happening or needs a look (the Safe filter still finds them all) */}
+                          {done ? (
+                            <span className="sleeve__badge sleeve__badge--done" role="status"><DoneSeal />Safe</span>
+                          ) : (working || failed || st.tone !== "ok") && (
                           <span className="sleeve__badge" title={failed && !working ? failed : st.tone === "warn" && it.missing_count > 999 ? `${fmtCount(it.missing_count)} samples missing` : undefined}>
                             <span className={`dot ${failed && !working ? "dot--error" : st.tone === "ok" ? "dot--ok" : st.tone === "warn" ? "dot--warn" : st.tone === "changed" ? "dot--accent" : ""}`} />
                             {working ? "Backing up…" : failed ? "Backup failed" : st.tone === "ok" ? "Safe" : st.tone === "warn" ? `${fmtCap(it.missing_count)} missing` : st.tone === "changed" ? "Changed" : "Not backed up"}
                           </span>
+                          )}
                           {it.latest_export && meta &&
                             <PlayButton path={it.latest_export.path} title={it.latest_export.name} meta={meta} size={34} className="sleeve__play" />}
                         </div>
@@ -811,9 +870,10 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                     })}
                     <span /><span />
                   </div>
-                  {list.map((it) => {
+                  {drawn.map((it) => {
                     const st = statusLine(it);
                     const { working, openIt, action, menu, meta, onContextMenu, star, tick, isPin, failed } = rowProps(it);
+                    const done = !working && !failed && st.tone === "ok" && justDone.has(it.project_id);
                     return (
                       <AuditionDiv key={it.project_id} song={it.latest_export?.path} meta={meta} data-pid={it.project_id} data-nav-key={it.project_id}
                         className={`row cols lib-row ${colsClass}${picked.has(it.project_id) ? " lib-row--picked" : ""}${isPin ? " lib-row--pinned" : ""}`} role="button" tabIndex={0}
@@ -832,12 +892,16 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                         <Rating id={it.project_id} name={it.name} />
                         {it.latest_export && meta
                           ? <SongWave path={it.latest_export.path} meta={meta} />
-                          : <span className="lib-status">No song exported yet</span>}
+                          : <span className="lib-status col-trunc" title="No song exported from this project yet">No song yet</span>}
                         <span className="lib-status col-num">{it.bpm ? Math.round(it.bpm) : "—"}</span>
                         {failed && !working ? (
                           <span className="lib-state lib-status--error" title={failed}>
                             <span className="dot dot--error" />
                             <span className="col-trunc">Backup failed: {failed}</span>
+                          </span>
+                        ) : done ? (
+                          <span className="lib-state lib-status--ok lib-state--done" role="status">
+                            <DoneSeal /><span className="col-trunc">Safe</span>
                           </span>
                         ) : (
                         <span className={`lib-state${st.tone === "warn" ? " lib-status--warn" : st.tone === "ok" ? " lib-status--ok" : ""}`}
@@ -856,7 +920,9 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
               )}
             </div>
           );
-        })
+        })}
+        {hasMore && <div ref={moreRef} className="lib-endmark" aria-hidden="true" />}
+        </div>
       )}
       {picking && (() => {
         const allPinned = pickedItems.every((i) => pins.includes(i.project_id));
@@ -888,6 +954,17 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
       })()}
       {tidyFor && <TidyNames items={tidyFor} onClose={() => setTidyFor(null)} onDone={tidyDone} />}
     </>
+  );
+}
+
+// The small seal a row's status wears for a moment when its backup has just finished
+// and checked out: a green disc stamps in and the tick draws itself.
+function DoneSeal() {
+  return (
+    <svg className="doneseal" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <circle className="doneseal__disc" cx="8" cy="8" r="7" />
+      <path className="doneseal__tick" d="M4.6 8.3 l2.3 2.3 l4.5 -4.9" />
+    </svg>
   );
 }
 

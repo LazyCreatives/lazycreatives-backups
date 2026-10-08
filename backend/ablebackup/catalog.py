@@ -107,6 +107,17 @@ CREATE TABLE IF NOT EXISTS renamed (
 -- find. Remembered so the choice holds after leaving the page, in every later
 -- backup (scheduled ones too) and in the library's missing counts. Keyed by the
 -- project file and the path the project expects the sample at.
+-- What reading each project file gave last time (its sample list and tempo/tracks/
+-- plugins), kept with the file's size and save time so a rescan skips re-reading
+-- project files that haven't changed. `ver` is the reader's version: a new app
+-- version reads every file again once.
+CREATE TABLE IF NOT EXISTS parse_cache (
+    path TEXT PRIMARY KEY,
+    size INTEGER NOT NULL,
+    mtime_ns INTEGER NOT NULL,
+    ver TEXT NOT NULL,
+    data TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS pointed_samples (
     project_path TEXT NOT NULL,
     expected_path TEXT NOT NULL,
@@ -333,6 +344,36 @@ class Catalog:
                 (limit,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def parse_cache_load(self, ver: str) -> dict:
+        """{project file: (size, mtime_ns, data)} for everything read by this version."""
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT path, size, mtime_ns, data FROM parse_cache WHERE ver = ?", (ver,)).fetchall()
+        return {r["path"]: (r["size"], r["mtime_ns"], r["data"]) for r in rows}
+
+    def parse_cache_save(self, ver: str, rows: list[tuple]) -> None:
+        """Remember (path, size, mtime_ns, data) rows; drops rows of older versions."""
+        with self._lock:
+            self.conn.execute("DELETE FROM parse_cache WHERE ver != ?", (ver,))
+            self.conn.executemany(
+                "INSERT INTO parse_cache (path, size, mtime_ns, ver, data) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(path) DO UPDATE SET size = excluded.size, mtime_ns = excluded.mtime_ns, "
+                "ver = excluded.ver, data = excluded.data",
+                [(p, sz, mt, ver, d) for p, sz, mt, d in rows])
+            self.conn.commit()
+
+    def has_snapshot_in(self, folder: str) -> bool:
+        """True when a backup was ever written inside `folder` (so it existed then)."""
+        root = str(folder).rstrip("/\\")
+        if not root:
+            return False
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT dir FROM snapshots WHERE dir IS NOT NULL AND dir LIKE ? ESCAPE '!' LIMIT 50",
+                (root.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%",),
+            ).fetchall()
+        return any(r["dir"][len(root):len(root) + 1] in ("/", "\\") for r in rows)
 
     def projects_summary(self) -> list[dict]:
         with self._lock:

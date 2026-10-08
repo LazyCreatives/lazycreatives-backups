@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import {
   addSongs, albumCandidates, albumState, changeSong, daysToGo, deleteAlbum, FADE_PRESETS, fadeLabel, fmtRelease,
-  makeAlbum, MAX_FADE, moveItem, orderSongs, readyCount, renameAlbum, setCrossfade, setReleaseDate, takeOut, useAlbums,
+  mainGenre, makeAlbum, MAX_FADE, moveItem, orderSongs, putBack, readyCount, releaseDay, renameAlbum, setCrossfade,
+  setReleaseDate, takeOut, useAlbums,
   type Album, type AlbumCandidate, type AlbumSong,
 } from "../albums";
 import { askConfirm, openMenu, toast, toastWarn, type MenuItem } from "./Desktop";
@@ -10,7 +11,7 @@ import { Cover } from "./Cover";
 import { EmptyState } from "./SlothSpot";
 import { playAlbum, stopAlbum, togglePlaying, updateAlbum, useAlbumPlaying, usePlayer, useSongLength, type QueueSong } from "./Player";
 import { fuzzyScore } from "../fuzzy";
-import { useLook } from "../look";
+import { genreColor, useLook } from "../look";
 import "../albums.css";
 
 // Albums: plan what comes out next. Each album has a title, a release date and songs in
@@ -77,13 +78,7 @@ function AlbumList({ list, error, look, composing, app, onOpen, onClose }: Album
       {list === null && <div className="table"><div className="row faint alb__wait">Getting your albums…</div></div>}
       {list && list.length > 0 && (look === "sleeve"
         ? <div className="sleeves">{list.map((a) => <AlbumSleeve key={a.id} a={a} onOpen={() => onOpen(a.id)} />)}</div>
-        : <div className="table table--crate">
-            <div className="row cols cols-head alb-cols">
-              <span /><span /><span>Album</span><span>Out</span><span className="col-num">Songs</span>
-              <span className="col-num">Length</span><span>Ready</span><span>Status</span>
-            </div>
-            {list.map((a) => <AlbumRow key={a.id} a={a} onOpen={() => onOpen(a.id)} />)}
-          </div>)}
+        : <AlbumTable list={list} onOpen={onOpen} />)}
     </div>
   );
 }
@@ -113,17 +108,34 @@ function ReadyBar({ a }: { a: Album }) {
   );
 }
 
+// Crate's list. "6 of 6" already says an album is ready, so the Status column is only
+// there while some album has songs left to sort.
+function AlbumTable({ list, onOpen }: { list: Album[]; onOpen: (id: string) => void }) {
+  const status = list.some((a) => albumState(a).tone === "warn");
+  const cols = `alb-cols${status ? "" : " alb-cols--nostatus"}`;
+  return (
+    <div className="table table--crate">
+      <div className={`row cols cols-head ${cols}`}>
+        <span /><span /><span>Album</span><span>Out</span><span className="col-num">Songs</span>
+        <span className="col-num">Length</span><span>Ready</span>{status && <span>Status</span>}
+      </div>
+      {list.map((a) => <AlbumRow key={a.id} a={a} cols={cols} status={status} onOpen={() => onOpen(a.id)} />)}
+    </div>
+  );
+}
+
 function StatePill({ a }: { a: Album }) {
   const s = albumState(a);
+  if (s.tone !== "warn") return <span />;
   return <span className={`pill alb-pill alb-pill--${s.tone}`}>{s.label}</span>;
 }
 
-function AlbumRow({ a, onOpen }: { a: Album; onOpen: () => void }) {
+function AlbumRow({ a, cols, status, onOpen }: { a: Album; cols: string; status: boolean; onOpen: () => void }) {
   return (
-    <div className="row cols alb-cols alb-row" role="button" tabIndex={0} onClick={onOpen}
+    <div className={`row cols ${cols} alb-row`} role="button" tabIndex={0} onClick={onOpen}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
       onContextMenu={(e) => openMenu(e, listMenu(a, onOpen))}>
-      <span className="stripe alb-stripe" />
+      <span className="stripe alb-stripe" style={{ background: genreColor(mainGenre(a)) }} />
       <Cover name={a.title} size={36} label={false} />
       <div className="row__main">
         <div className="row__title" title={a.title}>{a.title}</div>
@@ -136,7 +148,7 @@ function AlbumRow({ a, onOpen }: { a: Album; onOpen: () => void }) {
       <span className="col-num">{a.songs.length}</span>
       <span className="col-num"><LengthOf a={a} /></span>
       <ReadyBar a={a} />
-      <StatePill a={a} />
+      {status && <StatePill a={a} />}
     </div>
   );
 }
@@ -166,6 +178,7 @@ function AlbumSleeve({ a, onOpen }: { a: Album; onOpen: () => void }) {
       onContextMenu={(e) => openMenu(e, listMenu(a, onOpen))}>
       <div className="sleeve__art">
         <Cover name={a.title} />
+        <OutNow a={a} />
         <span className="sleeve__badge"><span className={`dot ${s.tone === "ok" ? "dot--ok" : s.tone === "warn" ? "dot--warn" : ""}`} />{s.label}</span>
       </div>
       <div className="sleeve__meta">
@@ -175,6 +188,14 @@ function AlbumSleeve({ a, onOpen }: { a: Album; onOpen: () => void }) {
       </div>
     </div>
   );
+}
+
+// On release day an OUT NOW stamp is pressed onto the cover (once, as the page opens);
+// after the day it stays there, still.
+function OutNow({ a }: { a: Album }) {
+  const day = releaseDay(a.release_date);
+  if (day === null || day > 0) return null;
+  return <span className={`outnow${day === 0 ? " outnow--stamp" : ""}`}>Out now</span>;
 }
 
 // Name a new album and, if you know it, the day it comes out.
@@ -254,8 +275,8 @@ function AlbumPage({ a, look, app, onClose, metaFor, onOpenProject }: AlbumsProp
       <BackLink onClick={onClose} />
       <header className="albpage__head">
         {sleeve
-          ? <div className="albpage__sleeve"><span className="albpage__spine">{a.title}</span><Cover name={a.title} size={184} /></div>
-          : <Cover name={a.title} size={96} className="albpage__art" />}
+          ? <div className="albpage__sleeve"><span className="albpage__spine">{a.title}</span><Cover name={a.title} size={184} /><OutNow a={a} /></div>
+          : <span className="albpage__art"><Cover name={a.title} size={96} /><OutNow a={a} /></span>}
         <div className="albpage__info">
           <div className="eyebrow">Album{a.release_date ? ` · out ${fmtRelease(a.release_date)} · ${daysToGo(a.release_date)}` : " · no release date yet"} · also in {OTHER[app]}</div>
           {renaming
@@ -286,11 +307,11 @@ function AlbumPage({ a, look, app, onClose, metaFor, onOpenProject }: AlbumsProp
               onClick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); openMenu({ preventDefault() {}, stopPropagation() {}, clientX: r.left, clientY: r.bottom + 4 }, pageMenu); }}>
               <Icon name="more" /></button>
           </div>
+          {a.songs.length > 1 && <Crossfade a={a} />}
         </div>
       </header>
 
-      {a.songs.length > 1 && <Mixer a={a} />}
-      {a.songs.length > 0 && <SongList a={a} app={app} nowAt={nowAt} onPlay={play} onOpenProject={onOpenProject} />}
+      {a.songs.length > 0 && <SongList a={a} app={app} nowAt={nowAt} playing={playing} onPlay={play} onOpenProject={onOpenProject} />}
       {a.songs.length === 0 && !adding && <div className="table"><EmptyState pose="napping" title="No songs on it yet" say="Plenty of room.">
         Press Add songs to pick from your exports.</EmptyState></div>}
       {adding && <AddSongs a={a} app={app} />}
@@ -298,52 +319,88 @@ function AlbumPage({ a, look, app, onClose, metaFor, onOpenProject }: AlbumsProp
   );
 }
 
-// The crossfade: a slider and a few presets. It only changes how the album plays here.
-function Mixer({ a }: { a: Album }) {
+// The crossfade: four presets on one line, and Custom for a slider. It only changes
+// how the album plays here.
+function Crossfade({ a }: { a: Album }) {
+  const isPreset = (secs: number) => FADE_PRESETS.some((p) => p.secs === secs);
   const [v, setV] = useState(a.crossfade);
-  useEffect(() => setV(a.crossfade), [a.crossfade]);
+  const [custom, setCustom] = useState(!isPreset(a.crossfade));
+  useEffect(() => { setV(a.crossfade); if (!isPreset(a.crossfade)) setCustom(true); }, [a.crossfade]);  // eslint-disable-line react-hooks/exhaustive-deps
   const commit = (secs: number) => { setV(secs); if (secs !== a.crossfade) void setCrossfade(a.id, secs).catch((e) => toastWarn(String(e.message))); };
   return (
-    <div className="alb-mixer" role="group" aria-label="Crossfade">
-      <span className="alb-mixer__label">Crossfade</span>
-      <input type="range" min={0} max={MAX_FADE} step={0.5} value={v} aria-label="Crossfade in seconds"
-        aria-valuetext={fadeLabel(v)} onChange={(e) => setV(Number(e.target.value))}
-        onPointerUp={() => commit(v)} onKeyUp={() => commit(v)} onBlur={() => commit(v)}
-        style={{ ["--fill" as string]: `${(v / MAX_FADE) * 100}%` }} />
-      <span className="alb-mixer__val">{fadeLabel(v)}</span>
-      <span className="seg alb-mixer__presets" role="group" aria-label="Crossfade presets">
+    <div className="alb-fade" role="group" aria-label="Crossfade" title="Only changes how it plays here. Your files stay as they are.">
+      <span className="alb-fade__label">Crossfade</span>
+      <span className="seg alb-fade__presets">
         {FADE_PRESETS.map((p) => (
-          <button key={p.secs} type="button" title={p.hint} aria-pressed={v === p.secs}
-            className={`seg__opt${v === p.secs ? " seg__opt--on" : ""}`} onClick={() => commit(p.secs)}>{p.label}</button>
+          <button key={p.secs} type="button" title={p.hint} aria-pressed={!custom && v === p.secs}
+            className={`seg__opt${!custom && v === p.secs ? " seg__opt--on" : ""}`}
+            onClick={() => { setCustom(false); commit(p.secs); }}>{p.label}</button>
         ))}
+        <button type="button" title="Any length up to 12 seconds" aria-pressed={custom} aria-expanded={custom}
+          className={`seg__opt${custom ? " seg__opt--on" : ""}`} onClick={() => setCustom(true)}>Custom</button>
       </span>
-      <span className="alb-mixer__note faint">Only changes how it plays here. Your files stay as they are.</span>
+      {custom && <>
+        <input type="range" min={0} max={MAX_FADE} step={0.5} value={v} aria-label="Crossfade in seconds"
+          aria-valuetext={fadeLabel(v)} onChange={(e) => setV(Number(e.target.value))}
+          onPointerUp={() => commit(v)} onKeyUp={() => commit(v)} onBlur={() => commit(v)}
+          style={{ ["--fill" as string]: `${(v / MAX_FADE) * 100}%` }} />
+        <span className="alb-fade__val">{fadeLabel(v)}</span>
+      </>}
     </div>
   );
 }
 
+// The same colours as the Library: safe green, changed blue, not backed up grey.
 const BACKUP: Record<string, { label: string; cls: string }> = {
   safe: { label: "Safe", cls: "pill--ok" },
-  changed: { label: "Changed", cls: "pill--private" },
-  none: { label: "Not backed up", cls: "pill--error" },
+  changed: { label: "Changed", cls: "alb-pill--changed" },
+  none: { label: "Not backed up", cls: "alb-pill--none" },
 };
 
-// The songs in order. Drag a row (or Alt + arrow keys) to move it.
-function SongList({ a, app, nowAt, onPlay, onOpenProject }: {
-  a: Album; app: AlbumsProps["app"]; nowAt: number; onPlay: (at: number) => void; onOpenProject?: (s: AlbumSong) => void;
+// Rows glide to their new place whenever the order changes (drag, Alt + arrows, menu),
+// like records sliding along in a crate. Skipped when the computer asks for less motion.
+function useGlide(list: RefObject<HTMLDivElement | null>, order: string) {
+  const tops = useRef(new Map<string, number>());
+  useLayoutEffect(() => {
+    const rows = list.current?.querySelectorAll<HTMLElement>("[data-glide]") ?? [];
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const next = new Map<string, number>();
+    rows.forEach((el) => {
+      const key = el.dataset.glide ?? "";
+      const top = el.offsetTop;
+      next.set(key, top);
+      const was = tops.current.get(key);
+      if (still || was === undefined || was === top) return;
+      el.style.transition = "none";
+      el.style.transform = `translateY(${was - top}px)`;
+      void el.offsetHeight; // start from the old place
+      el.style.transition = "transform var(--dur-slow) var(--ease-glide)";
+      el.style.transform = "";
+      el.addEventListener("transitionend", () => { el.style.transition = ""; }, { once: true });
+    });
+    tops.current = next;
+  }, [list, order]);
+}
+
+// The songs in order. Drag a row (or Alt + arrow keys) to move it; the others make room as it goes.
+function SongList({ a, app, nowAt, playing, onPlay, onOpenProject }: {
+  a: Album; app: AlbumsProps["app"]; nowAt: number; playing: boolean; onPlay: (at: number) => void; onOpenProject?: (s: AlbumSong) => void;
 }) {
   const paths = a.songs.map((s) => s.path);
-  const [drag, setDrag] = useState<number | null>(null);
-  const [over, setOver] = useState<number | null>(null);
+  const [drag, setDrag] = useState<string | null>(null);       // path of the song being dragged
+  const [order, setOrder] = useState<string[] | null>(null);   // the order shown while dragging
   const listRef = useRef<HTMLDivElement | null>(null);
+  const byPath = new Map(a.songs.map((s) => [s.path, s] as const));
+  const shown = order ? order.map((p) => byPath.get(p)).filter((s): s is AlbumSong => !!s) : a.songs;
+  useGlide(listRef, shown.map((s) => s.path).join("\n"));
+  const endDrag = () => { setDrag(null); setOrder(null); };
   const move = (from: number, to: number) => {
     if (from !== to) void orderSongs(a.id, moveItem(paths, from, to)).catch((e) => toastWarn(String(e.message)));
   };
   const focusRow = (i: number) => requestAnimationFrame(() => listRef.current?.querySelectorAll<HTMLElement>("[data-alb-row]")[i]?.focus());
   const remove = (s: AlbumSong) => {
     void takeOut(a.id, s.path).then(() => toast(`Took ${s.title} off ${a.title}.`, {
-      label: "Undo", onClick: () => void addSongs(a.id, [{ path: s.path, title: s.title, project: s.project }])
-        .then(() => orderSongs(a.id, paths)),
+      label: "Undo", onClick: () => void putBack(a.id, s, paths).catch((e) => toastWarn(String(e.message))),
     })).catch((e) => toastWarn(String(e.message)));
   };
   const backups = app === "backups";
@@ -351,12 +408,13 @@ function SongList({ a, app, nowAt, onPlay, onOpenProject }: {
     <div ref={listRef} className={`table table--crate alb-songs${backups ? " alb-songs--backups" : ""}`}>
       <div className="row cols cols-head alb-song-cols">
         <span /><span className="col-num">#</span><span /><span /><span>Song</span>
-        <span className="col-num">Length</span><span>Into next</span>{backups && <span>Backup</span>}<span>Status</span><span />
+        <span className="col-num">Length</span><span className="alb-into">Into next</span>{backups && <span>Backup</span>}<span>Status</span><span />
       </div>
-      {a.songs.map((s, i) => {
-        const last = i === a.songs.length - 1;
+      {shown.map((s, i) => {
+        const last = i === shown.length - 1;
+        const ri = order ? paths.indexOf(s.path) : i; // its place in the saved order
         const menu: MenuItem[] = [
-          { label: "Play from here", onClick: () => onPlay(i) },
+          { label: "Play from here", onClick: () => onPlay(ri) },
           ...(onOpenProject && s.project_id ? [{ label: "Open project", onClick: () => onOpenProject(s) }] : []),
           "-",
           { label: "Move to top", disabled: i === 0, onClick: () => move(i, 0) },
@@ -371,32 +429,47 @@ function SongList({ a, app, nowAt, onPlay, onOpenProject }: {
           "-",
           { label: "Take off this album", danger: true, onClick: () => remove(s) },
         ];
-        const cls = ["row cols alb-song-cols alb-drag", nowAt === i ? "alb-song--now" : "", drag === i ? "alb-drag--lifted" : "",
-          over === i && drag !== null && drag !== i ? (drag < i ? "alb-drag--below" : "alb-drag--above") : ""].join(" ");
+        const cls = ["row cols alb-song-cols alb-drag", !order && nowAt === ri ? "alb-song--now" : "",
+          drag === s.path ? "alb-drag--lifted" : ""].join(" ");
         return (
-          <div key={s.path} className={cls} data-alb-row tabIndex={0} draggable
+          <div key={s.path} className={cls} data-alb-row data-glide={s.path} tabIndex={0} draggable
             aria-label={`${i + 1}. ${s.title}. ${s.is_ready ? "Ready" : s.needs.join(", ")}. Alt and arrow keys move it.`}
-            onDragStart={(e) => { setDrag(i); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", s.path); }}
-            onDragEnter={() => setOver(i)}
-            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
-            onDrop={(e) => { e.preventDefault(); if (drag !== null) move(drag, i); setDrag(null); setOver(null); }}
-            onDragEnd={() => { setDrag(null); setOver(null); }}
+            onDragStart={(e) => { setDrag(s.path); setOrder(paths); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", s.path); }}
+            onDragOver={(e) => {
+              e.preventDefault(); e.dataTransfer.dropEffect = "move";
+              if (!drag || drag === s.path) return;
+              // Swap once the pointer passes the middle of the row it's heading into.
+              const r = e.currentTarget.getBoundingClientRect();
+              const below = e.clientY > r.top + r.height / 2;
+              setOrder((o) => {
+                if (!o) return o;
+                const from = o.indexOf(drag), to = o.indexOf(s.path);
+                return (to < from && !below) || (to > from && below) ? moveItem(o, from, to) : o;
+              });
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (order && order.join("\n") !== paths.join("\n"))
+                void orderSongs(a.id, order).catch((err) => toastWarn(String(err.message)));
+              endDrag();
+            }}
+            onDragEnd={endDrag}
             onKeyDown={(e) => {
               if (e.target !== e.currentTarget) return;
               if (e.altKey && e.key === "ArrowUp" && i > 0) { e.preventDefault(); move(i, i - 1); focusRow(i - 1); }
               else if (e.altKey && e.key === "ArrowDown" && !last) { e.preventDefault(); move(i, i + 1); focusRow(i + 1); }
               else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); remove(s); }
-              else if (e.key === "Enter") { e.preventDefault(); onPlay(i); }
+              else if (e.key === "Enter") { e.preventDefault(); onPlay(ri); }
             }}
             onContextMenu={(e) => openMenu(e, menu)}>
             <span className="alb-grip" aria-hidden title="Drag to move"><Icon name="rows" size={14} /></span>
             <span className="col-num faint">{i + 1}</span>
-            <button type="button" className={`playbtn${nowAt === i ? " playbtn--on" : ""}`} style={{ width: 28, height: 28 }}
+            <button type="button" className={`playbtn${nowAt === ri ? " playbtn--on" : ""}`} style={{ width: 28, height: 28 }}
               aria-label={`Play the album from ${s.title}`} title="Play the album from here"
-              onClick={(e) => { e.stopPropagation(); if (nowAt === i) togglePlaying(); else onPlay(i); }}>
-              <Icon name={nowAt === i ? "pause" : "play"} size={11} />
+              onClick={(e) => { e.stopPropagation(); if (nowAt === ri) togglePlaying(); else onPlay(ri); }}>
+              <Icon name={nowAt === ri && playing ? "pause" : "play"} size={11} />
             </button>
-            <Cover name={s.project || s.title} size={36} label={false} />
+            <Cover name={s.project || s.title} genre={s.genre || null} size={36} label={false} />
             <div className="row__main">
               <div className="row__title" title={s.path}>{s.title}</div>
               <div className="row__sub col-trunc">{s.project
@@ -407,7 +480,7 @@ function SongList({ a, app, nowAt, onPlay, onOpenProject }: {
                 : <span title="Not linked to a project yet">{fileLine(s)}</span>}{s.daw ? ` · ${dawName(s.daw)}` : ""}</div>
             </div>
             <span className="col-num"><SongLen path={s.path} /></span>
-            <span>{last ? <span className="faint">—</span>
+            <span className="alb-into">{last ? <span className="faint">—</span>
               : <button type="button" className={`alb-join${s.gapless_after ? " alb-join--gapless" : ""}`}
                   title={s.gapless_after ? "Runs straight into the next song. Click to blend instead." : "Click if this song should run straight into the next one, with no blend."}
                   onClick={() => void changeSong(a.id, { path: s.path, gapless_after: !s.gapless_after })}>
@@ -470,7 +543,7 @@ function AddSongs({ a, app }: { a: Album; app: AlbumsProps["app"] }) {
   const onIt = new Set(a.songs.map((s) => s.path));
   const left = (all ?? []).filter((c) => !onIt.has(c.path));
   const shown = q.trim() ? left.filter((c) => fuzzyScore(q, [c.title, c.project, c.genre ?? ""]) > 0) : left;
-  const add = (cs: AlbumCandidate[]) => void addSongs(a.id, cs.map((c) => ({ path: c.path, title: c.title, project: c.project })))
+  const add = (cs: AlbumCandidate[]) => void addSongs(a.id, cs.map((c) => ({ path: c.path, title: c.title, project: c.project, genre: c.genre || "" })))
     .catch((e) => toastWarn(String(e.message)));
   const from = app === "backups" ? "your projects' exports" : "your watched folders";
   return (

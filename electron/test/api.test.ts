@@ -20,12 +20,18 @@ describe("api client", () => {
     expect(JSON.parse(opts.body)).toEqual({ sources: ["C:/Music"], find_missing: false });
   });
 
-  it("throws on non-ok responses", async () => {
+  it("throws on non-ok responses, in plain words", async () => {
     (globalThis as any).fetch = vi.fn().mockResolvedValue({
-      ok: false, status: 400, json: async () => ({ detail: "no destination configured" }),
+      ok: false, status: 400, json: async () => ({ detail: "Choose a backup folder in Settings first." }),
     });
     const api = makeApi();
-    await expect(api.startBackup({})).rejects.toThrow(/no destination configured/);
+    await expect(api.startBackup({})).rejects.toThrow(/Choose a backup folder in Settings first\./);
+    (globalThis as any).fetch = vi.fn().mockResolvedValue({
+      ok: false, status: 404, json: async () => ({ detail: "unknown snapshot" }),
+    });
+    await expect(api.startBackup({})).rejects.toThrow("That backup isn't there any more.");
+    (globalThis as any).fetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    await expect(api.startBackup({})).rejects.toThrow(/lost touch with its engine/);
   });
 });
 

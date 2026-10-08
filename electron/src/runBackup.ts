@@ -7,6 +7,8 @@ import type { JobStatus } from "./types";
 
 const api = makeApi();
 
+export const DRIVE_GONE = "Your backup drive isn't connected. Plug it in and try again.";
+
 export type RunFailure = { project_name: string; path?: string; reason: string };
 export type RunResult =
   | { ok: true; result: NonNullable<JobStatus["result"]> }
@@ -18,11 +20,13 @@ type Opts = Parameters<ReturnType<typeof makeApi>["startBackup"]>[0];
 export function plainReason(raw?: string | null): string {
   const r = (raw || "").trim();
   if (!r) return "Something went wrong while backing it up.";
+  // Checked first: an unplugged drive must never read as a permissions problem.
+  if (/backup drive isn't connected/i.test(r)) return DRIVE_GONE;
   if (/no space left|disk full|ENOSPC/i.test(r)) return "The backup drive is full.";
   if (/permission denied|EACCES|EPERM|not permitted/i.test(r)) return "Backups wasn't allowed to read or write one of its files.";
   if (/no such file|not found|ENOENT|FileNotFound/i.test(r)) return "A file was moved or deleted while it was being backed up.";
   if (/failed to fetch|networkerror|ECONNREFUSED/i.test(r)) return "Backups lost touch with its engine. Restart the app and try again.";
-  if (/not reachable|unreachable|backup (folder|drive)|no destination/i.test(r)) return "The backup drive isn't connected.";
+  if (/not reachable|unreachable|backup (folder|drive)|no destination/i.test(r)) return DRIVE_GONE;
   if (/already running|busy|409/.test(r)) return "Another backup is still running. Try again when it's done.";
   return `Something went wrong: ${r.length > 140 ? r.slice(0, 140) + "…" : r}`;
 }

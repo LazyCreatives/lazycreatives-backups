@@ -2,8 +2,11 @@
 // still find the project. Small on purpose — no search library needed for a few
 // hundred names.
 
+// Accents on Latin letters drop ("Café" finds "cafe"); every other script is kept as
+// it is, so Japanese, Cyrillic, Korean or Arabic names are found by their own words.
 function norm(s: string): string {
-  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").normalize("NFC")
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, " ").trim();
 }
 
 // Edit distance with an early exit once it can't get under `max`.

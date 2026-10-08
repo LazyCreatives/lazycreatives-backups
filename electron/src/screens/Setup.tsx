@@ -4,6 +4,8 @@ import type { Config, SuggestedFolder } from "../types";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { WelcomeCard, WelcomeLook } from "../components/Welcome";
+import { fadeSwitch } from "../fade";
+import { SlothSpot } from "../components/SlothSpot";
 import { DestChoices, type DestChoice } from "../components/DestChoices";
 import "../setup.css";
 
@@ -61,27 +63,14 @@ export function Setup({ onDone }: { onDone: (c: Config, skipped: boolean) => voi
   if (step === 1) {
     return (
       <WelcomeCard app="Backups" step={1} title="Browse every project. No backup needed."
-        sub="Backups finds every project on your computer, from every music program, and lays them out to browse straight away. Backing up is optional: turn it on now, later or never, and it keeps checked copies so you never copy a project by hand again."
+        sub="You make the music. We'll handle the files."
         foot={<>{back}<Button onClick={() => setStep(2)}>Next</Button></>}>
-        <div className="pitch">
-          <div className="pitch__col">
-            <div className="pitch__head"><Icon name="search" size={15} />Browse</div>
-            <ul>
-              <li>Every project in one list, whatever app made it</li>
-              <li>Search by name, tempo or genre</li>
-              <li>Play the songs each project exported</li>
-            </ul>
-          </div>
-          <div className="pitch__col">
-            <div className="pitch__head"><Icon name="check" size={15} />Back up, if you want</div>
-            <ul>
-              <li>Every sample followed, none left behind</li>
-              <li>Each copy read back to check it opens</li>
-              <li>Runs on its own, as often as you choose</li>
-            </ul>
-          </div>
-        </div>
-        <WelcomeLook />
+        {/* two plain lines, the way a sleeve's back says what's on the record */}
+        <ul className="pitch">
+          <li><b>Browse</b> every project on your computer in one list, whatever music program made it. Search by name, tempo or genre, and play the songs each one exported.</li>
+          <li><b>Back up, if you want:</b> now, later or never. Every sample is followed and every copy is opened to check it works, so you never copy a project by hand again.</li>
+        </ul>
+        <WelcomeLook onPick={fadeSwitch} />
       </WelcomeCard>
     );
   }
@@ -94,6 +83,7 @@ export function Setup({ onDone }: { onDone: (c: Config, skipped: boolean) => voi
           : any ? "We found these on your computer. Untick any you don't want in your library."
           : "Add the folders with your projects. Ableton, FL Studio, Logic Pro, Studio One, Reaper, Audacity and Bitwig projects are all found."}
         foot={<>{back}<Button onClick={() => setStep(3)} disabled={sources.length === 0}>Next</Button></>}>
+        {found === null && <div className="setup-looking"><SlothSpot pose="searching" size={120} /></div>}
         {any && (
           <div className="suggest" role="group" aria-label="Project folders found">
             {found!.map((f) => (
@@ -126,16 +116,25 @@ export function Setup({ onDone }: { onDone: (c: Config, skipped: boolean) => voi
   }
 
   return (
-    <WelcomeCard app="Backups" step={3} title="Where should backups go?"
-      sub="Pick a drive, or a Dropbox or Google Drive folder that syncs to the cloud on its own."
+    <WelcomeCard app="Backups" step={3} title="Back up too?"
+      sub="Browsing needs nothing more. To keep checked copies as well, pick a drive, or a Dropbox or Google Drive folder that syncs to the cloud on its own."
       foot={<>{back}
+        {/* Browsing is a full way to finish, not a skip. With no drive picked it's
+            the main button; once one is picked, backing up leads and browsing stays
+            right beside it. */}
         <div className="welcome__acts">
-          <Button variant="ghost" onClick={() => finish(true)} disabled={saving}>Skip backup for now</Button>
-          <Button onClick={() => finish(false)} disabled={!dest || saving}>{saving ? "Saving…" : "Finish & scan"}</Button>
+          {dest ? <>
+            <Button variant="ghost" onClick={() => finish(true)} disabled={saving}>Just browse for now</Button>
+            <Button onClick={() => finish(false)} disabled={saving}>{saving ? "Saving…" : "Back up & browse"}</Button>
+          </> : (
+            <Button onClick={() => finish(true)} disabled={saving}>{saving ? "Saving…" : "Browse my projects"}</Button>
+          )}
         </div></>}>
       <DestChoices dest={dest} choice={choice} onPick={(d, c) => { setDest(d); setChoice(c); }} />
       <p className="welcome__skipnote">
-        Just want to browse your projects? Skip this for now and turn backups on any time in Settings.
+        {dest
+          ? "Or just browse for now. Backups are one click away whenever you want them, in Settings or on Home."
+          : "No drive needed to browse every project. Pick one above to back up too, now or any time later."}
       </p>
       {err && <div className="card" style={{ borderColor: "var(--danger)", color: "var(--danger)", marginTop: 14 }}>{err}</div>}
     </WelcomeCard>

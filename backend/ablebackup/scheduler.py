@@ -6,7 +6,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from ablebackup import entitlement
 from ablebackup.catalog import Catalog
-from ablebackup.service import backup_in_progress, run_backup
+from ablebackup.service import BackupDriveMissing, backup_in_progress, run_backup
 
 _JOB_ID = "auto_backup"
 
@@ -56,11 +56,16 @@ class BackupScheduler:
 
         # Same good defaults as a manual backup: relink missing samples and make
         # snapshots portable; labelled so they're recognisable in history.
-        run_backup(
-            [Path(s) for s in sources], Path(dest), self._catalog,
-            progress=progress, label="Auto", portable=True, find_missing=True,
-            libraries=config.get("libraries", []), mirrors=mirrors,
-        )
+        try:
+            run_backup(
+                [Path(s) for s in sources], Path(dest), self._catalog,
+                progress=progress, label="Auto", portable=True, find_missing=True,
+                libraries=config.get("libraries", []), mirrors=mirrors,
+            )
+        except BackupDriveMissing:
+            # The drive is unplugged: skip this run without making any folders. Home
+            # already says "Backup drive not found"; the next timed run tries again.
+            return
 
     def shutdown(self) -> None:
         self._scheduler.shutdown(wait=False)

@@ -96,7 +96,7 @@ export function Review({ pending, onStarted, onCancel }: {
               <button className={`seg__opt${portable ? " seg__opt--on" : ""}`} onClick={() => setPortable(true)}>Opens anywhere</button>
               <button className={`seg__opt${!portable ? " seg__opt--on" : ""}`} onClick={() => setPortable(false)}>Copy as-is</button>
             </div>
-            <span className="faint" style={{ fontSize: 12.5 }}>
+            <span className="faint" style={{ fontSize: 12 }}>
               {portable
                 ? "Recommended. The backup opens with all its samples on any computer."
                 : "Copies everything exactly as it is now. Opened elsewhere, samples from other folders may show as missing."}
@@ -127,7 +127,7 @@ export function Review({ pending, onStarted, onCancel }: {
       </div>
 
       {pending.findMissing && (
-        <p className="faint" style={{ fontSize: 12.5, margin: "4px 0 14px" }}>
+        <p className="faint" style={{ fontSize: 12, margin: "4px 0 14px" }}>
           Missing samples will be looked for in your sample library and included.
         </p>
       )}

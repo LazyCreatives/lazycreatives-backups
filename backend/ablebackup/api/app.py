@@ -29,10 +29,10 @@ from ablebackup.service import (
     default_timestamp, full_disk_access_ok, pool_cache_age, rclone_available,
     backfill_genres, project_genres, relearn_genres, rclone_remotes, refresh_pool_cache,
     resolve_scan_roots, restore_snapshot, run_backup, safe_remote_name, scan_summary,
-    share_snapshot, snapshot_diff,
+    share_snapshot, snapshot_diff, BackupDriveMissing, prepare_dest, remember_dest,
 )
 from ablebackup.resolver import _allowed_external_file
-from ablebackup.scanner import scan_one
+from ablebackup.scanner import ParseCache, scan_one
 from ablebackup.songmatch import is_stem
 from ablebackup.suggest import suggested_folders
 from ablebackup.verifier import verify_snapshot
@@ -265,6 +265,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         if config.interval_minutes > 0 and not _allows("scheduled"):
             config.interval_minutes = 0  # automatic backup is Pro-only
         _make_dest(config.dest)
+        remember_dest(app.state.catalog, config.dest)  # so a later unplug is noticed
         app.state.catalog.set_setting("config", config.model_dump())
         app.state.scheduler.set_interval(config.interval_minutes)
         return config
@@ -304,7 +305,9 @@ def create_app(token: str, db_path: Path) -> FastAPI:
             sources, progress=progress, find_missing=find_missing,
             libraries=cfg.get("libraries", []), stats=stats,
             learned=app.state.catalog.genre_examples(),
-            pointed=app.state.catalog.all_pointed())
+            pointed=app.state.catalog.all_pointed(),
+            # unchanged project files aren't read again (their samples still are)
+            cache=ParseCache(app.state.catalog))
         if not _allows("multi_daw"):
             projects = [p for p in projects if p.get("daw") == "ableton"]
         # Persist what we found so History shows the whole library, not just backups.
@@ -334,7 +337,13 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         rows = app.state.catalog.library()
         latest = app.state.catalog.latest_exports()
         uploaded = {e.get("path") for e in _uploaded_paths()}
+        # Which projects sit inside the project folders from Settings: those are the
+        # ones Home's "Back up N projects" backs up, so it counts only these.
+        cfg = app.state.catalog.get_setting("config") or {}
+        roots = [os.path.normcase(os.path.normpath(s)) for s in cfg.get("sources", []) if s]
         for r in rows:
+            p = os.path.normcase(os.path.normpath(r.get("path") or ""))
+            r["in_folders"] = any(p == root or p.startswith(root.rstrip(os.sep) + os.sep) for root in roots)
             ex = latest.get(r["project_id"])
             r["export_count"] = ex["count"] if ex else 0
             r["latest_export"] = (
@@ -656,6 +665,11 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         dest = req.dest or saved.get("dest", "")
         if not dest:
             raise HTTPException(status_code=400, detail="Backups are off. Choose where to keep them in Settings first.")
+        # An unplugged drive stops here, before anything is made on the computer's disk.
+        try:
+            await asyncio.to_thread(prepare_dest, app.state.catalog, dest)
+        except BackupDriveMissing as e:
+            raise HTTPException(status_code=409, detail=str(e))
         timestamp = req.timestamp or default_timestamp()
         # Free tier: Ableton only, and no auto-relink of missing samples.
         als_paths = req.als_paths
@@ -717,6 +731,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         # build_overview reads cached figures (fast), but disk_usage on the NAS can
         # block briefly — keep it off the event loop.
         data = await asyncio.to_thread(build_overview, app.state.catalog, dest)
+        if data.get("nas", {}).get("reachable"):
+            remember_dest(app.state.catalog, dest)  # seen here, so missing later = unplugged
         # Returns instantly from cache; kick off a background walk if it's missing
         # or stale (>2 min) so the figures stay current without blocking the load.
         age = pool_cache_age(app.state.catalog)

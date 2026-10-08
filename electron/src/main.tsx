@@ -16,6 +16,10 @@ import "./theme.css";    // Backups-only bits
 import "./flow.css";     // the step-by-step backup screens
 import "./companion.css"; // the narrow window and its sidebar button; after the shared styles so it wins ties
 import { Companion } from "./screens/Companion";
+import { fadeThemeChanges } from "./fade";
+
+// Light / dark changes cross-fade (see fade.ts).
+fadeThemeChanges();
 
 // Surface uncaught renderer errors to the console (forwarded to the run log by main.js).
 window.addEventListener("error", (e) =>

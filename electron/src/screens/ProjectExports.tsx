@@ -214,7 +214,7 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
       </div>
 
       {folders && (
-        <div className="faint" style={{ margin: "12px 0 0", fontSize: 12.5 }}>
+        <div className="faint" style={{ margin: "12px 0 0", fontSize: 12 }}>
           Looking in: the project folder
           {folders.folders.map((f) => (
             <span key={f}>

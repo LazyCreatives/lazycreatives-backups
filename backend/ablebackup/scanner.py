@@ -1,5 +1,9 @@
+import dataclasses
 import hashlib
+import json
 import os
+import stat as stat_mod
+import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
@@ -23,6 +27,77 @@ ProgressCb = Optional[Callable[[dict], None]]
 _SCAN_WORKERS = min(8, (os.cpu_count() or 4))
 # Below this many projects the pool's spin-up isn't worth it; parse inline instead.
 _PARALLEL_THRESHOLD = 4
+
+
+def _reader_version() -> str:
+    """Changes whenever the project readers might read a file differently: the app
+    build when packaged, else the readers' own source. Cached reads from another
+    version are ignored, so an update never shows stale results."""
+    if getattr(sys, "frozen", False):
+        try:
+            st = os.stat(sys.executable)
+            return f"app:{st.st_size}:{st.st_mtime_ns}"
+        except OSError:
+            return "app"
+    h = hashlib.sha1()
+    here = Path(__file__).resolve().parent
+    for f in sorted([*here.joinpath("daws").glob("*.py"), here / "als_parser.py", Path(__file__).resolve()]):
+        try:
+            h.update(f.name.encode()); h.update(f.read_bytes())
+        except OSError:
+            pass
+    return "src:" + h.hexdigest()[:16]
+
+
+class ParseCache:
+    """Remembers what reading each project file gave, keyed on the file's size and
+    save time, so a rescan only re-reads project files that changed. Samples are
+    still looked up on disk every time (that part is cheap and must be current).
+    Backed by the catalog (Catalog.parse_cache_load / parse_cache_save)."""
+
+    def __init__(self, catalog=None):
+        self._catalog = catalog
+        self.ver = _reader_version()
+        self._known = catalog.parse_cache_load(self.ver) if catalog is not None else {}
+        self._new: list[tuple] = []
+        self.hits = 0
+
+    @staticmethod
+    def signature(project_path: Path) -> Optional[tuple[int, int]]:
+        """(size, mtime_ns) of a project file; None for a folder project (a Logic
+        package's own time doesn't change when a file inside it does) or when unreadable."""
+        try:
+            st = os.stat(project_path)
+        except OSError:
+            return None
+        if stat_mod.S_ISDIR(st.st_mode):
+            return None
+        return st.st_size, st.st_mtime_ns
+
+    def get(self, project_path: Path, sig) -> Optional[dict]:
+        if sig is None:
+            return None
+        hit = self._known.get(str(project_path))
+        if not hit or (hit[0], hit[1]) != sig:
+            return None
+        try:
+            d = json.loads(hit[2])
+            raw = {"refs": [FileRef(**r) for r in d["refs"]], "meta": d.get("meta")}
+        except (ValueError, TypeError, KeyError):
+            return None
+        self.hits += 1
+        return raw
+
+    def put(self, project_path: Path, sig, raw: dict) -> None:
+        if sig is None or raw is None:
+            return
+        data = json.dumps({"refs": [dataclasses.asdict(r) for r in raw["refs"]], "meta": raw.get("meta")})
+        self._new.append((str(project_path), sig[0], sig[1], data))
+
+    def save(self) -> None:
+        if self._catalog is not None and self._new:
+            self._catalog.parse_cache_save(self.ver, self._new)
+        self._new = []
 
 
 def project_id(project_path: Path) -> str:
@@ -191,7 +266,8 @@ def _scan_safely(project_path: Path, locate, overrides=None) -> Optional[Project
 
 def scan_projects(roots: list[Path], progress: ProgressCb = None,
                   locate=None, stats: Optional[dict] = None,
-                  pointed: Optional[dict] = None) -> list[ProjectScan]:
+                  pointed: Optional[dict] = None,
+                  cache: Optional[ParseCache] = None) -> list[ProjectScan]:
     """Discover and resolve every project under the roots (all DAWs).
 
     Counting project files up front lets us emit a real progress bar (scan_start/
@@ -205,6 +281,9 @@ def scan_projects(roots: list[Path], progress: ProgressCb = None,
 
     `pointed` ({project file: {expected path: chosen file}}) carries the files the
     producer pointed at for missing samples, so those count as found.
+
+    `cache` (a ParseCache) skips re-reading project files whose size and save time
+    are the same as last time; only their samples are looked up again.
     """
     pointed = pointed or {}
     # With progress (or a stats request), walk once with live ticks + skip counting;
@@ -230,8 +309,29 @@ def scan_projects(roots: list[Path], progress: ProgressCb = None,
             name = scan.name if scan is not None else project_files[idx].stem
             progress({"type": "scan_progress", "done": done, "total": total, "name": name})
 
+    # Unchanged project files: use what reading them gave last time.
+    sigs: list = [None] * total
+    todo = list(range(total))
+    if cache is not None:
+        todo = []
+        for idx, pf in enumerate(project_files):
+            sigs[idx] = cache.signature(pf)
+            raw = cache.get(pf, sigs[idx])
+            if raw is None:
+                todo.append(idx)
+                continue
+            try:
+                scan = _resolve_parsed(pf, raw["refs"], locate, raw.get("meta"), pointed.get(str(pf)))
+            except _BAD_FILE:
+                scan = None
+            _tick(idx, scan)
+
+    def _remember(idx: int, raw) -> None:
+        if cache is not None and raw is not None:
+            cache.put(project_files[idx], sigs[idx], raw)
+
     pool = None
-    if total >= _PARALLEL_THRESHOLD:
+    if len(todo) >= _PARALLEL_THRESHOLD:
         try:
             pool = ProcessPoolExecutor(max_workers=_SCAN_WORKERS)
         except OSError:
@@ -242,8 +342,8 @@ def scan_projects(roots: list[Path], progress: ProgressCb = None,
         try:
             with pool:
                 futures = {
-                    pool.submit(_parse_in_worker, str(pf)): idx
-                    for idx, pf in enumerate(project_files)
+                    pool.submit(_parse_in_worker, str(project_files[idx])): idx
+                    for idx in todo
                 }
                 for fut in as_completed(futures):
                     idx = futures[fut]
@@ -254,6 +354,7 @@ def scan_projects(roots: list[Path], progress: ProgressCb = None,
                     except _BAD_FILE:
                         raw = None
                     scan = None
+                    _remember(idx, raw)
                     if raw is not None:
                         try:
                             scan = _resolve_parsed(project_files[idx], raw["refs"], locate, raw.get("meta"),
@@ -269,8 +370,22 @@ def scan_projects(roots: list[Path], progress: ProgressCb = None,
                 if not _was_ticked[idx]:
                     _tick(idx, _scan_safely(pf, locate, pointed.get(str(pf))))
     else:
-        for idx, pf in enumerate(project_files):
-            _tick(idx, _scan_safely(pf, locate, pointed.get(str(pf))))
+        for idx in todo:
+            pf = project_files[idx]
+            if cache is None:
+                _tick(idx, _scan_safely(pf, locate, pointed.get(str(pf))))
+                continue
+            raw = _parse_in_worker(str(pf))  # same read, kept for next time
+            _remember(idx, raw)
+            scan = None
+            if raw is not None:
+                try:
+                    scan = _resolve_parsed(pf, raw["refs"], locate, raw.get("meta"), pointed.get(str(pf)))
+                except _BAD_FILE:
+                    scan = None
+            _tick(idx, scan)
+    if cache is not None:
+        cache.save()
 
     projects = [s for s in results if s is not None]  # discovery order, failures dropped
     if progress:

@@ -2,14 +2,16 @@ import { Cover } from "./Cover";
 import { genreColor, useLook, useTheme, type ThemeChoice } from "../look";
 
 // The whole-app look switch: Crate (rows like a DJ library) or Sleeve (cover art first).
-// Switching takes effect at once on every screen.
-export function LookPicker() {
+// Switching takes effect at once on every screen. `onPick` wraps the switch (Backups
+// passes its soft cross-fade, fade.ts); without it the look changes straight away.
+export function LookPicker({ onPick }: { onPick?: (change: () => void) => void } = {}) {
   const [look, setLook] = useLook();
+  const pick = (k: "crate" | "sleeve") => { if (k !== look) (onPick ?? ((f) => f()))(() => setLook(k)); };
   return (
     <div className="lookpick" role="group" aria-label="Look">
       {([["crate", "Crate", "Rows like a DJ library, with waveforms and genre stripes"],
          ["sleeve", "Sleeve", "Cover art first, like an album shelf"]] as const).map(([k, name, what]) => (
-        <button key={k} type="button" className="lookpick__opt" aria-pressed={look === k} onClick={() => setLook(k)}>
+        <button key={k} type="button" className="lookpick__opt" aria-pressed={look === k} onClick={() => pick(k)}>
           <LookThumb kind={k} />
           <span><strong style={{ fontWeight: 600 }}>{name}</strong><br /><small>{what}</small></span>
         </button>

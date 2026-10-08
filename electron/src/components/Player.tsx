@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { makeApi } from "../api";
-import { coverColor } from "../look";
+import { coverColor, useLook } from "../look";
 import { Cover } from "./Cover";
 import { Icon } from "./Icon";
 import { Wave, type WaveMark } from "./Wave";
 import { AUDITION_DELAY, AUDITION_FROM, auditionOn, bindAuditionKeys, useAuditionMode } from "../audition";
-import { Meter, listenTo } from "./Meter";
+import { Meter, hear, listenTo } from "./Meter";
 import { onWindowMinimized, pausesOnMinimize } from "../desktop";
+import { toastWarn } from "./Desktop";
 
 const api = makeApi();
 
@@ -61,6 +62,21 @@ function make(): HTMLAudioElement {
       if (wanted) a.play().catch(() => {}); else a.load();
       return;
     }
+    // Playing an album: a song that can't play (say, on a drive that isn't plugged
+    // in) is skipped with a short note, so the album carries on and no row is left
+    // showing Pause for a song that never started.
+    const run = album;
+    if (run && run.songs[run.at]?.path === state.path) {
+      const gone = run.songs[run.at];
+      const nextAt = run.songs.findIndex((x, i) => i > run.at && x.path !== gone.path);
+      if (nextAt > 0) {
+        toastWarn(`Skipped ${gone.meta.title}: its file couldn't be played. Is it on a drive that isn't plugged in?`);
+        window.setTimeout(() => { if (album === run) playAlbum(run.key, run.songs, nextAt, run.fade); }, 0);
+        return;
+      }
+      leaveAlbum();
+    }
+    wanted = false;
     set({ playing: false, error: "Couldn't play this file" });
   });
   return a;
@@ -542,6 +558,8 @@ function NowPlaying({ color, art, title, sub, open, openLabel, playing, onPlay, 
   meter: React.ReactNode; onClose: () => void;
 }) {
   const shrink = useRef<HTMLButtonElement | null>(null);
+  const [look] = useLook();
+  const glow = useLevelGlow(playing && look === "sleeve");
   useEffect(() => {
     shrink.current?.focus();
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); } };
@@ -551,6 +569,7 @@ function NowPlaying({ color, art, title, sub, open, openLabel, playing, onPlay, 
   return (
     <div className="nowplaying" role="dialog" aria-modal="true" aria-label="Now playing"
       style={{ "--np-tint": color } as React.CSSProperties}>
+      <div className="nowplaying__glow" ref={glow} aria-hidden="true" />
       <div className="nowplaying__top">
         <button type="button" ref={shrink} className="iconbtn" onClick={onClose}
           aria-label="Make the player smaller" title="Make the player smaller (Esc)"><Icon name="chevronDown" /></button>
@@ -582,4 +601,31 @@ function NowPlaying({ color, art, title, sub, open, openLabel, playing, onPlay, 
       </div>
     </div>
   );
+}
+
+// Sleeve's now-playing glow, gently following the music: the same real sound the Crate
+// level meters listen to (Meter.tsx), smoothed so it swells on the loud parts and sinks
+// back slowly. It rests (and the glow stays as drawn) when paused, when the sound can't
+// be heard, and always with Reduce Motion on.
+function useLevelGlow(active: boolean) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { el.style.opacity = "0"; return; }
+    let raf = 0, level = Number(el.style.opacity) || 0;
+    const tick = () => {
+      const heard = active ? hear() : null;
+      // most music sits high on the meter's scale: spread its upper half over 0..1
+      const want = heard ? Math.max(0, Math.min(1, ((heard[0] + heard[1]) / 2 - 0.45) / 0.5)) : 0;
+      level += (want - level) * (want > level ? 0.18 : 0.05);
+      el.style.opacity = level.toFixed(3);
+      el.style.transform = `scale(${(1 + level * 0.05).toFixed(4)})`;
+      if (active || level > 0.005) raf = requestAnimationFrame(tick);
+      else el.style.opacity = "0";
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [active]);
+  return ref;
 }

@@ -1,11 +1,8 @@
 /* Home: headline, status bar, figures, "needs a look" table, drive footer.
    Shared parts (page-head, figures, table) come from lazy-ui.css. */
-.statusbar { display: flex; gap: 2px; height: 10px; border-radius: 3px; overflow: hidden; margin-bottom: 12px; background: var(--surface-3); }
-.statusbar > span { display: block; min-width: 4px; }
-.look-cols { --cols: 10px minmax(0, 1fr) 170px 80px 110px 150px; }
 .home-foot {
   display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
-  padding-top: 14px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text-dim);
+  padding-top: 14px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-dim);
 }
 .home-foot > :last-child { margin-left: auto; }
 
@@ -33,7 +30,7 @@
 .spine--look { background: var(--warn); }
 .needs-cols { --cols: 4px 36px minmax(0, 1fr) 170px 150px; cursor: pointer; }
 .allgood {
-  display: flex; align-items: center; gap: 12px; padding: 10px 16px 10px 10px; font-size: 13.5px; color: var(--text-dim);
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px 10px 10px; font-size: 13px; color: var(--text-dim);
   border: 1px solid var(--border-strong); border-radius: 8px;
 }
 .allgood b { color: var(--text); font-weight: 600; }
@@ -46,28 +43,33 @@
 .songcell__top { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; margin-bottom: 4px; }
 .songcell__top .linkbtn { color: var(--text); font-weight: 500; text-align: left; }
 .songcell__top .mono { font-size: 12px; flex: none; }
-@media (max-width: 1050px) {
+/* Home measures its own width (the window less the sidebar), not the window's: when the
+   lists beside the readout would leave a project's name only a few letters, the readout
+   goes on top and the lists get the full width. */
+.home { container: home / inline-size; }
+@container home (max-width: 959px) {
   .home-deck { grid-template-columns: 1fr; }
   .deckcard { grid-template-columns: 240px minmax(0, 1fr); align-items: start; column-gap: 24px; }
   .deckcard__screen, .spines { grid-column: 1; }
   .deckcard__legend { grid-row: 1 / span 2; grid-column: 2; }
 }
 
-/* ── Sleeve: a hero panel, a shelf of recent covers, "needs a look" as cards ── */
-.home-hero {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 360px); gap: 28px; align-items: center;
-  padding: 26px 26px 24px; margin-bottom: 26px; border: 1px solid var(--border-strong); border-radius: 14px;
-  background: var(--surface);
+/* ── Sleeve: the page head, the numbers printed big (as on a project's page), a shelf of
+   recent covers, "needs a look" as cards ── */
+.home-print { margin: -6px 0 28px; padding-bottom: 22px; border-bottom: 1px solid var(--border); }
+.home-spec dt { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.home-spec dd { white-space: nowrap; }
+.home-spec__n {
+  padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; cursor: pointer;
+  border-radius: 4px; transition: color var(--dur-quick) var(--ease-lazy);
 }
-.home-hero__text { display: grid; gap: 16px; min-width: 0; }
-.home-hero__text h1 { font-size: 30px; }
-.home-hero__text .page-head__actions { justify-content: flex-start; }
-.statusbar--fat { height: 12px; border-radius: 6px; margin-bottom: 10px; }
-.home-hero__legend { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; }
-.home-hero__legend .linkbtn { color: var(--text-dim); }
-.home-hero__legend b { color: var(--text); font-weight: 600; }
-.home-hero__saved { margin-top: 14px; font-size: 12px; color: var(--text-faint); display: flex; justify-content: space-between; }
-.home-hero__saved .mono { color: var(--text-dim); }
+.home-spec__n:hover { color: var(--accent); }
+.home-print__saved { margin: 12px 0 0; font-size: 12px; color: var(--text-faint); }
+.home-print__saved .mono { color: var(--text-dim); margin-left: 6px; }
+@container home (max-width: 760px) {
+  .home-spec > div { padding: 0 14px; }
+  .home-spec dd { font-size: 32px; }
+}
 .recent-shelf { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
 .needcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
 .needcard {
@@ -79,7 +81,6 @@
 .needcard__body { padding: 12px 14px; display: grid; gap: 6px; align-content: center; min-width: 0; }
 .needcard__body .col-act { justify-content: flex-start; flex-wrap: wrap; row-gap: 6px; }
 @media (max-width: 1150px) { .recent-shelf { grid-template-columns: repeat(4, minmax(0, 1fr)); } .recent-shelf > :nth-child(n+5) { display: none; } }
-@media (max-width: 950px) { .home-hero { grid-template-columns: 1fr; } }
 
 /* Pinned and recently worked on: Crate rows (stripe · cover · name · saved · state) */
 .recent-cols { --cols: 4px 36px minmax(0, 1fr) 170px 120px; }

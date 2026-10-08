@@ -795,7 +795,7 @@ def full_disk_access_ok() -> bool:
 
 def scan_summary(sources: list[Path], progress: ProgressCb = None,
                  find_missing: bool = False, libraries=None, stats=None, learned=(),
-                 pointed=None) -> list[dict]:
+                 pointed=None, cache=None) -> list[dict]:
     """Scan sources and return JSON-serializable project summaries.
 
     When progress is given, emits scan_start/scan_progress/scan_done events so the
@@ -809,7 +809,7 @@ def scan_summary(sources: list[Path], progress: ProgressCb = None,
     locate = _build_locator(sources, libraries) if find_missing else None
     out = []
     for p in scan_projects([Path(s) for s in sources], progress=progress, locate=locate, stats=stats,
-                            pointed=pointed):
+                            pointed=pointed, cache=cache):
         # Genre-tag at scan time from BPM (Ableton) + project name + sample filenames,
         # so the whole scanned library is diggable by genre, not just backed-up projects.
         samples = [r.name for r in p.refs]
@@ -841,6 +841,78 @@ def scan_summary(sources: list[Path], progress: ProgressCb = None,
 def _emit(progress: ProgressCb, event: dict) -> None:
     if progress is not None:
         progress(event)
+
+
+# The one sentence a person sees when the backup drive (or folder) has gone away.
+DRIVE_GONE = "Your backup drive isn't connected. Plug it in and try again."
+
+# Folders that hold plugged-in drives. A backup folder sitting straight inside one
+# of these IS a drive (or the top of one), so it's never made from scratch: on a
+# Mac that would fail with a "not allowed" error, elsewhere it would quietly fill
+# the computer's own disk.
+_DRIVE_HOLDERS = {"/Volumes", "/media", "/mnt", "/run/media"}
+
+
+class BackupDriveMissing(RuntimeError):
+    """The backup folder isn't there and must not be made again."""
+
+    def __init__(self):
+        super().__init__(DRIVE_GONE)
+
+
+def _holds_drives(folder: Path) -> bool:
+    s = folder.as_posix().rstrip("/")
+    if s in _DRIVE_HOLDERS:
+        return True
+    # /media/<user> and /run/media/<user> (Linux) hold drives one level down.
+    return folder.parent.as_posix() in {"/media", "/run/media"}
+
+
+def _seen_dests(catalog: Catalog) -> list:
+    seen = catalog.get_setting("dests_seen") or []
+    return seen if isinstance(seen, list) else []
+
+
+def remember_dest(catalog: Catalog, dest) -> None:
+    """Note that this backup folder exists, so that if it's ever missing later we
+    know the drive is gone (and don't make a new empty folder on the computer)."""
+    d = str(dest or "")
+    if not d or not Path(d).is_dir():
+        return
+    seen = _seen_dests(catalog)
+    if d in seen:
+        return
+    catalog.set_setting("dests_seen", (seen + [d])[-20:])
+
+
+def prepare_dest(catalog: Catalog, dest) -> Path:
+    """Make sure the backup folder is there before anything is written to it.
+
+    - There: fine (and remembered).
+    - Missing, but it was there before (seen, or a backup was made inside it): the
+      drive is unplugged or the network folder isn't mounted. Stop.
+    - Missing, and the folder it should live in is missing too, or it would sit
+      straight inside /Volumes (a drive's own name): the drive isn't plugged in. Stop.
+    - Missing, never seen, inside a folder that exists: a new backups folder the
+      user picked. Make just that one folder (never its parents).
+    Raises BackupDriveMissing with DRIVE_GONE when it stops."""
+    d = Path(dest)
+    if d.is_dir():
+        remember_dest(catalog, d)
+        return d
+    if d.exists():  # a file where the folder should be
+        raise BackupDriveMissing()
+    if str(d) in _seen_dests(catalog) or catalog.has_snapshot_in(str(d)):
+        raise BackupDriveMissing()
+    parent = d.parent
+    if parent == d or not parent.is_dir() or _holds_drives(parent):
+        raise BackupDriveMissing()
+    try:
+        d.mkdir()
+    except OSError:
+        raise BackupDriveMissing() from None
+    remember_dest(catalog, d)
+    return d
 
 
 _backup_lock = threading.Lock()
@@ -881,7 +953,9 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
     (the user's include/exclude selection); otherwise every discovered project.
     label/portable/layout are the user's per-run choices from the review step.
     """
-    base = Path(dest)
+    # Never back up to a drive that isn't there: making the folder again would put
+    # the "backup" on the computer's own disk (or fail with a misleading error).
+    base = prepare_dest(catalog, dest)
     timestamp = timestamp or default_timestamp()
     # Tell the UI we've started straight away — resolving projects can take a moment,
     # and a silent gap looks like nothing is happening.
@@ -932,6 +1006,8 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
         try:
             result = backup_project(p, dest_root, timestamp, portable=portable, layout=layout)
         except Exception as e:  # isolate one project's failure from the rest
+            if not base.is_dir():  # the drive was unplugged part way through
+                e = BackupDriveMissing()
             catalog.record_snapshot(
                 project_name=p.name, timestamp=timestamp, total_size=0,
                 file_count=0, status="error", missing=[], error=str(e), label=label,
@@ -941,6 +1017,8 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
             errors.append({"project_name": p.name, "path": str(p.project_path), "error": str(e)})
             _emit(progress, {"type": "project_error", "index": i,
                              "project_name": p.name, "error": str(e)})
+            if isinstance(e, BackupDriveMissing):
+                break  # every other project would fail the same way
             continue
         # Re-read the snapshot we just wrote to confirm every file actually landed
         # at the right size (catches truncated/failed writes, esp. over a NAS).

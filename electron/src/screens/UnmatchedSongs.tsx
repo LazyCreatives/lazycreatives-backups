@@ -76,7 +76,7 @@ export function UnmatchedSongs({ items, onBack, onChanged }: {
         </div>
         <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{fmtWhen(s.mtime)}</div>
         {setAsideRow ? (
-          <div className="sub" style={{ margin: 0, fontSize: 12.5 }}>Marked as not a song</div>
+          <div className="sub" style={{ margin: 0, fontSize: 12 }}>Marked as not a song</div>
         ) : (
           <div className="unm-pick">
             <select className={pid ? "lib-pick lib-pick--on" : "lib-pick"} value={pid} aria-label={`Project for ${s.name}`}

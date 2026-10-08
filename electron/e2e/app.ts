@@ -41,6 +41,7 @@ export async function launchApp(): Promise<RunningApp> {
     ABLEBACKUP_PYTHON: python(),
     ABLEBACKUP_DB: path.join(WORK_DIR, "data", "catalog.db"),
     ABLEBACKUP_UPLOADER_DB: path.join(WORK_DIR, "no-uploader.db"),  // no Uploader on this "computer"
+    LC_ALBUMS_DB: path.join(WORK_DIR, "data", "albums.db"),           // the albums list shared with Uploader
     // The backend looks for music folders in the home folder: point it at the fake one.
     HOME: FAKE_HOME, USERPROFILE: FAKE_HOME,
     E2E_USER_DATA: userData,
@@ -72,6 +73,14 @@ export async function launchApp(): Promise<RunningApp> {
   });
   const version = await app.evaluate(({ app }) => app.getVersion());
   return { app, page, port, token, version };
+}
+
+// Change the window's size (the narrow-window pictures), keeping it the same on every machine.
+export async function resizeWindow(running: RunningApp, size: { width: number; height: number }): Promise<void> {
+  await running.app.evaluate(({ BrowserWindow }, s) => {
+    BrowserWindow.getAllWindows()[0].setContentSize(s.width, s.height);
+  }, size);
+  await running.page.setViewportSize(size);
 }
 
 export async function closeApp(running: RunningApp | undefined): Promise<void> {

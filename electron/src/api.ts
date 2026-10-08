@@ -1,6 +1,7 @@
 import type { CloudFolder, Config, SuggestedFolder, ProjectExports, Entitlement, JobStatus, LibraryItem, Overview, PluginList, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, TidyBatch, TidyDone, TidyOptions, TidyPlan, UnmatchedSong, VerifyResult } from "./types";
 import type { CoverSource } from "./coverArt";
 import type { Album, AlbumCandidate, AlbumSongChange } from "./albums";
+import { plainProblem } from "./plainProblem";
 
 function base() {
   const port = (window as any).ablebackup?.port ?? "8753";
@@ -11,15 +12,20 @@ function token() {
 }
 
 async function req(method: string, path: string, body?: unknown) {
-  const res = await fetch(base() + path, {
-    method,
-    headers: { "Content-Type": "application/json", "X-Auth-Token": token() },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(base() + path, {
+      method,
+      headers: { "Content-Type": "application/json", "X-Auth-Token": token() },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new Error(plainProblem(null, 0)); // the engine didn't answer
+  }
   if (!res.ok) {
-    let detail = `${res.status}`;
-    try { detail = (await res.json()).detail ?? detail; } catch { /* ignore */ }
-    throw new Error(detail);
+    let detail: unknown = null;
+    try { detail = (await res.json()).detail; } catch { /* ignore */ }
+    throw new Error(plainProblem(detail, res.status));
   }
   return res.json();
 }
@@ -37,7 +43,7 @@ export function makeApi() {
       return req("PUT", `/api/albums/${id}`, change);
     },
     async deleteAlbum(id: string): Promise<{ ok: boolean }> { return req("DELETE", `/api/albums/${id}`); },
-    async addAlbumSongs(id: string, songs: { path: string; title?: string; project?: string }[]): Promise<Album> {
+    async addAlbumSongs(id: string, songs: { path: string; title?: string; project?: string; genre?: string }[]): Promise<Album> {
       return req("POST", `/api/albums/${id}/songs`, { songs });
     },
     async orderAlbum(id: string, paths: string[]): Promise<Album> { return req("PUT", `/api/albums/${id}/order`, { paths }); },

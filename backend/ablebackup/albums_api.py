@@ -33,6 +33,7 @@ class AlbumSongIn(BaseModel):
     path: str = Field(..., min_length=1, max_length=_PATH)
     title: str = Field("", max_length=300)
     project: str = Field("", max_length=300)
+    genre: str = Field("", max_length=100)
 
 
 class AlbumAdd(BaseModel):

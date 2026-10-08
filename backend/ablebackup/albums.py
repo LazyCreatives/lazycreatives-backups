@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS album_songs (
   project TEXT NOT NULL DEFAULT '',
   gapless_after INTEGER NOT NULL DEFAULT 0,
   ready INTEGER,
+  genre TEXT NOT NULL DEFAULT '',
   added_at REAL NOT NULL,
   PRIMARY KEY (album_id, path)
 );
@@ -87,6 +88,9 @@ class Albums:
             except sqlite3.OperationalError:
                 pass  # some network drives refuse it; the default journal still works
             con.executescript(_SCHEMA)
+            if "genre" not in {r["name"] for r in con.execute("PRAGMA table_info(album_songs)")}:
+                # a list made before songs kept their genre (the colour of the album's stripe)
+                con.execute("ALTER TABLE album_songs ADD COLUMN genre TEXT NOT NULL DEFAULT ''")
             if write:
                 con.execute("BEGIN IMMEDIATE")
             yield con
@@ -164,8 +168,8 @@ class Albums:
                 raise NotFound(album_id)
 
     def add_songs(self, album_id: str, songs: list[dict]) -> dict:
-        """Add songs to the end. Each is {path, title?, project?}; a song already on
-        the album is left where it is."""
+        """Add songs to the end. Each is {path, title?, project?, genre?}; a song already
+        on the album is left where it is."""
         now = time.time()
         with self._db(write=True) as con:
             self._touch(con, album_id)
@@ -178,10 +182,10 @@ class Albums:
                     continue
                 pos += 1
                 have.add(path)
-                con.execute("INSERT INTO album_songs(album_id, pos, path, title, project, added_at) "
-                            "VALUES (?, ?, ?, ?, ?, ?)",
+                con.execute("INSERT INTO album_songs(album_id, pos, path, title, project, genre, added_at) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
                             (album_id, pos, path, (s.get("title") or "").strip() or Path(path).stem,
-                             (s.get("project") or "").strip(), now))
+                             (s.get("project") or "").strip(), (s.get("genre") or "").strip(), now))
         return self.get(album_id)
 
     def remove_song(self, album_id: str, path: str) -> dict:
@@ -285,8 +289,10 @@ def project_info(paths: list[str], backups_db: Path | None) -> dict[str, dict]:
     try:
         con.row_factory = sqlite3.Row
         marks = ",".join("?" * len(paths))
+        cols = {r["name"] for r in con.execute("PRAGMA table_info(discovered)")}
+        genre = "d.genre" if "genre" in cols else "''"
         rows = con.execute(
-            "SELECT e.path, e.mtime AS exported, d.project_id, d.name, d.daw, d.path AS file, "
+            f"SELECT e.path, e.mtime AS exported, d.project_id, d.name, d.daw, {genre} AS genre, d.path AS file, "
             "d.mtime AS saved, d.backed_mtime AS backed FROM exports e "
             "JOIN discovered d ON d.project_id = e.project_id "
             f"WHERE e.hidden = 0 AND e.path IN ({marks})", list(paths)).fetchall()
@@ -302,7 +308,7 @@ def project_info(paths: list[str], backups_db: Path | None) -> dict[str, dict]:
                 backup = "changed" if saved and saved > backed + 1 else "safe"
             out[r["path"]] = {
                 "project_id": r["project_id"], "project": r["name"], "daw": r["daw"] or "",
-                "backup": backup,
+                "genre": r["genre"] or "", "backup": backup,
                 "changed_since_export": bool(saved and exported and saved > exported + _SAVED_AFTER),
             }
     except sqlite3.Error:
@@ -321,7 +327,8 @@ def _has_backup(con, project_id: str) -> bool:
 
 def judge_album(album: dict, backups_db: Path | None) -> dict:
     """Fill in each song's project (from Backups), `needs` (what's missing) and
-    `is_ready` (your own tick wins)."""
+    `is_ready` (your own tick wins). A song's genre is its project's in Backups (the
+    producer's own pick wins there), else the one it had when it was added."""
     info = project_info([s["path"] for s in album["songs"]], backups_db)
     for s in album["songs"]:
         p = info.get(s["path"])
@@ -329,11 +336,13 @@ def judge_album(album: dict, backups_db: Path | None) -> dict:
         if p:
             s["project_id"], s["daw"], s["backup"] = p["project_id"], p["daw"], p["backup"]
             s["project"] = s.get("project") or p["project"]
+            s["genre"] = p["genre"] or s.get("genre") or ""
             if p["changed_since_export"] and needs != ["File moved or deleted"]:
                 needs.append("Project changed since export")
         else:
             s.setdefault("project_id", None)
             s.setdefault("backup", None)
+        s.setdefault("genre", "")
         s["needs"] = needs
         s["is_ready"] = s["ready"] if s.get("ready") is not None else not needs
     return album

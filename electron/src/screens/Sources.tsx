@@ -15,9 +15,10 @@ import { CoverShelf } from "../components/CoverShelf";
 import { genreColor, useLook } from "../look";
 import { GlyphPicker } from "../components/Marks";
 import { ThemePicker } from "../components/LookPicker";
+import { fadeSwitch } from "../fade";
 import { UpdateCheck } from "../components/UpdateCheck";
 import { useEntitlement } from "../entitlement";
-import { fmtInterval, fmtClock, fmtSize } from "../format";
+import { fmtCount, fmtInterval, fmtClock, fmtSize } from "../format";
 import { osWords } from "../platform";
 import { useCloudFolders } from "../components/DestChoices";
 import { EXPORT_FOLDER_FROM, exportFolderRows } from "../exportFolders";
@@ -226,7 +227,7 @@ export function Sources() {
         <div className="lookpick" role="group" aria-label="Look">
           {([["crate", "Crate", "Rows like a DJ library, with waveforms and genre stripes"],
              ["sleeve", "Sleeve", "Cover art first, like an album shelf"]] as const).map(([k, name, what]) => (
-            <button key={k} type="button" className="lookpick__opt" aria-pressed={look === k} onClick={() => setLook(k)}>
+            <button key={k} type="button" className="lookpick__opt" aria-pressed={look === k} onClick={() => { if (look !== k) fadeSwitch(() => setLook(k)); }}>
               <LookThumb kind={k} />
               <span><strong style={{ fontWeight: 600 }}>{name}</strong><br /><small>{what}</small></span>
             </button>
@@ -292,7 +293,7 @@ export function Sources() {
         </div>
         {cloud.folders.some((f) => f.path) && (
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
-            <span className="faint" style={{ fontSize: 12.5 }}>Or use</span>
+            <span className="faint" style={{ fontSize: 12 }}>Or use</span>
             {cloud.folders.filter((f) => f.path).map((f) => {
               const d = cloud.destFor(f.path!);
               return <button key={f.key} className={`chip${cfg.dest === d ? " chip--on" : ""}`} disabled={!loaded}
@@ -317,11 +318,11 @@ export function Sources() {
                 </Button>
               ))}
             </div>
-            {connectMsg && <div className="sub" style={{ color: "var(--accent-2)", margin: 0, fontSize: 12.5 }}>{connectMsg}</div>}
-            {connectErr && <div className="sub" style={{ color: "var(--danger)", margin: 0, fontSize: 12.5 }}>{connectErr}</div>}
+            {connectMsg && <div className="sub" style={{ color: "var(--accent-2)", margin: 0, fontSize: 12 }}>{connectMsg}</div>}
+            {connectErr && <div className="sub" style={{ color: "var(--danger)", margin: 0, fontSize: 12 }}>{connectErr}</div>}
             {rclone.available && rclone.remotes.length > 0 && (
               <div>
-                <div className="faint" style={{ margin: "0 0 7px", fontSize: 12.5 }}>Cloud accounts already set up on this {words.computer}</div>
+                <div className="faint" style={{ margin: "0 0 7px", fontSize: 12 }}>Cloud accounts already set up on this {words.computer}</div>
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                   {rclone.remotes.map((r) => (
                     <button key={r} className="chip" onClick={() => addRemote(r)}
@@ -331,7 +332,7 @@ export function Sources() {
               </div>
             )}
             {!rclone.available && (
-              <div className="faint" style={{ fontSize: 12.5 }}>
+              <div className="faint" style={{ fontSize: 12 }}>
                 The cloud sign-in buttons need the free <strong style={{ color: "var(--text-dim)" }}>rclone</strong> tool. Adding a synced folder works without it.
               </div>
             )}
@@ -370,7 +371,7 @@ export function Sources() {
             <button className={`seg__opt${!openAtLogin ? " seg__opt--on" : ""}`} onClick={() => toggleOpenAtLogin(false)}>Off</button>
           </div>
           {!openAtLogin && cfg.interval_minutes > 0 &&
-            <span className="faint" style={{ fontSize: 12.5 }}>Automatic backups only run while the app is open.</span>}
+            <span className="faint" style={{ fontSize: 12 }}>Automatic backups only run while the app is open.</span>}
         </SetRow>
       )}
 
@@ -434,7 +435,7 @@ function FolderTable({ paths, loaded, empty, onRemove, icon = "folder" }: {
             { label: "Copy folder path", onClick: () => { copyText(p); } },
             "-", { label: "Remove", onClick: () => onRemove(p), danger: true },
           ])}>
-            <span className="mono col-trunc" style={{ fontSize: 12.5, color: "var(--text-dim)" }} title={p}>{p}</span>
+            <span className="mono col-trunc" style={{ fontSize: 12, color: "var(--text-dim)" }} title={p}>{p}</span>
             <CopyButton text={p} what="folder path" size={13} />
           </span>
           <span className="col-act"><Button variant="quiet" size="sm" onClick={() => onRemove(p)}>Remove</Button></span>
@@ -451,20 +452,48 @@ export function ExportFolders() {
   const [f, setF] = useState<ExportFolderSet | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // While the folders are looked through: "Looking… folder 3 of 12", then one line
+  // saying what came of it.
+  const [looking, setLooking] = useState<{ done: number; total: number } | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
   const load = () => api.exportFolders().then(setF).catch(() => setErr("Couldn't load your export folders."));
   useEffect(() => { load(); }, []);
 
-  async function run(fn: () => Promise<unknown>, done?: string) {
+  const linkedLine = (n: number | null | undefined) => n == null ? "Done looking."
+    : `Done. ${fmtCount(n)} ${n === 1 ? "song is" : "songs are"} linked to your projects.`;
+  // Follow a look that's still going after the first answer, until it ends.
+  async function follow() {
+    for (;;) {
+      const st = await api.exportsStatus().catch(() => null);
+      if (!st) { setLooking(null); return null; }
+      if (!st.running) { setLooking(null); return st.linked; }
+      setLooking({ done: st.folders_done, total: st.folders_total });
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+  // `look`: the change makes Backups look through the folders, so show it working
+  // and say what it found.
+  async function run(fn: () => Promise<unknown>, done?: string, look = false) {
     setBusy(true); setErr(null);
-    try { await fn(); await load(); if (done) toast(done); }
-    catch (e: any) { setErr(e?.message ? `Couldn't change that: ${e.message}` : "Couldn't change that. Try again."); }
+    if (look) { setResult(null); setLooking({ done: 0, total: 0 }); }
+    try {
+      const r: any = await fn();
+      await load();
+      if (look) {
+        const linked = r?.running ? await follow() : r?.linked;
+        setLooking(null);
+        setResult(linkedLine(linked));
+      } else if (done) toast(done);
+    }
+    catch (e: any) { setLooking(null); setErr(e?.message ? `Couldn't change that: ${e.message}` : "Couldn't change that. Try again."); }
     finally { setBusy(false); }
   }
   const mine = f?.folders ?? [];
   const ignored = f?.ignored ?? [];
   async function add() {
     const dir: string | null = await (window as any).ablebackup?.pickFolder?.();
-    if (dir && !mine.includes(dir)) run(() => api.setExportFolders([...mine, dir]), `Looking for songs in ${baseName(dir)}.`);
+    if (dir && !mine.includes(dir)) run(() => api.setExportFolders([...mine, dir]), undefined, true);
   }
   function remove(p: string) {
     run(() => api.setExportFolders(mine.filter((x) => x !== p)));
@@ -473,6 +502,9 @@ export function ExportFolders() {
   function ignore(p: string) {
     run(() => api.setExportFolders(mine, [...ignored, p]));
     toast(`Won't look in ${baseName(p)} again.`, { label: "Undo", onClick: () => run(() => api.setExportFolders(mine, ignored)) });
+  }
+  function unignore(p: string) {
+    run(() => api.setExportFolders(mine, ignored.filter((x) => x !== p)), undefined, true);
   }
 
   const rows = exportFolderRows(f).map((r) => ({
@@ -494,20 +526,46 @@ export function ExportFolders() {
                   { label: "Copy folder path", onClick: () => { copyText(r.path); } },
                   ...(r.act ? ["-" as const, { label: r.act[0], onClick: r.act[1], danger: true }] : []),
                 ])}>
-                  <span className="mono col-trunc" style={{ fontSize: 12.5, color: "var(--text-dim)" }} title={r.path}>{r.path}</span>
+                  <span className="mono col-trunc" style={{ fontSize: 12, color: "var(--text-dim)" }} title={r.path}>{r.path}</span>
                   <CopyButton text={r.path} what="folder path" size={13} />
                 </span>
-                <span className="faint col-trunc" style={{ fontSize: 12.5 }}>{r.from}</span>
+                <span className="faint col-trunc" style={{ fontSize: 12 }}>{r.from}</span>
                 <span className="col-act">{r.act && <Button variant="quiet" size="sm" disabled={busy} onClick={r.act[1]}>{r.act[0]}</Button>}</span>
               </div>
             ))}
           </div>
         )}
-      {err && <div className="sub" style={{ color: "var(--danger)", margin: 0, fontSize: 12.5 }}>{err}</div>}
+      {ignored.length > 0 && (
+        <div className="exportfolder-hidden">
+          <button type="button" className="linkbtn" aria-expanded={showHidden} onClick={() => setShowHidden((x) => !x)}>
+            <Icon name={showHidden ? "chevronDown" : "chevronRight"} size={12} />Hidden folders ({fmtCount(ignored.length)})
+          </button>
+          {showHidden && (
+            <div className="table exportfolder-cols">
+              {ignored.map((p) => (
+                <div key={p} className="row cols">
+                  <Icon name="folder" size={15} className="faint" />
+                  <span className="mono col-trunc" style={{ fontSize: 12, color: "var(--text-faint)" }} title={p}>{p}</span>
+                  <span className="faint col-trunc" style={{ fontSize: 12 }}>Not looked in</span>
+                  <span className="col-act"><Button variant="quiet" size="sm" disabled={busy} onClick={() => unignore(p)}>Show again</Button></span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {err && <div className="sub" style={{ color: "var(--danger)", margin: 0, fontSize: 12 }}>{err}</div>}
+      {(looking || result) && (
+        <div className="sub" role="status" style={{ margin: 0, fontSize: 12 }}>
+          {looking
+            ? (looking.total > 0 ? `Looking for songs… folder ${fmtCount(looking.done)} of ${fmtCount(looking.total)}` : "Looking for songs…")
+            : result}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <Button variant="ghost" size="sm" onClick={add} disabled={!f || busy}><Icon name="plus" size={14} />Add an export folder</Button>
         <Button variant="ghost" size="sm" disabled={!f || busy} title="Look through these folders again for songs saved since"
-          onClick={() => run(() => api.refreshExports(), "Looking through your export folders again.")}>Look again</Button>
+          onClick={() => run(() => api.refreshExports(), undefined, true)}>{looking ? "Looking…" : "Look again"}</Button>
       </div>
     </>
   );

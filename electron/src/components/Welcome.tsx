@@ -29,11 +29,11 @@ export function WelcomeCard({ app, step, title, sub, foot, children }: {
 }
 
 // Step 1's look choice. Picking one restyles the whole app straight away, this card included.
-export function WelcomeLook() {
+export function WelcomeLook({ onPick }: { onPick?: (change: () => void) => void } = {}) {
   return (
     <div className="welcome__look">
       <div className="welcome__label">Pick a look</div>
-      <LookPicker />
+      <LookPicker onPick={onPick} />
       <p className="welcome__hint">You can change it any time in Settings.</p>
     </div>
   );

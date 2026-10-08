@@ -8,7 +8,7 @@
 .miss-sum .dim   { color: var(--text-dim); }
 .miss-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
 
-.miss-trust { font-size: 12.5px; color: var(--text-faint); line-height: 1.55; margin: 8px 0 0; max-width: 78ch; }
+.miss-trust { font-size: 12px; color: var(--text-faint); line-height: 1.55; margin: 8px 0 0; max-width: 78ch; }
 .miss-trust strong { color: var(--text-dim); font-weight: 500; }
 
 .miss-note { margin-top: 12px; font-size: 13px; }
@@ -19,7 +19,7 @@
 /* dot · file and where it was · where it stands · button */
 .miss-cols { --cols: 8px minmax(0, 1fr) 190px 112px; }
 .miss-file { min-width: 0; }
-.miss-name { font-size: 13.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.miss-name { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .miss-path {
   font-size: 12px; color: var(--text-faint); margin-top: 1px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -31,5 +31,5 @@
 .miss-badge.lost { color: var(--warn); }
 .miss-badge.checking { color: var(--text-faint); }
 
-.miss-foot { margin-top: 10px; font-size: 12.5px; color: var(--text-faint); }
-.miss-title { font-size: 13.5px; font-weight: 500; color: var(--warn); margin-bottom: 5px; }
+.miss-foot { margin-top: 10px; font-size: 12px; color: var(--text-faint); }
+.miss-title { font-size: 13px; font-weight: 500; color: var(--warn); margin-bottom: 5px; }

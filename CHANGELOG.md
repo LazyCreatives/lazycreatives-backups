@@ -13,6 +13,38 @@ How to keep this up to date:
   The checks on pull requests fail if the app's version has no section here.
 -->
 
+## Unreleased
+
+## 0.2.5 (8 October 2026)
+
+### New
+- **Find my projects first.** Before the first scan, Home leads with finding your projects, and setup lets you finish by just browsing. Backups stay one click away.
+- **The sloth counts as it looks.** The first look through your folders shows the searching sloth and how many projects it has found so far.
+- **A small seal when a backup finishes.** A project's status settles to "Safe" with a seal when its backup finishes from its row.
+- **"Out now" on release day.** A stamp lands on the album's cover on release day and stays there after.
+- **Hidden folders can come back.** Settings › Export folders lists the folders you told Backups not to look in, each with Show again, and Add or Look again shows how far it has got and what it found.
+- **The Sleeve player's glow follows the music**, and switching look or light/dark fades softly instead of jumping.
+
+### Better
+- **Big libraries stay quick.** Search no longer freezes with thousands of projects, Ctrl/Cmd+K opens straight away, and scanning again skips project files that haven't changed.
+- **A calmer Library.** Two rows of controls instead of five: genre and year are picked in one place (with counts), and the rest is under "More filters".
+- **A tidier project page.** Back up now and Open in your music program stay up top, everything else is under "··· More" (also on right-click), and facts aren't repeated.
+- **Sleeve Home shows big printed numbers** for where your projects stand, and Sleeve covers only wear a badge when something needs a look.
+- **Albums:** rows take the colour of their songs' main genre, crossfade is one line in the album header, and the album list says "ready" once.
+- **One calm type scale and square Crate corners.** Text sizes are tidied, section headings stand out, and coloured edges only mean genre or what's playing.
+- **"Back up N projects" counts exactly what that button backs up**, and "Look for projects in" starts on the folders you chose at setup.
+- **Search finds names in any script**, such as Japanese, Cyrillic or Korean.
+- **Easier to use with screen readers and in light mode.** Narrow sidebar icons show their names, and status words on a highlighted row are easier to read in light mode.
+- **Album songs slide out of the way when you drag one.** The others make room as you move it, and the numbers update as you go, so you see the new order before you let go. Turned off if your computer is set to reduce motion.
+- **Warnings in plain words.** When something doesn't work, the app now says what went wrong and what to do next, instead of short programmer notes like "no such picture" or a bare number.
+
+### Fixed
+- **An unplugged backup drive is noticed.** Backups says "Your backup drive isn't connected. Plug it in and try again." instead of making the folder again on your computer or blaming permissions.
+- **Crate Library names are readable at the normal window size.** They were cut to one letter. Waveforms show too, and columns step out as the window narrows. Crate Home and Sleeve project pages no longer cut names or wrap their big numbers.
+- **Undo on an album puts the song back in its old place**, still ticked ready.
+- **Songs on a missing drive are skipped** with a short note instead of showing Pause while nothing plays.
+- **Small fixes:** the Next button on the welcome screen stays in view on small windows, "Changed" and "Not backed up" look the same on albums as everywhere else, and the Settings cards line up.
+
 ## 0.2.4 (8 October 2026)
 
 ### New

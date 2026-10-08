@@ -13,6 +13,7 @@ export interface AlbumSong {
   project: string;               // the project it came from ("" when not known)
   project_id: string | null;     // Backups' id for that project, when Backups knows it
   daw?: string;
+  genre?: string;                // its project's genre in Backups, else the one it was added with
   backup: "safe" | "changed" | "none" | null;   // the project's backup, from Backups
   gapless_after: boolean;        // runs straight into the next song, no blend
   ready: boolean | null;         // your own tick (null = let the app judge)
@@ -106,13 +107,25 @@ export const setReleaseDate = (id: string, release_date: string) =>
   change(id, (a) => ({ ...a, release_date }), () => api.updateAlbum(id, { release_date }));
 export const setCrossfade = (id: string, crossfade: number) =>
   change(id, (a) => ({ ...a, crossfade }), () => api.updateAlbum(id, { crossfade }));
-export const addSongs = async (id: string, songs: { path: string; title?: string; project?: string }[]) =>
+export const addSongs = async (id: string, songs: { path: string; title?: string; project?: string; genre?: string }[]) =>
   keep(await api.addAlbumSongs(id, songs));
 export const orderSongs = (id: string, paths: string[]) =>
   change(id, (a) => ({ ...a, songs: paths.map((p) => a.songs.find((s) => s.path === p)!).filter(Boolean) }),
     () => api.orderAlbum(id, paths));
 export const takeOut = (id: string, path: string) =>
   change(id, (a) => ({ ...a, songs: a.songs.filter((s) => s.path !== path) }), () => api.removeAlbumSong(id, path));
+// Undo "Take off this album": the song goes back in its old place (`order` is the
+// running order before it came off) with its own ticks: marked ready or not, and
+// whether it ran straight into the next song.
+export async function putBack(id: string, s: AlbumSong, order: string[]): Promise<Album> {
+  await addSongs(id, [{ path: s.path, title: s.title, project: s.project, genre: s.genre }]);
+  let a = await orderSongs(id, order);
+  const c: AlbumSongChange = { path: s.path };
+  if (s.gapless_after) c.gapless_after = true;
+  if (s.ready !== null) c.ready = s.ready;
+  if (c.gapless_after !== undefined || c.ready !== undefined) a = await changeSong(id, c);
+  return a;
+}
 export const changeSong = (id: string, c: AlbumSongChange) =>
   change(id, (a) => ({ ...a, songs: a.songs.map((s) => s.path !== c.path ? s : {
     ...s, ...(c.title !== undefined ? { title: c.title } : {}),
@@ -147,6 +160,27 @@ export function daysToGo(date: string, now: Date = new Date()): string {
   if (n === 1) return "Out tomorrow";
   if (n === 0) return "Out today";
   return n === -1 ? "Came out yesterday" : `Came out ${-n} days ago`;
+}
+
+// Where release day is: 1 still to come, 0 today, -1 already out (null with no date).
+// The OUT NOW stamp is pressed on the day and stays on the cover after.
+export function releaseDay(date: string, now: Date = new Date()): -1 | 0 | 1 | null {
+  if (!date) return null;
+  const d = new Date(`${date}T12:00:00`);
+  if (isNaN(d.getTime())) return null;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
+  const n = Math.round((d.getTime() - today.getTime()) / 86400000);
+  return n > 0 ? 1 : n === 0 ? 0 : -1;
+}
+
+// The genre most of the album's songs share (the first one wins a tie), or "" when
+// none has one. It colours the album's stripe, like a genre stripe on a song.
+export function mainGenre(a: Album): string {
+  const n = new Map<string, number>();
+  for (const s of a.songs) if (s.genre) n.set(s.genre, (n.get(s.genre) ?? 0) + 1);
+  let best = "", most = 0;
+  for (const [g, c] of n) if (c > most) { best = g; most = c; }
+  return best;
 }
 
 // The album's state in a word or two, for its pill: Empty, Ready, or what's left.

@@ -59,7 +59,7 @@ export function ratingMenu(ids: string[], current: number) {
 export function GlyphPicker() {
   const { glyph } = useRatings();
   return (
-    <div className="seg" role="radiogroup" aria-label="Rating mark">
+    <div className="seg glyphpick" role="radiogroup" aria-label="Rating mark">
       {GLYPHS.map((g) => (
         <button key={g.key} type="button" role="radio" aria-checked={glyph === g.key}
           className={`seg__opt glyphopt${glyph === g.key ? " seg__opt--on" : ""}`} onClick={() => setGlyph(g.key)}>

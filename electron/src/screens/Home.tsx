@@ -19,15 +19,17 @@ import { genreColor, useLook } from "../look";
 import { togglePin, usePins } from "../pins";
 import { EmptyState, SlothSpot } from "../components/SlothSpot";
 import "../home.css";
+import "../label.css";  // the printed numbers (.proj-spec), shared with the project page
 
 const api = makeApi();
 const bridge = () => (window as any).ablebackup;
 const HOME_ROWS = 8;  // rows per Home list before "Show all"
 
 /* ── Home ── */
-export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, onOpenHistory, onOpenStatus, onOpenFilters, onOpenProject }: {
+export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onResumeProgress, onOpenHistory, onOpenStatus, onOpenFilters, onOpenProject }: {
   backup: BackupProgress;
   onBackupNow: () => void;
+  onFindProjects: () => void;  // look through the project folders, then browse them in the Library
   onOpenSettings: () => void;
   onResumeProgress: () => void;
   onOpenHistory: () => void;
@@ -77,7 +79,9 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
       const paths = r.projects.map((p) => p.als_path);
       if (paths.length === 0) { onBackupNow(); return; }  // nothing found → guided flow
       await api.startBackup({ als_paths: paths, find_missing: true, portable: true, layout: "project_date" });
-    } catch {
+    } catch (e: any) {
+      // The drive went away: say so (the guided flow would only hit the same wall).
+      if (/backup drive isn't connected/i.test(e?.message || "")) { toastWarn(e.message); load(); return; }
       onBackupNow();  // quick path failed → fall back to the guided flow
     } finally {
       setKick(false);
@@ -129,7 +133,6 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   const counts = countStatuses(items);
   const changedItems = items.filter((i) => itemStatus(i) === "changed");
   const notYet = counts.none;
-  const waiting = notYet + changedItems.length;
   const warnItems = items.filter((i) => i.missing_count > 0);
   // One "needs a look" number everywhere: projects missing samples (backed up or not)
   // plus any whose last backup failed.
@@ -141,6 +144,14 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
   const lookItems = items.filter((i) => itemStatus(i) === "missing");
   const newCount = counts.none;
   const failed = ov.attention.filter((a) => a.kind === "error" && !warnNames.has(a.project_name));
+  // The big button scans and backs up the project folders from Settings, so its
+  // number counts only the projects in those folders (a whole-computer Library scan
+  // can hold many more). Same "not yet" + "changed" counting as everywhere else.
+  const inFolders = items.filter((i) => i.in_folders !== false);
+  const folderNew = inFolders.filter((i) => itemStatus(i) === "none").length;
+  const folderWaiting = folderNew + inFolders.filter((i) => itemStatus(i) === "changed").length;
+  // Nothing found yet: lead with finding and browsing. Backing up stays one click away.
+  const firstFind = items.length === 0 && !working && !doneFlash;
 
   // No backup folder yet: the person skipped backups to just browse.
   const off = !ov.nas.path;
@@ -153,11 +164,13 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
     : items.length === 0 ? "Let's find your projects."
     : `${fmtCount(okCount)} of ${fmtCount(items.length)} projects are safe.`;
   const sub = off
-    ? "Backups are off for now. Turn them on whenever you like and every project gets a checked copy."
+    ? (items.length === 0
+      ? "Backups looks through your project folders and lays every project out to browse. Turn backups on whenever you like."
+      : "Backups are off for now. Turn them on whenever you like and every project gets a checked copy.")
     : working
     ? (backup.current ? `Now: ${backup.current}. Every file is read back and the copy is opened to prove it works.` : "Every file is read back and the copy is opened to prove it works.")
     : items.length === 0
-    ? "Press the button and Backups will look through your project folders."
+    ? "Backups looks through your project folders and lays every project out to browse. Backing up is one click away."
     : lookCount > 0 || changedItems.length > 0
     ? `Every backed-up project was re-opened and loads. ${[
         changedItems.length > 0 ? `${fmtCount(changedItems.length)} changed since ${changedItems.length === 1 ? "its" : "their"} last backup` : "",
@@ -200,16 +213,23 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
         <p className="statusline"><Icon name="history" size={13} />{schedLine}</p>
       </div>
       <div className="page-head__actions">
-        {off ? <>
+        {off ? (items.length === 0 ? <>
+          <button className="btn" onClick={onOpenSettings}>Turn on backups</button>
+          <button className="btn btn--primary" onClick={onFindProjects}>Find my projects</button>
+        </> : <>
           <button className="btn" onClick={onOpenHistory}>Browse the library</button>
           <button className="btn btn--primary" onClick={onOpenSettings}>Turn on backups</button>
+        </>) : firstFind ? <>
+          <button className="btn" onClick={backItUp} disabled={!ov.nas.reachable}
+            title={ov.nas.reachable ? "Find every project and back it up, checked" : "Your backup drive isn't connected. Plug it in and try again."}>Back up now</button>
+          <button className="btn btn--primary" onClick={onFindProjects}>Find my projects</button>
         </> : <>
         {look === "crate" && !ov.schedule.enabled && <button className="btn" onClick={onOpenSettings}>Set a schedule</button>}
         <button className="btn btn--primary" onClick={backItUp} disabled={working || !ov.nas.reachable}
-          title={ov.nas.reachable ? "Find every project and back it up, checked" : "Choose where backups go in Settings first"}>
+          title={ov.nas.reachable ? "Find every project in your folders and back it up, checked" : "Your backup drive isn't connected. Plug it in and try again."}>
           {working ? "Backing up…"
-            : waiting > 0 && notYet === 0 ? `Back up the ${fmtCount(waiting)} changed`
-            : waiting > 0 ? `Back up ${fmtCount(waiting)} ${waiting === 1 ? "project" : "projects"}` : "Back up now"}
+            : folderWaiting > 0 && folderNew === 0 ? `Back up the ${fmtCount(folderWaiting)} changed`
+            : folderWaiting > 0 ? `Back up ${fmtCount(folderWaiting)} ${folderWaiting === 1 ? "project" : "projects"}` : "Back up now"}
         </button>
         {look === "sleeve" && !ov.schedule.enabled && <button className="btn" onClick={onOpenSettings}>Set a schedule</button>}
         </>}
@@ -294,7 +314,7 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
       <span className="mono faint" style={{ fontSize: 12 }}>
         {ov.pool_known ? `${fmtSize(ov.actual_size)} used · ${fmtSize(ov.nas.free_bytes)} free` : ""}
       </span>
-      <span className="faint" style={{ fontSize: 12.5 }}>
+      <span className="faint" style={{ fontSize: 12 }}>
         {ov.schedule.enabled
           ? `Automatic backup ${fmtInterval(ov.schedule.interval_minutes)}`
           : <>Automatic backup off. <button className="linkbtn" onClick={onOpenSettings}>Set a schedule</button></>}
@@ -304,26 +324,24 @@ export function Home({ backup, onBackupNow, onOpenSettings, onResumeProgress, on
 
   if (look === "sleeve") return (
     <div className="home home--sleeve">
-      <header className="home-hero">
-        <div className="home-hero__text">{head}</div>
-        {items.length > 0 && (
-          <div className="home-hero__bar" aria-label="Where your projects stand">
-            <div className="statusbar statusbar--fat" aria-hidden="true">
-              {okCount > 0 && <span style={{ flex: okCount, background: "var(--accent-2)" }} />}
-              {changedItems.length > 0 && <span style={{ flex: changedItems.length, background: "var(--accent)" }} />}
-              {lookItems.length > 0 && <span style={{ flex: lookItems.length, background: "var(--warn)" }} />}
-              {newCount > 0 && <span style={{ flex: newCount, background: "var(--idle)" }} />}
-            </div>
-            <div className="home-hero__legend">
-              <button className="linkbtn" onClick={() => onOpenStatus("safe")}><b><Rolling value={okCount} /></b> safe</button>
-              {changedItems.length > 0 && <button className="linkbtn" onClick={() => onOpenStatus("changed")}><b><Rolling value={changedItems.length} /></b> changed</button>}
-              <button className="linkbtn" onClick={() => onOpenStatus("missing")}><b><Rolling value={lookCount} /></b> need a look</button>
-              <button className="linkbtn" onClick={() => onOpenStatus("none")}><b><Rolling value={notYet} /></b> not yet</button>
-            </div>
-            <div className="home-hero__saved">Space saved by sharing files <span className="mono">{spaceSaved}</span></div>
-          </div>
-        )}
-      </header>
+      {/* the page's own head, then where the projects stand printed big, split by
+          hairlines, like the numbers on a project's page (no dashboard panel) */}
+      <header className="page-head">{head}</header>
+      {items.length > 0 && (
+        <div className="home-print">
+          <dl className="proj-spec home-spec" aria-label="Where your projects stand">
+            <div><dt><span className="dot dot--ok" />Safe</dt>
+              <dd><button className="home-spec__n" onClick={() => onOpenStatus("safe")} aria-label={`${fmtCount(okCount)} safe: show them`}><Rolling value={okCount} /></button></dd></div>
+            {changedItems.length > 0 && <div><dt><span className="dot dot--accent" />Changed</dt>
+              <dd><button className="home-spec__n" onClick={() => onOpenStatus("changed")} aria-label={`${fmtCount(changedItems.length)} changed: show them`}><Rolling value={changedItems.length} /></button></dd></div>}
+            <div><dt><span className="dot dot--warn" />Need a look</dt>
+              <dd><button className="home-spec__n" onClick={() => onOpenStatus("missing")} aria-label={`${fmtCount(lookCount)} need a look: show them`}><Rolling value={lookCount} /></button></dd></div>
+            <div><dt><span className="dot" />Not backed up</dt>
+              <dd><button className="home-spec__n" onClick={() => onOpenStatus("none")} aria-label={`${fmtCount(notYet)} not backed up: show them`}><Rolling value={notYet} /></button></dd></div>
+          </dl>
+          <p className="home-print__saved">Space saved by sharing files <span className="mono">{spaceSaved}</span></p>
+        </div>
+      )}
       {progress}
 
       {recent.length > 0 && (
