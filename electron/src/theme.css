@@ -243,13 +243,7 @@
 
 /* round play button (song exports) */
 
-/* Settings: each section is a row, its name and a short line on the left, its controls on the right */
-.set-row { display: grid; grid-template-columns: 220px minmax(0, 1fr); column-gap: 32px; padding: 22px 0; border-top: 1px solid var(--border); }
-.set-row__label h2 { display: flex; align-items: center; gap: 6px; margin: 4px 0 6px; font-size: 14px; }
-.set-row__label p { margin: 0; color: var(--text-faint); font-size: 12px; line-height: 1.5; }
-.set-row__body { display: flex; flex-direction: column; align-items: stretch; gap: 10px; min-width: 0; }
-.set-row__body > .btn, .set-row__body > .pill { align-self: flex-start; }
-.set-about { margin: 0; max-width: 60ch; font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+/* Settings rows and group headings are in lazy-ui.css (shared with Uploader) */
 .folder-cols { --cols: 16px minmax(0, 1fr) 84px; }
 .folder-cols .row { padding: 7px 12px; }
 .exportfolder-cols { --cols: 16px minmax(0, 1fr) 112px 128px; }
@@ -257,18 +251,7 @@
 /* folders marked "Don't look here", folded away with a way back */
 .exportfolder-hidden { display: grid; gap: 8px; }
 .exportfolder-hidden > .linkbtn { display: inline-flex; align-items: center; gap: 6px; justify-self: start; min-height: 28px; font-size: 12px; color: var(--text-dim); }
-@media (max-width: 880px) {
-  .set-row { grid-template-columns: minmax(0, 1fr); row-gap: 12px; }
-}
 
-/* Settings: a plain heading over each group of rows, the same in both looks
-   and matching Uploader's Settings: the app's own font, a hairline under it. */
-.set-group {
-  margin: 34px 0 0; padding: 0 0 8px; border-bottom: 1px solid var(--border-strong);
-  font: 600 17px/1.25 var(--font); letter-spacing: -0.01em; color: var(--text);
-}
-.set-group + .set-row { border-top: 0; }
-.settings .page-head + .set-group { margin-top: 8px; }
 
 /* the backup drive: where it is and how full it is */
 .drive {
@@ -331,3 +314,9 @@ html[data-theme="light"] .table--crate.plug-table > .plug-item > .row:hover {
 @media (prefers-reduced-motion: reduce) { [data-look="sleeve"] .nowplaying__glow { display: none; } }
 /* Crate squares its panels (the rulebook's 0-2px), like tables, cards and dialogs */
 [data-look="crate"] :is(.receipt, .run--crate, .drive, .bin, .dig-stage-wrap, .ondeck--crate, .needcard) { border-radius: 2px; }
+
+/* Settings > Your phone */
+.phone-pair { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.phone-qr { width: 132px; height: 132px; border-radius: 6px; flex: none; }
+.phone-cols { --cols: 16px minmax(0, 1fr) 110px 130px 84px; }
+.phone-cols .row { padding: 7px 12px; }

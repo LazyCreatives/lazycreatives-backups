@@ -11,15 +11,16 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from ablebackup import covers, entitlement, exports, markers, playback, plugins, tidy, waveform
+from ablebackup import covers, entitlement, exports, markers, phone, playback, plugins, tidy, waveform
 from ablebackup.albums import LOSSLESS, Albums
 from ablebackup.albums_api import make_router as albums_router
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
 from ablebackup.api.schemas import (
     ActivateRequest, BackupRequest, CloudConnectRequest, CloudDisconnectRequest,
-    Config, ExportFoldersRequest, ExportIgnoreRequest, ExportLinkRequest, GenreRequest,
-    PluginFoldersRequest, RestoreRequest, ScanRequest, TidyRequest, TidyUndoRequest,
+    Config, ExportFoldersRequest, ExportDropRequest, ExportIgnoreRequest, ExportLinkRequest,
+    ExportUndoRequest, GenreRequest,
+    PhoneSwitch, PluginFoldersRequest, RestoreRequest, ScanRequest, TidyRequest, TidyUndoRequest,
 )
 from ablebackup.catalog import Catalog
 from ablebackup.scheduler import BackupScheduler
@@ -54,7 +55,10 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         # A daemon thread, so quitting the app never waits for it to finish.
         threading.Thread(target=exports.refresh, args=(catalog,), daemon=True,
                          name="exports-refresh").start()
+        if app.state.phone._state()["enabled"]:
+            app.state.phone.start()   # "Let my phone connect" was left on
         yield
+        app.state.phone.stop()
         scheduler.shutdown()
         catalog.close()
 
@@ -78,6 +82,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     app.state.hub = hub
     app.state.scheduler = scheduler
     app.state.jobs = {}
+    app.state.drop_undo = {}  # token -> links before a song drop, for Undo
     app.state.cancels = {}  # job_id -> threading.Event, to cancel a running backup
     app.state.pool_refreshing = False  # guard so only one pool-size walk runs at a time
     app.state.pool_tasks = set()        # strong refs so tasks aren't GC'd mid-run
@@ -502,6 +507,79 @@ def create_app(token: str, db_path: Path) -> FastAPI:
                                       st.st_size, st.st_mtime, kind)
         return {"ok": True}
 
+    # ---- songs dragged onto a project: only the link is recorded; the audio file
+    # itself is never moved, copied or changed ------------------------------------
+    def _drop_plan(paths: list[str], project_id: str) -> list[dict]:
+        names = {d["project_id"]: d["name"] for d in app.state.catalog.discovered_projects()}
+        if project_id not in names:
+            raise HTTPException(status_code=404, detail="unknown project")
+        plan = []
+        for raw in dict.fromkeys(paths):
+            p = Path(raw)
+            row = {"path": raw, "name": p.name, "status": "ok", "others": []}
+            if p.suffix.lower() not in exports.AUDIO_EXTS:
+                row["status"] = "not_audio"
+            elif not p.is_file():
+                row["status"] = "missing"
+            else:
+                row["resolved"] = exports._resolve(p)
+                links = [r for r in app.state.catalog.export_rows(row["resolved"])
+                         if not r["hidden"] and r["project_id"] in names]
+                if any(r["project_id"] == project_id and r["sure"] for r in links):
+                    row["status"] = "here"
+                else:
+                    others = [{"project_id": r["project_id"], "name": names[r["project_id"]]}
+                              for r in links if r["project_id"] != project_id]
+                    if others:
+                        row["status"], row["others"] = "elsewhere", others
+            plan.append(row)
+        return plan
+
+    def _public(plan: list[dict]) -> list[dict]:
+        return [{k: v for k, v in r.items() if k != "resolved"} for r in plan]
+
+    @app.post("/api/exports/drop/check", dependencies=[Depends(require_token)])
+    def exports_drop_check(req: ExportDropRequest):
+        """What dropping these files on a project would do, before doing it."""
+        return {"songs": _public(_drop_plan(req.paths, req.project_id))}
+
+    @app.post("/api/exports/drop", dependencies=[Depends(require_token)])
+    def exports_drop(req: ExportDropRequest):
+        """Link dropped songs to a project. A song linked to another project moves
+        only with ``move``; the reply carries a token that Undo hands back."""
+        cat = app.state.catalog
+        plan = _drop_plan(req.paths, req.project_id)
+        name = next(d["name"] for d in cat.discovered_projects() if d["project_id"] == req.project_id)
+        before, linked = [], []
+        for r in plan:
+            if r["status"] == "ok" or (r["status"] == "elsewhere" and req.move):
+                rp = r["resolved"]
+                before.append((rp, cat.export_rows(rp)))
+                st = Path(r["path"]).stat()
+                kind = "stem" if is_stem(Path(r["path"]), project=name) else "song"
+                cat.link_export(rp, req.project_id, Path(r["path"]).stem, st.st_size, st.st_mtime, kind)
+                if r["status"] == "elsewhere":
+                    cat.hide_other_links(rp, req.project_id)
+                linked.append(r["name"])
+                r["status"] = "linked"
+        token = ""
+        if before:
+            token = uuid.uuid4().hex
+            undo = app.state.drop_undo
+            undo[token] = before
+            while len(undo) > 20:  # keep the last few drops undoable
+                undo.pop(next(iter(undo)))
+        return {"linked": linked, "songs": _public(plan), "token": token}
+
+    @app.post("/api/exports/drop/undo", dependencies=[Depends(require_token)])
+    def exports_drop_undo(req: ExportUndoRequest):
+        before = app.state.drop_undo.pop(req.token, None)
+        if before is None:
+            raise HTTPException(status_code=404, detail="nothing to undo")
+        for path, rows in before:
+            app.state.catalog.restore_export_rows(path, rows)
+        return {"ok": True}
+
     @app.get("/api/exports/unmatched", dependencies=[Depends(require_token)])
     def exports_unmatched(ignored: bool = False):
         """Songs in your exports folders that no project matched, newest first, each
@@ -549,6 +627,31 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         return list(best.values())
 
     app.include_router(albums_router(require_token, lambda: Path(db_path), _album_candidates, albums))
+
+    # ---- your phone: browse and fetch songs over home Wi-Fi (see phone.py) ----
+    app.state.phone = phone.from_env(catalog)
+    phone.make_phone_app(app.state.phone, catalog, albums, _known_song)
+
+    @app.get("/api/phone", dependencies=[Depends(require_token)])
+    def phone_status():
+        return app.state.phone.status()
+
+    @app.put("/api/phone", dependencies=[Depends(require_token)])
+    def phone_switch(req: PhoneSwitch):
+        return app.state.phone.set_enabled(req.enabled)
+
+    @app.post("/api/phone/code", dependencies=[Depends(require_token)])
+    def phone_code():
+        try:
+            return app.state.phone.new_code()
+        except PermissionError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from None
+
+    @app.delete("/api/phone/devices/{device_id}", dependencies=[Depends(require_token)])
+    def phone_forget(device_id: str):
+        if not app.state.phone.remove(device_id):
+            raise HTTPException(status_code=404, detail="No such phone.")
+        return app.state.phone.status()
 
     @app.get("/api/exports/audio")
     def exports_audio(request: Request, path: str, t: str = "", decode: int = 0):

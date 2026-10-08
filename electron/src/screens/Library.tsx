@@ -17,7 +17,7 @@ import { Icon } from "../components/Icon";
 import { MoreMenu as RowMenu } from "../components/MoreMenu";
 import { Cover } from "../components/Cover";
 import { genreColor, useLook } from "../look";
-import { Rating, RowSize, ratingMenu } from "../components/Marks";
+import { FILLED, Rating, RowSize, ratingMenu } from "../components/Marks";
 import { ratingOf, renameRatings, useDensity, useRatings } from "../marks";
 import { pickGenre, pickCrateColor } from "../components/GenrePick";
 import { PageHeader } from "../components/PageHeader";
@@ -36,6 +36,7 @@ import { EmptyState } from "../components/SlothSpot";
 import { ScanSloth } from "../components/ScanSloth";
 import { rowKey } from "../components/a11y";
 import { backupAndWait, type RunResult } from "../runBackup";
+import { SONGS_LINKED, SongDropTarget, useSongDrop, useSongDragActive } from "../songDrop";
 import "../library.css";
 
 const api = makeApi();
@@ -210,6 +211,13 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
     await afterRename(r.id_map);
   }
   useEffect(() => { load(); }, []);
+  // A song dropped on a project (or its Undo): show its new latest song.
+  useEffect(() => {
+    const again = () => { load(); };
+    window.addEventListener(SONGS_LINKED, again);
+    return () => window.removeEventListener(SONGS_LINKED, again);
+  }, []);
+  const songDrag = useSongDragActive();
   // No folders were chosen at setup: "My folders" would find nothing, so look in the
   // whole home folder instead (until the person picks a scope themselves).
   useEffect(() => {
@@ -411,10 +419,19 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
     const pool = applyFilters(items, { ...dFilters, genre: "", year: "" });
     const inGenre = dFilters.genre ? applyFilters(pool, { ...NO_FILTERS, genre: dFilters.genre }).length : pool.length;
     return { ...facets(pool, (i) => i.genre, yearOf, dFilters.genre), total: pool.length, inGenre };
-  }, [items, dFilters, rated]);
+  }, [items, dFilters, rated, pins]);
   const columns = look === "crate" && view === "columns";
+  // Favourites over the genres: how many of what the other filters leave are pinned or rated.
+  const marks = useMemo(() => {
+    const pool = applyFilters(items, { ...dFilters, pinned: false, rated: 0 });
+    return {
+      pinned: pool.filter((i) => pins.includes(i.project_id)).length,
+      rated: pool.filter((i) => ratingOf(i.project_id) >= Math.max(1, dFilters.rated)).length,
+    };
+  }, [items, dFilters, rated, pins]);
+  const { glyph } = useRatings();
   // the filters tucked behind "More filters" that are on now
-  const moreOn = [filters.daw, filters.bpm, filters.song !== "any", filters.rated > 0].filter(Boolean).length;
+  const moreOn = [filters.daw, filters.bpm, filters.song !== "any", filters.rated > 0, filters.pinned].filter(Boolean).length;
   const filtered = isFiltered(filters);
   // only "Missing samples" picked and nothing left: that's good news, not a failed search
   const onlyMissing = filters.status === "missing" && extraFilterCount(filters) === 0 && !filters.q.trim();
@@ -460,11 +477,18 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
     ? items.find((i) => i.project_id === openProject) ?? items.find((i) => i.name === openProject) ?? null
     : null;
   if (openItem) lastOpen.current = openItem.project_id;
+  // drop a song anywhere on an open project's page to link it to that project
+  const pageDrop = useSongDrop(openItem);
   if (openProject && loading) return <div className="empty">Loading your library…</div>;
   if (openItem) {
     const it = openItem;
     return (
-      <>
+      <div className="songdrop-page" {...pageDrop.props}>
+        {pageDrop.over && (
+          <div className="songdrop-page__hint" aria-hidden="true">
+            <Icon name="music" size={18} /><span>Drop to link to <b>{it.name}</b></span>
+          </div>
+        )}
         <NoteOpened id={it.project_id} name={it.name} cover={it.name} genre={it.genre} />
         <button className="lib-back" onClick={onClose}><Icon name="arrowLeft" size={14} />Library</button>
         <TidyUndo projectId={it.project_id} tick={tidyTick} onUndone={afterRename} />
@@ -488,7 +512,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
               : <EmptyState pose="napping" title="No backups of this project yet" say="Nothing to guard yet.">Press Back up now at the top and the first one shows here.</EmptyState> },
           ]} />
         {tidyFor && <TidyNames items={tidyFor} onClose={() => setTidyFor(null)} onDone={tidyDone} />}
-      </>
+      </div>
     );
   }
 
@@ -637,9 +661,18 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                 <label className="lib-more__field"><span>Rating</span>
                   <select className={filters.rated ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.rated} onChange={(e) => setFilters({ rated: Number(e.target.value) })}>
                     <option value={0}>Any rating</option>
+                    <option value={1}>Rated at all</option>
                     <option value={3}>Rated 3 and up</option>
                     <option value={4}>Rated 4 and up</option>
                     <option value={5}>Rated 5</option>
+                  </select>
+                </label>
+              )}
+              {(pins.length > 0 || filters.pinned) && (
+                <label className="lib-more__field"><span>Pinned</span>
+                  <select className={filters.pinned ? "lib-pick lib-pick--on" : "lib-pick"} value={filters.pinned ? "1" : ""} onChange={(e) => setFilters({ pinned: e.target.value === "1" })}>
+                    <option value="">Pinned or not</option>
+                    <option value="1">Pinned only</option>
                   </select>
                 </label>
               )}
@@ -655,7 +688,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
             <SmartBar scope="library" filters={filters} blank={NO_FILTERS} canSave={filtered}
               suggest={(f) => describeFilters(f, (d) => DAW_NAMES[d] || d)}
               count={(f) => applyFilters(items, f).length}
-              onPick={(f) => setFilters(f ?? null)} />
+              onPick={(f) => setFilters(f ? { ...NO_FILTERS, ...f } : null)} />
             <div className="lib-find__view">
               <AuditionToggle compact />
               {look === "crate" && !columns && <RowSize value={rows} onChange={setRows} />}
@@ -697,30 +730,48 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
       ) : columns ? (
         <ColumnBrowse genres={browse.genres} years={browse.years} total={browse.total} inGenre={browse.inGenre}
           genre={filters.genre} year={filters.year} yearTitle="Year last saved" noun={`Projects (${fmtCount(shown.length)})`}
-          onGenre={(g) => setFilters({ genre: g, year: "" })} onYear={(y) => setFilters({ year: y })}>
+          onGenre={(g) => setFilters({ genre: g, year: "" })} onYear={(y) => setFilters({ year: y })}
+          marks={[
+            { key: "pinned", label: "Pinned", icon: "starFilled", tone: "pin", n: marks.pinned, on: filters.pinned, onToggle: () => setFilters({ pinned: !filters.pinned }) },
+            { key: "rated", label: filters.rated > 1 ? `Rated ${filters.rated}${filters.rated < 5 ? " and up" : ""}` : "Rated", icon: FILLED[glyph], tone: "rate",
+              n: marks.rated, on: filters.rated > 0, onToggle: () => setFilters({ rated: filters.rated ? 0 : 1 }) },
+          ]}
+          cols="36px 24px minmax(0, 1fr) 80px 116px" narrowCols="36px 24px minmax(0, 1fr) 80px 10px"
+          heads={["Rating", <span className="browse__headwide">Backup</span>]}>
           {shown.length === 0 ? <p className="browse__empty">No projects here. Pick another genre or year.</p>
             : shown.map((it) => {
               const st = statusLine(it);
+              const isPin = pins.includes(it.project_id);
+              const openIt = () => onOpen(it.project_id);
               return (
-                <button key={it.project_id} type="button" className="browse__item" data-nav-key={it.project_id}
-                  onClick={() => onOpen(it.project_id)}
-                  onContextMenu={(e) => openMenu(e, [
-                    { label: "Show backups & details", onClick: () => onOpen(it.project_id) },
+                <SongDropTarget as="div" project={it} key={it.project_id} role="button" tabIndex={0} className={`browse__item${isPin ? " browse__item--pinned" : ""}`} data-nav-key={it.project_id}
+                  onClick={openIt} onKeyDown={rowKey(openIt)}
+                  onContextMenu={(e: React.MouseEvent) => openMenu(e, [
+                    { label: "Show backups & details", onClick: openIt },
                     { label: `Open in ${DAW_NAMES[it.daw ?? ""] ?? "its DAW"}`, onClick: () => openInDaw(it.path) },
+                    { label: isPin ? "Unpin" : "Pin to the top", onClick: () => togglePin(it.project_id) },
                     "-", ...ratingMenu([it.project_id], ratingOf(it.project_id)), "-",
                     { label: it.genre ? "Change genre…" : "Set genre…", onClick: () => changeGenre([it]) },
                     { label: "Change cover…", onClick: () => { pickCover({ title: it.name, name: it.name, genre: it.genre }); } },
                   ])}>
                   <span className="stripe" style={{ background: genreColor(it.genre) }} />
-                  <Cover name={it.name} genre={it.genre} size={28} />
+                  <Cover name={it.name} genre={it.genre} size={36} />
+                  <button type="button" className={`pinbtn${isPin ? " pinbtn--on" : ""}`} aria-pressed={isPin}
+                    title={isPin ? "Pinned to the top. Click to unpin" : "Pin to the top"} aria-label={isPin ? `Unpin ${it.name}` : `Pin ${it.name}`}
+                    onClick={(e) => { e.stopPropagation(); togglePin(it.project_id); }}>
+                    <Icon name={isPin ? "starFilled" : "star"} size={14} />
+                  </button>
                   <span className="browse__itemtext">
                     <span className="lib-name" title={it.name}>{it.name}</span>
-                    <span className="lib-sub">{[it.bpm ? `${Math.round(it.bpm)} BPM` : "", dawLabel(it.daw), yearOf(it)].filter(Boolean).join(" · ")}</span>
+                    <span className="lib-sub">{[it.genre || "", it.bpm ? `${Math.round(it.bpm)} BPM` : "", dawLabel(it.daw), yearOf(it)].filter(Boolean).join(" · ")}</span>
                   </span>
-                  <Rating id={it.project_id} name={it.name} size={11} readOnly />
-                  <span className={`dot ${st.tone === "ok" ? "dot--ok" : st.tone === "warn" ? "dot--warn" : st.tone === "changed" ? "dot--accent" : ""}`}
-                    title={st.tone === "ok" ? "Safe" : st.text} />
-                </button>
+                  <Rating id={it.project_id} name={it.name} size={13} />
+                  <span className={`browse__state${st.tone === "warn" ? " browse__state--warn" : ""}`}
+                    title={st.tone === "ok" ? "Safe" : st.tone === "warn" ? `${st.text}` : st.text}>
+                    <span className={`dot ${st.tone === "ok" ? "dot--ok" : st.tone === "warn" ? "dot--warn" : st.tone === "changed" ? "dot--accent" : ""}`} />
+                    <span className="browse__stateword col-trunc">{st.tone === "ok" ? "Safe" : st.tone === "warn" ? `${fmtCap(it.missing_count)} missing` : st.tone === "none" ? "Not backed up" : st.text}</span>
+                  </span>
+                </SongDropTarget>
               );
             })}
         </ColumnBrowse>
@@ -815,7 +866,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                     const { working, openIt, menu, meta, onContextMenu, star, tick, isPin, failed } = rowProps(it);
                     const done = !working && !failed && st.tone === "ok" && justDone.has(it.project_id);
                     return (
-                      <AuditionDiv key={it.project_id} song={it.latest_export?.path} meta={meta} data-pid={it.project_id} data-nav-key={it.project_id}
+                      <SongDropTarget as={AuditionDiv} project={it} key={it.project_id} song={it.latest_export?.path} meta={meta} data-pid={it.project_id} data-nav-key={it.project_id}
                         className={`sleeve${picking ? " sleeve--picking" : ""}${picked.has(it.project_id) ? " sleeve--selected" : ""}${isPin ? " sleeve--pinned" : ""}`} role="button" tabIndex={0}
                         onClick={openIt} onContextMenu={onContextMenu} onKeyDown={rowKey(openIt)}>
                         <div className="sleeve__art">
@@ -843,7 +894,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                           </div>
                           <span className="sleeve__acts">{star}{menu}</span>
                         </div>
-                      </AuditionDiv>
+                      </SongDropTarget>
                     );
                   })}
                 </div>
@@ -875,7 +926,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                     const { working, openIt, action, menu, meta, onContextMenu, star, tick, isPin, failed } = rowProps(it);
                     const done = !working && !failed && st.tone === "ok" && justDone.has(it.project_id);
                     return (
-                      <AuditionDiv key={it.project_id} song={it.latest_export?.path} meta={meta} data-pid={it.project_id} data-nav-key={it.project_id}
+                      <SongDropTarget as={AuditionDiv} project={it} key={it.project_id} song={it.latest_export?.path} meta={meta} data-pid={it.project_id} data-nav-key={it.project_id}
                         className={`row cols lib-row ${colsClass}${picked.has(it.project_id) ? " lib-row--picked" : ""}${isPin ? " lib-row--pinned" : ""}`} role="button" tabIndex={0}
                         onClick={openIt} onContextMenu={onContextMenu} onKeyDown={rowKey(openIt)}>
                         <span className="stripe" style={{ background: genreColor(it.genre) }} />
@@ -913,7 +964,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                         <span className="lib-status col-num">{st.when}</span>
                         <div className="col-act">{action}</div>
                         {menu}
-                      </AuditionDiv>
+                      </SongDropTarget>
                     );
                   })}
                 </div>
@@ -922,6 +973,11 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
           );
         })}
         {hasMore && <div ref={moreRef} className="lib-endmark" aria-hidden="true" />}
+        </div>
+      )}
+      {songDrag && items.length > 0 && (
+        <div className="songdrop-tip" role="status">
+          <Icon name="music" size={15} />Drop the song on its project to link them. The file stays where it is.
         </div>
       )}
       {picking && (() => {

@@ -662,6 +662,30 @@ class Catalog:
                 (path, project_id, name, size, mtime, kind))
             self.conn.commit()
 
+    def export_rows(self, path: str) -> list[dict]:
+        """Every link a song has (shown or hidden), for dropping it on a project."""
+        with self._lock:
+            rows = self.conn.execute("SELECT * FROM exports WHERE path = ?", (path,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def hide_other_links(self, path: str, project_id: str) -> None:
+        """The song is from ``project_id``, so it's "not from" any other project."""
+        with self._lock:
+            self.conn.execute(
+                "UPDATE exports SET hidden = 1 WHERE path = ? AND project_id != ?",
+                (path, project_id))
+            self.conn.commit()
+
+    def restore_export_rows(self, path: str, rows: list[dict]) -> None:
+        """Put a song's links back exactly as ``export_rows`` saw them (Undo)."""
+        with self._lock:
+            self.conn.execute("DELETE FROM exports WHERE path = ?", (path,))
+            self.conn.executemany(
+                "INSERT INTO exports (path, project_id, name, size, mtime, match, hidden, "
+                "  kind, why, sure) VALUES (:path, :project_id, :name, :size, :mtime, "
+                "  :match, :hidden, :kind, :why, :sure)", rows)
+            self.conn.commit()
+
     # ---- songs no project matched ------------------------------------------------
     def replace_unmatched(self, rows: list[dict], keep_existing: bool = False) -> None:
         """Swap in the songs the last re-check couldn't match. "Not a song" marks

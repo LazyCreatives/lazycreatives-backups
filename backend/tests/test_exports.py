@@ -346,3 +346,48 @@ def test_a_stuck_disk_cannot_hang_the_recheck(tmp_path, monkeypatch):
     stuck["on"] = False                        # the abandoned worker finishes late...
     time.sleep(0.3)
     assert [e["name"] for e in cat.exports_for("p1")] == ["Sunset"]  # ...and changes nothing
+
+
+def test_drop_songs_on_a_project_links_moves_and_undoes(tmp_path):
+    """Dragging songs onto a project only records links; the files stay untouched."""
+    c = TestClient(create_app(token="", db_path=tmp_path / "c.db"))
+    cat = c.app.state.catalog
+    _project(cat, "a", "Alpha", tmp_path / "a")
+    _project(cat, "b", "Beta", tmp_path / "b")
+    one = _touch(tmp_path / "out" / "first idea.wav")
+    two = _touch(tmp_path / "out" / "second idea.mp3")
+    txt = _touch(tmp_path / "out" / "notes.txt")
+    gone = tmp_path / "out" / "gone.wav"
+    before = {p: (p.read_bytes(), p.stat().st_mtime) for p in (one, two)}
+    paths = [str(one), str(two), str(txt), str(gone)]
+
+    chk = c.post("/api/exports/drop/check", json={"paths": paths, "project_id": "a"}).json()
+    assert [s["status"] for s in chk["songs"]] == ["ok", "ok", "not_audio", "missing"]
+    r = c.post("/api/exports/drop", json={"paths": paths, "project_id": "a"}).json()
+    assert r["linked"] == ["first idea.wav", "second idea.mp3"] and r["token"]
+    assert sorted(e["name"] for e in cat.exports_for("a")) == ["first idea", "second idea"]
+    assert all(e["match"] == "manual" for e in cat.exports_for("a"))
+    # dropped again on the same project: nothing to do
+    again = c.post("/api/exports/drop/check", json={"paths": [str(one)], "project_id": "a"}).json()
+    assert again["songs"][0]["status"] == "here"
+
+    # on another project it asks first; without move nothing changes
+    chk = c.post("/api/exports/drop/check", json={"paths": [str(one)], "project_id": "b"}).json()
+    assert chk["songs"][0]["status"] == "elsewhere"
+    assert chk["songs"][0]["others"] == [{"project_id": "a", "name": "Alpha"}]
+    r2 = c.post("/api/exports/drop", json={"paths": [str(one)], "project_id": "b"}).json()
+    assert r2["linked"] == [] and r2["token"] == ""
+    r3 = c.post("/api/exports/drop", json={"paths": [str(one)], "project_id": "b", "move": True}).json()
+    assert r3["linked"] == ["first idea.wav"]
+    assert [e["name"] for e in cat.exports_for("a")] == ["second idea"]
+    assert [e["name"] for e in cat.exports_for("b")] == ["first idea"]
+
+    # Undo puts the move back, then the first drop
+    assert c.post("/api/exports/drop/undo", json={"token": r3["token"]}).status_code == 200
+    assert sorted(e["name"] for e in cat.exports_for("a")) == ["first idea", "second idea"]
+    assert cat.exports_for("b") == []
+    assert c.post("/api/exports/drop/undo", json={"token": r3["token"]}).status_code == 404
+    c.post("/api/exports/drop/undo", json={"token": r["token"]})
+    assert cat.exports_for("a") == []
+    assert c.post("/api/exports/drop", json={"paths": paths, "project_id": "nope"}).status_code == 404
+    assert {p: (p.read_bytes(), p.stat().st_mtime) for p in (one, two)} == before

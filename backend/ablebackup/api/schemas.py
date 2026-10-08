@@ -42,6 +42,17 @@ class ExportLinkRequest(BaseModel):
     project_id: str = Field(..., min_length=1, max_length=128)
 
 
+class ExportDropRequest(BaseModel):
+    """Songs dropped on a project: ``move`` takes them off any other project."""
+    paths: list[str] = Field(..., min_length=1, max_length=200)
+    project_id: str = Field(..., min_length=1, max_length=128)
+    move: bool = False
+
+
+class ExportUndoRequest(BaseModel):
+    token: str = Field(..., min_length=1, max_length=64)
+
+
 class ExportIgnoreRequest(BaseModel):
     path: str = Field(..., min_length=1, max_length=_PATH)
     ignored: bool = True
@@ -89,3 +100,7 @@ class TidyUndoRequest(BaseModel):
 
 class PluginFoldersRequest(BaseModel):
     folders: list[str] = Field(default_factory=list, max_length=200)  # the user's own plug-in folders
+
+
+class PhoneSwitch(BaseModel):
+    enabled: bool   # "Let my phone connect"

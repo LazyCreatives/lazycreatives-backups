@@ -6,6 +6,8 @@ import type { ExportRow, LibraryItem, ProjectExports as Data } from "../types";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { PlayButton, SongWave } from "../components/Player";
+import { SONGS_LINKED } from "../songDrop";
+import { osWords } from "../platform";
 import { fmtSize, fmtDay } from "../format";
 
 const api = makeApi();
@@ -42,6 +44,12 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
     api.exportsStatus().then((st) => { if (st.running) follow(); }).catch(() => {});
   }
   useEffect(load, [item.project_id]);
+  // a song dropped on this project (or its Undo)
+  useEffect(() => {
+    const again = () => load();
+    window.addEventListener(SONGS_LINKED, again);
+    return () => window.removeEventListener(SONGS_LINKED, again);
+  }, [item.project_id]);
 
   // Poll the re-check until it ends, then show what it found.
   const following = useRef(false);
@@ -211,6 +219,9 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
         <Button variant="ghost" size="sm" disabled={busy} onClick={addFolder}>Add an exports folder…</Button>
         <Button variant="ghost" size="sm" disabled={busy || !!checking} onClick={() => run(() => api.refreshExports())}
           title="Look through the folders again for songs saved since">Look again</Button>
+      </div>
+      <div className="faint" style={{ margin: "10px 0 0", fontSize: 12 }}>
+        Or drag a song from {osWords().fileManager} onto this page, or onto the project in Library.
       </div>
 
       {folders && (

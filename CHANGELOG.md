@@ -13,7 +13,14 @@ How to keep this up to date:
   The checks on pull requests fail if the app's version has no section here.
 -->
 
-## Unreleased
+## 0.2.6 (8 October 2026)
+
+### New
+- **Drag a song onto its project to link them.** Drop a song from Finder or File Explorer onto a project in Library (list, covers or Genre and Year columns) or onto its open page, and it's linked straight away, with Undo. Several songs at once work too, and Backups asks before moving a song that's already linked to another project. Only the link is saved: the song file stays exactly where it is.
+
+### Better
+- **The Genre and Year columns view is redone.** It now matches the rest of the Library: your pinned projects and ratings show on every row, a new Favourites section (Pinned, Rated) sits above the genres to narrow the list, and each project says Safe, Changed, Missing or Not backed up in words.
+- **Settings in tabs.** Settings is split into short tabs: Folders, Backups, Look, Privacy and App, and opens on the one you used last. The new Privacy tab says plainly what Backups reads and what leaves your computer. Every switch is an On/Off button, every "Add folder" button says the same, and the jargon is gone.
 
 ## 0.2.5 (8 October 2026)
 

@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import qrcode from "qrcode-generator";
 import { CopyButton, openMenu, toast } from "../components/Desktop";
 import { PAUSE_ON_MINIMIZE, baseName, copyText, keep, pausesOnMinimize } from "../desktop";
-import { makeApi } from "../api";
+import { makeApi, type PhoneCode, type PhoneStatus } from "../api";
 import type { Config, Overview } from "../types";
 import { Button } from "../components/Button";
 import { PageHeader } from "../components/PageHeader";
-import { Info } from "../components/Info";
+import { Choice, OnOff, SetPanel, SetRow, SetTabs, useSettingsTab } from "../components/SetRow";
 import { PlanCard } from "../components/PlanCard";
 import { ProBadge } from "../components/ProBadge";
 import { Icon, type IconName } from "../components/Icon";
@@ -18,22 +19,24 @@ import { ThemePicker } from "../components/LookPicker";
 import { fadeSwitch } from "../fade";
 import { UpdateCheck } from "../components/UpdateCheck";
 import { useEntitlement } from "../entitlement";
-import { fmtCount, fmtInterval, fmtClock, fmtSize } from "../format";
+import { fmtCount, fmtInterval, fmtClock, fmtDay, fmtSize } from "../format";
 import { osWords } from "../platform";
 import { useCloudFolders } from "../components/DestChoices";
 import { EXPORT_FOLDER_FROM, exportFolderRows } from "../exportFolders";
 
 const api = makeApi();
 
-const PRESETS = [
-  { label: "Off", min: 0 },
-  { label: "Hourly", min: 60 },
-  { label: "Every 6h", min: 360 },
-  { label: "Daily", min: 1440 },
-  { label: "Weekly", min: 10080 },
-];
+const PRESETS = [[0, "Off"], [60, "Hourly"], [360, "Every 6 hours"], [1440, "Daily"], [10080, "Weekly"]] as const;
+
+// The Phone tab is held back from releases while the phone app is tested: it shows
+// in development, or after localStorage "lc-phone" is set to "1".
+const SHOW_PHONE = import.meta.env.DEV || (() => { try { return localStorage.getItem("lc-phone") === "1"; } catch { return false; } })();
+const ALL_TABS = [["folders", "Folders"], ["backups", "Backups"], ["look", "Look"], ["privacy", "Privacy"], ["phone", "Phone"], ["app", "App"]] as const;
+const TABS = ALL_TABS.filter(([k]) => SHOW_PHONE || k !== "phone");
+const TAB_KEYS = TABS.map(([k]) => k);
 
 export function Sources() {
+  const [tab, setTab] = useSettingsTab(TAB_KEYS);
   const [look, setLook] = useLook();
   const [cfg, setCfg] = useState<Config>({ sources: [], dest: "", interval_minutes: 0, libraries: [] });
   const [loaded, setLoaded] = useState(false);
@@ -198,11 +201,11 @@ export function Sources() {
   if (loadError) {
     return (
       <>
-        <PageHeader title="Settings" subtitle="Where to find your projects, and where to keep the backups." />
+        <PageHeader title="Settings" subtitle="Your folders, your backups, how the app looks, and what it does with your files." />
         <div className="card">
-          <strong style={{ color: "var(--danger)" }}>Couldn't reach the backup service.</strong>
-          <p className="sub" style={{ margin: "8px 0 14px" }}>Settings weren't loaded — saving is disabled so your stored config isn't overwritten.</p>
-          <Button variant="ghost" onClick={load}>Retry</Button>
+          <strong style={{ color: "var(--danger)" }}>Couldn't load your settings.</strong>
+          <p className="sub" style={{ margin: "8px 0 14px" }}>Your settings didn't load, so nothing here can be changed until they do. Your saved settings are safe.</p>
+          <Button variant="ghost" onClick={load}>Try again</Button>
         </div>
       </>
     );
@@ -212,7 +215,7 @@ export function Sources() {
     <div className="settings">
       <PageHeader
         title="Settings"
-        subtitle="Where to find your projects, and where to keep the backups."
+        subtitle="Your folders, your backups, how the app looks, and what it does with your files."
         actions={saved
           ? <span className="pill pill--ok" role="status">Saved</span>
           : <span className="faint settings-autosave">Changes save by themselves</span>}
@@ -222,33 +225,10 @@ export function Sources() {
 
       {!beta && <PlanCard />}
 
-      <SetGroup title="How it looks" />
-      <SetRow title="Look" help="How the app is laid out. Switch any time; nothing else changes.">
-        <div className="lookpick" role="group" aria-label="Look">
-          {([["crate", "Crate", "Rows like a DJ library, with waveforms and genre stripes"],
-             ["sleeve", "Sleeve", "Cover art first, like an album shelf"]] as const).map(([k, name, what]) => (
-            <button key={k} type="button" className="lookpick__opt" aria-pressed={look === k} onClick={() => { if (look !== k) fadeSwitch(() => setLook(k)); }}>
-              <LookThumb kind={k} />
-              <span><strong style={{ fontWeight: 600 }}>{name}</strong><br /><small>{what}</small></span>
-            </button>
-          ))}
-        </div>
-      </SetRow>
-      <SetRow title="Light or dark" help="Ink or paper, in either look.">
-        <ThemePicker />
-      </SetRow>
-      <SetRow title="Rating mark" help="What ratings are drawn with. Rate a project from its row, or right-click it.">
-        <GlyphPicker />
-      </SetRow>
-
-      <SetGroup title="Covers" />
-      <SetRow title="Your pictures"
-        help="Put your own pictures on project covers: behind the drawing, or as the whole cover. Change one project from its page or by right-clicking it.">
-        <CoverShelf sample={coverSample?.name ?? "Your project"} sampleGenre={coverSample?.genre} />
-      </SetRow>
-
-      <SetGroup title="Your music" />
-      <SetRow title="Project folders" help="Backups looks in these folders for your projects.">
+      <SetTabs tabs={TABS} value={tab} onChange={setTab} />
+      <SetPanel tab={tab}>
+      {tab === "folders" && <>
+      <SetRow title="Project folders" help="Where your projects live. Backups looks in these folders, and the folders inside them.">
         <FolderTable paths={cfg.sources} loaded={loaded} empty="No folders yet." onRemove={removeSource} />
         <Button variant="ghost" size="sm" onClick={addSource} disabled={!loaded}><Icon name="plus" size={14} />Add folder</Button>
       </SetRow>
@@ -263,11 +243,12 @@ export function Sources() {
         help={<>Where your samples live, so missing ones can be found and relinked. Your <code>~/Splice</code> folder is always searched.</>}
         info="When a project is missing samples, the finder searches these folders (plus your project folders) for a file of the same name and relinks it. Point it at wherever your samples live: Splice, a packs drive, an old project archive.">
         <FolderTable paths={libraries} loaded={loaded} empty="No extra folders. Splice is still searched." onRemove={removeLibrary} />
-        <Button variant="ghost" size="sm" onClick={addLibrary} disabled={!loaded}><Icon name="plus" size={14} />Add a sample folder</Button>
+        <Button variant="ghost" size="sm" onClick={addLibrary} disabled={!loaded}><Icon name="plus" size={14} />Add folder</Button>
       </SetRow>
 
-      <SetGroup title="Where backups go" />
-      <SetRow title="Backup drive" help="The folder where backups are kept: your own drive or NAS, or a Dropbox or Google Drive folder. You own every copy.">
+      </>}
+      {tab === "backups" && <>
+      <SetRow title="Backup drive" help="Where the backups are kept: an external drive, a network drive, or a Dropbox or Google Drive folder. You own every copy.">
         <div className="drive">
           {cfg.dest ? <Icon name="disc" size={22} className="drive__icon" /> : <SlothSpot pose="hugging-drive" size={56} />}
           <div className="drive__main">
@@ -286,14 +267,14 @@ export function Sources() {
                 </span>
               </>
             ) : (
-              <span className="faint drive__nums">{cfg.dest ? (ov && !ov.nas.reachable ? "Can't reach this folder right now" : "Folder set") : "Pick a NAS folder, external drive, or any folder"}</span>
+              <span className="faint drive__nums">{cfg.dest ? (ov && !ov.nas.reachable ? "Can't reach this folder right now" : "Folder set") : "Pick an external drive, a network drive or any folder"}</span>
             )}
           </div>
           <Button variant="ghost" onClick={pickDest} disabled={!loaded}>{cfg.dest ? "Change…" : "Choose…"}</Button>
         </div>
         {cloud.folders.some((f) => f.path) && (
-          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
-            <span className="faint" style={{ fontSize: 12 }}>Or use</span>
+          <div className="set-inline">
+            <span className="set-note">Or use</span>
             {cloud.folders.filter((f) => f.path).map((f) => {
               const d = cloud.destFor(f.path!);
               return <button key={f.key} className={`chip${cfg.dest === d ? " chip--on" : ""}`} disabled={!loaded}
@@ -305,12 +286,12 @@ export function Sources() {
 
       <SetRow title={<>Second copy{!canCloud && <ProBadge label="STUDIO" />}</>}
         help="Every backup is also copied here, such as a Dropbox, Google Drive or iCloud folder, so the work survives if the drive dies."
-        info="Also copy every backup to a second place: a cloud-synced folder (Dropbox, Google Drive, iCloud, OneDrive) or another drive. That's the offsite copy in the 3-2-1 rule.">
+        info="Also copy every backup to a second place: a cloud-synced folder (Dropbox, Google Drive, iCloud, OneDrive) or another drive. That way one fire, theft or dead drive can't take every copy.">
         {canCloud ? (
           <>
             <FolderTable paths={mirrors} loaded={loaded} empty="No second copy yet." onRemove={removeMirror} icon="link" />
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Button variant="ghost" size="sm" onClick={addMirror} disabled={!loaded}><Icon name="plus" size={14} />Add a folder</Button>
+            <div className="set-inline">
+              <Button variant="ghost" size="sm" onClick={addMirror} disabled={!loaded}><Icon name="plus" size={14} />Add folder</Button>
               {providers.map((p) => (
                 <Button key={p.key} variant="ghost" size="sm" onClick={() => connectCloud(p.key, p.label)}
                   disabled={!rclone.available || connecting !== null}>
@@ -318,12 +299,12 @@ export function Sources() {
                 </Button>
               ))}
             </div>
-            {connectMsg && <div className="sub" style={{ color: "var(--accent-2)", margin: 0, fontSize: 12 }}>{connectMsg}</div>}
-            {connectErr && <div className="sub" style={{ color: "var(--danger)", margin: 0, fontSize: 12 }}>{connectErr}</div>}
+            {connectMsg && <p className="set-note set-note--ok">{connectMsg}</p>}
+            {connectErr && <p className="set-note set-note--bad">{connectErr}</p>}
             {rclone.available && rclone.remotes.length > 0 && (
               <div>
-                <div className="faint" style={{ margin: "0 0 7px", fontSize: 12 }}>Cloud accounts already set up on this {words.computer}</div>
-                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                <p className="set-note" style={{ marginBottom: 7 }}>Cloud accounts already set up on this {words.computer}</p>
+                <div className="set-inline">
                   {rclone.remotes.map((r) => (
                     <button key={r} className="chip" onClick={() => addRemote(r)}
                       disabled={mirrors.includes(`${r}:LazyCreatives-Backups`)}>+ {r}</button>
@@ -332,9 +313,9 @@ export function Sources() {
               </div>
             )}
             {!rclone.available && (
-              <div className="faint" style={{ fontSize: 12 }}>
-                The cloud sign-in buttons need the free <strong style={{ color: "var(--text-dim)" }}>rclone</strong> tool. Adding a synced folder works without it.
-              </div>
+              <p className="set-note">
+                To sign in to a cloud account from here, install the free <strong>rclone</strong> helper first. Adding a synced folder works without it.
+              </p>
             )}
           </>
         ) : (
@@ -344,81 +325,180 @@ export function Sources() {
         )}
       </SetRow>
 
-      <SetGroup title="When it runs" />
       <SetRow title={<>Automatic backup{!canSchedule && <ProBadge />}</>}
         help={`Leave the app running (it lives in your ${words.tray}) and it backs up on its own.`}>
-        <div className={`seg${canSchedule ? "" : " locked"}`} role="group" style={{ flexWrap: "wrap", alignSelf: "flex-start" }}>
-          {PRESETS.map((p) => (
-            <button key={p.min} disabled={!loaded || !canSchedule}
-              className={`seg__opt${cfg.interval_minutes === p.min ? " seg__opt--on" : ""}`}
-              onClick={() => setCfg({ ...cfg, interval_minutes: p.min })}>{p.label}</button>
-          ))}
-        </div>
+        <Choice label="Automatic backup" value={cfg.interval_minutes} options={PRESETS} disabled={!loaded || !canSchedule}
+          onChange={(m) => setCfg({ ...cfg, interval_minutes: m })} />
         {canSchedule ? (
           cfg.interval_minutes > 0
             ? <span className="pill pill--ok">On, backs up {fmtInterval(cfg.interval_minutes)}{nextRun ? `, next ${fmtClock(nextRun)}` : ""}</span>
-            : <span className="pill pill--skipped">Off, you back up when you choose</span>
+            : <span className="pill pill--skipped">Off. You back up when you choose</span>
         ) : (
           <div className="locked-note"><Icon name="lock" size={14} /> Automatic backups are a <strong style={{ color: "var(--text)" }}>Pro</strong> feature.</div>
         )}
       </SetRow>
 
-      {openAtLogin !== null && (
-        <SetRow title={`Start with your ${words.computer}`}
-          help="Opens Backups when you log in, so automatic backups keep running.">
-          <div className="seg" role="group" style={{ alignSelf: "flex-start" }}>
-            <button className={`seg__opt${openAtLogin ? " seg__opt--on" : ""}`} onClick={() => toggleOpenAtLogin(true)}>On</button>
-            <button className={`seg__opt${!openAtLogin ? " seg__opt--on" : ""}`} onClick={() => toggleOpenAtLogin(false)}>Off</button>
-          </div>
-          {!openAtLogin && cfg.interval_minutes > 0 &&
-            <span className="faint" style={{ fontSize: 12 }}>Automatic backups only run while the app is open.</span>}
-        </SetRow>
-      )}
-
-      <SetGroup title="Listening" />
-      <SetRow title="Pause when minimized"
-        help="Stops the music when you minimize the window. Press play to carry on.">
-        <div className="seg" role="group" aria-label="Pause when minimized" style={{ alignSelf: "flex-start" }}>
-          <button className={`seg__opt${pauseMin ? " seg__opt--on" : ""}`} onClick={() => { keep(PAUSE_ON_MINIMIZE, true); setPauseMin(true); }}>On</button>
-          <button className={`seg__opt${!pauseMin ? " seg__opt--on" : ""}`} onClick={() => { keep(PAUSE_ON_MINIMIZE, false); setPauseMin(false); }}>Off</button>
+      </>}
+      {tab === "look" && <>
+      <SetRow title="Look" help="How the app is laid out. Switch any time; nothing else changes.">
+        <div className="lookpick" role="group" aria-label="Look">
+          {([["crate", "Crate", "Rows like a DJ library, with waveforms and genre stripes"],
+             ["sleeve", "Sleeve", "Cover art first, like an album shelf"]] as const).map(([k, name, what]) => (
+            <button key={k} type="button" className="lookpick__opt" aria-pressed={look === k} onClick={() => { if (look !== k) fadeSwitch(() => setLook(k)); }}>
+              <LookThumb kind={k} />
+              <span><strong style={{ fontWeight: 600 }}>{name}</strong><br /><small>{what}</small></span>
+            </button>
+          ))}
         </div>
       </SetRow>
-
-      <SetGroup title="About" />
-      <SetRow title="What it does" help="Lazy Creatives · Looks lazy. Works obsessively.">
-        <p className="set-about">Backups lays out every music project on this computer to browse, with the songs you exported from each. Turn backups on and it keeps checked copies too. It only reads your projects; it never changes them.</p>
+      <SetRow title="Light or dark" help="Dark ink or light paper, in either look.">
+        <ThemePicker />
       </SetRow>
-      <SetRow title="Updates" help="The app checks for a new version on its own. Press the button to check right now.">
-        <UpdateCheck />
+      <SetRow title="Rating mark" help="What ratings are drawn with. Rate a project from its row, or right-click it.">
+        <GlyphPicker />
+      </SetRow>
+
+      <SetRow title="Your pictures"
+        help="Put your own pictures on project covers: behind the drawing, or as the whole cover. Change one project from its page or by right-clicking it.">
+        <CoverShelf sample={coverSample?.name ?? "Your project"} sampleGenre={coverSample?.genre} />
+      </SetRow>
+
+      </>}
+      {tab === "privacy" && <>
+      <p className="set-intro">Your music stays yours. Here is everything Backups touches, and everything that leaves your {words.computer}.</p>
+      <SetRow title="Your files" help="Projects, samples and exported songs.">
+        <p className="set-about">Backups only reads them. It never moves, changes or deletes a file. The one exception is Tidy names, which renames a song's files only when you press Rename, and offers Undo.</p>
+      </SetRow>
+      <SetRow title="Your backups" help="Where the copies live.">
+        <p className="set-about">Only in the folders you pick on the Backups tab: your own drive, or your own Dropbox, Google Drive or iCloud folder. Lazy Creatives has no copy and never sees your music.</p>
+      </SetRow>
+      <SetRow title={`What leaves your ${words.computer}`} help="No tracking, no accounts, no adverts.">
+        <p className="set-about">Checking for updates asks GitHub for the newest version number. If you turn on a second copy in the cloud, your backups go to your own cloud account.{SHOW_PHONE && " If you switch on the Phone tab, the songs you pick go to your own paired phone over your home Wi-Fi."} Nothing else is sent.</p>
       </SetRow>
       <SetRow title="Something not working?"
         help="Opens a short report on GitHub with your app version and computer type filled in. You read it before you send it. If the app ever crashes, it offers the same report the next time it opens.">
-        <button type="button" className="btn btn--ghost btn--sm" style={{ alignSelf: "flex-start" }}
-          onClick={() => (window as any).ablebackup?.reportProblem?.()}>Report a problem</button>
+        <Button variant="ghost" size="sm" onClick={() => (window as any).ablebackup?.reportProblem?.()}>Report a problem</Button>
       </SetRow>
+      </>}
+      {SHOW_PHONE && tab === "phone" && <YourPhone />}
+      {tab === "app" && <>
+      {openAtLogin !== null && (
+        <SetRow title={`Start with your ${words.computer}`}
+          help="Opens Backups when you log in, so automatic backups keep running.">
+          <OnOff label={`Start with your ${words.computer}`} on={openAtLogin} onChange={toggleOpenAtLogin} />
+          {!openAtLogin && cfg.interval_minutes > 0 &&
+            <p className="set-note">Automatic backups only run while the app is open.</p>}
+        </SetRow>
+      )}
+      <SetRow title="Pause when minimized"
+        help="Stops the music when you minimize the window. Press play to carry on.">
+        <OnOff label="Pause when minimized" on={pauseMin} onChange={(on) => { keep(PAUSE_ON_MINIMIZE, on); setPauseMin(on); }} />
+      </SetRow>
+
+      <SetRow title="What it does" help="Lazy Creatives. Looks lazy. Works obsessively.">
+        <p className="set-about">Backups lays out every music project on this computer to browse, with the songs you exported from each. Turn backups on and it keeps checked copies too. It only reads your projects; it never changes them.</p>
+      </SetRow>
+      <SetRow title="Updates" help="The app checks for a new version by itself. Press Check for updates to look right now.">
+        <UpdateCheck />
+      </SetRow>
+      </>}
+      </SetPanel>
     </div>
   );
 }
 
-// A heading over a few settings rows.
-function SetGroup({ title }: { title: string }) {
-  return <h2 className="set-group">{title}</h2>;
+// Your phone: a switch that lets paired phones in over home Wi-Fi, a code to scan
+// to pair one, and the paired phones with a Remove button each. The phone gets its
+// own copies of the songs its owner picks; nothing on this computer is changed.
+function YourPhone() {
+  const api = makeApi();
+  const [st, setSt] = useState<PhoneStatus | null>(null);
+  const [code, setCode] = useState<PhoneCode | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { api.phoneStatus().then(setSt).catch(() => {}); }, []);
+  // A fresh code while the switch is on; each lasts ten minutes, so renew it in time.
+  useEffect(() => {
+    if (!st?.enabled) { setCode(null); return; }
+    let live = true;
+    const get = () => api.phoneCode().then((c) => live && setCode(c)).catch(() => {});
+    get();
+    const t = window.setInterval(get, 9 * 60 * 1000);
+    return () => { live = false; window.clearInterval(t); };
+  }, [st?.enabled]);
+  // While the code shows, look for a newly paired phone every few seconds.
+  useEffect(() => {
+    if (!st?.enabled) return;
+    const t = window.setInterval(() => api.phoneStatus().then(setSt).catch(() => {}), 4000);
+    return () => window.clearInterval(t);
+  }, [st?.enabled]);
+
+  async function flip(on: boolean) {
+    setBusy(true);
+    try { setSt(await api.phoneSwitch(on)); }
+    catch (e) { toast(`Couldn't switch it ${on ? "on" : "off"}: ${(e as Error).message}`); }
+    finally { setBusy(false); }
+  }
+  async function forget(id: string, name: string) {
+    try { setSt(await api.phoneForget(id)); toast(`${name} can't connect any more`); }
+    catch (e) { toast(`Couldn't remove it: ${(e as Error).message}`); }
+  }
+
+  const on = !!st?.enabled;
+  return (
+    <>
+      <SetRow title="Let my phone connect"
+        help="Off until you switch it on. Only phones you've paired, on your home Wi-Fi.">
+        <OnOff label="Let my phone connect" on={on} onChange={flip} disabled={busy || !st} />
+        {on && code && (
+          <div className="phone-pair">
+            <QrCode text={code.link} />
+            <p className="set-about">Open Lazy Creatives on your phone and scan this code. It works once, and a new one shows each time you come back here.</p>
+          </div>
+        )}
+        <p className="set-note">
+          Your phone gets its own copies of the songs you choose to keep on it. Files on this computer are only read, never changed, moved or converted.
+        </p>
+      </SetRow>
+      <SetRow title="Paired phones" help="Remove one to cut it off straight away.">
+        {!st || st.devices.length === 0
+          ? <p className="faint" style={{ margin: 0, fontSize: 13 }}>{st ? "No phones yet." : "Loading…"}</p>
+          : (
+            <div className="table phone-cols">
+              {st.devices.map((d) => (
+                <div key={d.id} className="row cols">
+                  <Icon name="headphones" size={15} className="faint" />
+                  <span className="col-trunc" title={d.name}>{d.name}</span>
+                  <span className="col-num">paired {fmtDay(d.paired_at * 1000, { year: false })}</span>
+                  <span className="col-num">seen {fmtDay(d.last_seen * 1000, { year: false, time: true })}</span>
+                  <span className="col-act"><Button variant="quiet" size="sm" onClick={() => forget(d.id, d.name)}>Remove</Button></span>
+                </div>
+              ))}
+            </div>
+          )}
+      </SetRow>
+    </>
+  );
+}
+
+// A code for the phone's camera, drawn as crisp squares.
+function QrCode({ text }: { text: string }) {
+  const qr = qrcode(0, "M");
+  qr.addData(text);
+  qr.make();
+  const n = qr.getModuleCount();
+  const cells: string[] = [];
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) cells.push(`M${c} ${r}h1v1h-1z`);
+  return (
+    <svg className="phone-qr" viewBox={`-2 -2 ${n + 4} ${n + 4}`} role="img" aria-label="Code to scan with your phone"
+      shapeRendering="crispEdges">
+      <rect x={-2} y={-2} width={n + 4} height={n + 4} fill="#fff" />
+      <path d={cells.join("")} fill="#0B0E12" />
+    </svg>
+  );
 }
 
 const pct = (v: number, of: number) => Math.max(0, Math.min(100, of > 0 ? (v / of) * 100 : 0));
-
-// One settings section: its name and a short line on the left, its controls on the right.
-function SetRow({ title, help, info, children }: { title: ReactNode; help?: ReactNode; info?: string; children: ReactNode }) {
-  return (
-    <section className="set-row">
-      <div className="set-row__label">
-        <h2>{title}{info && <Info text={info} />}</h2>
-        {help && <p>{help}</p>}
-      </div>
-      <div className="set-row__body">{children}</div>
-    </section>
-  );
-}
 
 // Folders as one fixed-column list, the same in every section.
 function FolderTable({ paths, loaded, empty, onRemove, icon = "folder" }: {
@@ -554,7 +634,7 @@ export function ExportFolders() {
           )}
         </div>
       )}
-      {err && <div className="sub" style={{ color: "var(--danger)", margin: 0, fontSize: 12 }}>{err}</div>}
+      {err && <p className="set-note set-note--bad">{err}</p>}
       {(looking || result) && (
         <div className="sub" role="status" style={{ margin: 0, fontSize: 12 }}>
           {looking
@@ -562,8 +642,8 @@ export function ExportFolders() {
             : result}
         </div>
       )}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <Button variant="ghost" size="sm" onClick={add} disabled={!f || busy}><Icon name="plus" size={14} />Add an export folder</Button>
+      <div className="set-inline">
+        <Button variant="ghost" size="sm" onClick={add} disabled={!f || busy}><Icon name="plus" size={14} />Add folder</Button>
         <Button variant="ghost" size="sm" disabled={!f || busy} title="Look through these folders again for songs saved since"
           onClick={() => run(() => api.refreshExports(), undefined, true)}>{looking ? "Looking…" : "Look again"}</Button>
       </div>

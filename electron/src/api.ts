@@ -1,6 +1,7 @@
 import type { CloudFolder, Config, SuggestedFolder, ProjectExports, Entitlement, JobStatus, LibraryItem, Overview, PluginList, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, TidyBatch, TidyDone, TidyOptions, TidyPlan, UnmatchedSong, VerifyResult } from "./types";
 import type { CoverSource } from "./coverArt";
 import type { Album, AlbumCandidate, AlbumSongChange } from "./albums";
+import type { DropSong } from "./songDrop";
 import { plainProblem } from "./plainProblem";
 
 function base() {
@@ -53,6 +54,11 @@ export function makeApi() {
     async removeAlbumSong(id: string, path: string): Promise<Album> {
       return req("DELETE", `/api/albums/${id}/song?path=${encodeURIComponent(path)}`);
     },
+    // Your phone: pair a phone and let it browse and fetch songs over home Wi-Fi.
+    async phoneStatus(): Promise<PhoneStatus> { return req("GET", "/api/phone"); },
+    async phoneSwitch(enabled: boolean): Promise<PhoneStatus> { return req("PUT", "/api/phone", { enabled }); },
+    async phoneCode(): Promise<PhoneCode> { return req("POST", "/api/phone/code"); },
+    async phoneForget(id: string): Promise<PhoneStatus> { return req("DELETE", `/api/phone/devices/${id}`); },
     async getSettings(): Promise<Config> { return req("GET", "/api/settings"); },
     async saveSettings(c: Config): Promise<Config> { return req("PUT", "/api/settings", c); },
     // First run: the usual project folders on this computer, most projects first.
@@ -151,6 +157,16 @@ export function makeApi() {
     async unlinkExport(path: string, projectId: string): Promise<{ ok: boolean }> {
       return req("POST", "/api/exports/unlink", { path, project_id: projectId });
     },
+    // Songs dragged onto a project: what would happen, doing it, and Undo.
+    async dropCheck(paths: string[], projectId: string): Promise<{ songs: DropSong[] }> {
+      return req("POST", "/api/exports/drop/check", { paths, project_id: projectId });
+    },
+    async dropSongs(paths: string[], projectId: string, move = false): Promise<{ linked: string[]; songs: DropSong[]; token: string }> {
+      return req("POST", "/api/exports/drop", { paths, project_id: projectId, move });
+    },
+    async dropUndo(token: string): Promise<{ ok: boolean }> {
+      return req("POST", "/api/exports/drop/undo", { token });
+    },
     // Songs in exports folders no project matched (or the ones marked "not a song").
     async unmatchedSongs(ignored = false): Promise<{ songs: UnmatchedSong[]; count: number }> {
       return req("GET", `/api/exports/unmatched${ignored ? "?ignored=true" : ""}`);
@@ -206,3 +222,10 @@ export function makeCoverSource(): CoverSource {
     readImage: async (p) => (window as any).ablebackup?.readImage?.(p) ?? null,
   };
 }
+
+export interface PhoneDevice { id: string; name: string; paired_at: number; last_seen: number }
+export interface PhoneStatus {
+  enabled: boolean; running: boolean; address: string; port: number; computer: string;
+  devices: PhoneDevice[];
+}
+export interface PhoneCode { code: string; host: string; port: number; expires_in: number; link: string }

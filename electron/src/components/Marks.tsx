@@ -6,7 +6,7 @@ import { DENSITIES, GLYPHS, setGlyph, setRating, useRatings, type Density, type 
 // file lives in Backups and Uploader (electron/src/components/Marks.tsx). Styles are
 // in lazy-ui.css (.rating, .rowsize), in both looks.
 
-const FILLED: Record<Glyph, IconName> = { flame: "flameFilled", heart: "heartFilled", disc: "discFilled", dot: "dotFilled" };
+export const FILLED: Record<Glyph, IconName> = { flame: "flameFilled", heart: "heartFilled", disc: "discFilled", dot: "dotFilled" };
 
 // Five marks; click one to rate up to it, click the same one again to clear.
 // Arrow keys move the rating, 0 or Backspace clears it.

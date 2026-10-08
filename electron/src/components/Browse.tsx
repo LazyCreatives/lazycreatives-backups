@@ -1,9 +1,12 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { genreColor } from "../look";
+import { Icon, type IconName } from "./Icon";
 
 // Browse by Genre, then Year, then the projects or tracks themselves, like a record
 // shop's racks (rekordbox calls it Column View). Crate shows three columns side by
 // side; Sleeve shows the same two choices as rows of chips over the cover wall.
+// Above the genres sit your favourites (pinned, rated): each narrows the other two
+// columns too, so "rated House from 2025" is three clicks.
 // Picking sets the page's own Genre and Year filters, so search, the other filters
 // and smart crates all work with it. SHARED FILE: the same file lives in Backups and
 // Uploader (electron/src/components/Browse.tsx); change both together.
@@ -30,22 +33,43 @@ export function facets<T>(items: T[], genreOf: (t: T) => string | null | undefin
   return { genres, years };
 }
 
-function Column({ title, all, total, list, value, onPick }: {
-  title: string; all: string; total: number; list: Facet[]; value: string; onPick: (v: string) => void;
+// One of your favourites to narrow by: "Pinned", "Rated".
+export interface Mark { key: string; label: string; icon: IconName; n: number; on: boolean; onToggle: () => void; tone?: "pin" | "rate" }
+
+function Opt({ on, onClick, stripe, children, n, cls = "" }: {
+  on: boolean; onClick: () => void; stripe?: string; children: ReactNode; n: number; cls?: string;
+}) {
+  return (
+    <button type="button" className={`browse__opt${on ? " browse__opt--on" : ""}${cls}`} aria-pressed={on} onClick={onClick}>
+      {stripe && <span className="browse__stripe" style={{ background: stripe }} />}
+      <span className="browse__name">{children}</span>
+      <span className="browse__n">{n.toLocaleString()}</span>
+      <Icon name="chevronRight" size={12} className="browse__go" />
+    </button>
+  );
+}
+
+function Column({ title, all, total, list, value, onPick, marks }: {
+  title: string; all: string; total: number; list: Facet[]; value: string; onPick: (v: string) => void; marks?: Mark[];
 }) {
   return (
     <div className="browse__col" role="group" aria-label={title}>
       <div className="browse__head">{title}</div>
       <div className="browse__list">
-        <button type="button" className={`browse__opt${!value ? " browse__opt--on" : ""}`} aria-pressed={!value} onClick={() => onPick("")}>
-          <span className="browse__name">{all}</span><span className="browse__n">{total}</span>
-        </button>
+        {marks && marks.length > 0 && (
+          <div className="browse__marks" role="group" aria-label="Favourites">
+            <div className="browse__section">Favourites</div>
+            {marks.map((m) => (
+              <Opt key={m.key} on={m.on} n={m.n} onClick={m.onToggle} cls={` browse__opt--mark${m.tone ? ` browse__opt--${m.tone}` : ""}${!m.n && !m.on ? " browse__opt--none" : ""}`}>
+                <Icon name={m.icon} size={13} className="browse__markicon" />{m.label}
+              </Opt>
+            ))}
+            <div className="browse__section">{title}</div>
+          </div>
+        )}
+        <Opt on={!value} n={total} onClick={() => onPick("")}>{all}</Opt>
         {list.map((f) => (
-          <button key={f.value} type="button" className={`browse__opt${value === f.value ? " browse__opt--on" : ""}`}
-            aria-pressed={value === f.value} onClick={() => onPick(value === f.value ? "" : f.value)}>
-            {f.colour && <span className="browse__stripe" style={{ background: f.colour }} />}
-            <span className="browse__name">{f.label}</span><span className="browse__n">{f.n}</span>
-          </button>
+          <Opt key={f.value} on={value === f.value} n={f.n} stripe={f.colour} onClick={() => onPick(value === f.value ? "" : f.value)}>{f.label}</Opt>
         ))}
       </div>
     </div>
@@ -53,19 +77,25 @@ function Column({ title, all, total, list, value, onPick }: {
 }
 
 // Crate: Genre | Year | the items (drawn by the page, one row each).
-export function ColumnBrowse({ genres, years, total, inGenre, genre, year, onGenre, onYear, yearTitle, noun, children }: {
+export function ColumnBrowse({ genres, years, total, inGenre, genre, year, onGenre, onYear, yearTitle, noun, marks, cols, narrowCols, heads, children }: {
   genres: Facet[]; years: Facet[]; total: number; inGenre: number;
   genre: string; year: string; onGenre: (g: string) => void; onYear: (y: string) => void;
   yearTitle: string;      // "Year last saved", "Year posted"
   noun: string;           // the third column's title: "Projects", "Tracks"
+  marks?: Mark[];         // favourites over the genres
+  cols?: string;          // the item rows' grid columns, so the headings line up with them
+  narrowCols?: string;    // the same in the narrow window
+  heads?: ReactNode[];    // a heading per item column after the name ("Rating", "Backup")
   children: ReactNode;
 }) {
   return (
-    <div className="browse">
-      <Column title="Genre" all="All genres" total={total} list={genres} value={genre} onPick={(g) => { onGenre(g); }} />
+    <div className="browse" style={cols ? { ["--browse-cols" as string]: cols, ["--browse-cols-narrow" as string]: narrowCols ?? cols } as CSSProperties : undefined}>
+      <Column title="Genre" all="All genres" total={total} list={genres} value={genre} onPick={(g) => { onGenre(g); }} marks={marks} />
       <Column title={yearTitle} all="All years" total={inGenre} list={years} value={year} onPick={onYear} />
       <div className="browse__col browse__col--items" role="group" aria-label={noun}>
-        <div className="browse__head">{noun}</div>
+        <div className={`browse__head${heads ? " browse__head--items" : ""}`}>
+          {heads ? <><span className="browse__headname" style={{ gridColumn: `1 / ${-(heads.length + 1)}` }}>{noun}</span>{heads.map((h, i) => <span key={i}>{h}</span>)}</> : noun}
+        </div>
         <div className="browse__list">{children}</div>
       </div>
     </div>

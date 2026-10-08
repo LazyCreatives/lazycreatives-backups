@@ -5,6 +5,7 @@ import { fuzzyScore } from "./fuzzy";
 import { dawLabel, fmtCount } from "./format";
 import { keep, recall } from "./desktop";
 import { ratingOf } from "./marks";
+import { isPinned } from "./pins";
 
 export type StatusFilter = "all" | "safe" | "changed" | "missing" | "none";
 export type SongFilter = "any" | "has" | "soundcloud" | "nosong";
@@ -18,9 +19,10 @@ export interface LibFilters {
   song: SongFilter;
   year: string;    // "" = any, else the year it was last saved ("2025")
   rated: number;   // 0 = any, else at least this many marks
+  pinned: boolean; // only the pinned ones
 }
 
-export const NO_FILTERS: LibFilters = { q: "", status: "all", daw: "", genre: "", bpm: "", song: "any", year: "", rated: 0 };
+export const NO_FILTERS: LibFilters = { q: "", status: "all", daw: "", genre: "", bpm: "", song: "any", year: "", rated: 0, pinned: false };
 
 // The year a project was last saved, as text ("2025"), or "" when unknown.
 export function yearOf(it: Pick<LibraryItem, "mtime">): string {
@@ -67,7 +69,7 @@ export function isFiltered(f: LibFilters): boolean {
 
 // Everything but the search box and status (which has its own counted buttons).
 export function extraFilterCount(f: LibFilters): number {
-  return [f.daw, f.genre, f.bpm, f.song !== "any" ? f.song : "", f.year, f.rated].filter(Boolean).length;
+  return [f.daw, f.genre, f.bpm, f.song !== "any" ? f.song : "", f.year, f.rated, f.pinned].filter(Boolean).length;
 }
 
 /** Projects that pass the filters (ignoring status when `skipStatus`), best search match first. */
@@ -106,6 +108,7 @@ export function applyFilters(items: LibraryItem[], f: LibFilters, skipStatus = f
     if (f.song === "nosong" && it.latest_export) return;
     if (f.year && yearOf(it) !== f.year) return;
     if (f.rated && ratingOf(it.project_id) < f.rated) return;
+    if (f.pinned && !isPinned(it.project_id)) return;
     let score = 1;
     if (scores) {
       score = scores.get(it) ?? 0;
@@ -191,7 +194,7 @@ export function describeFilters(f: LibFilters, dawName: (d: string) => string = 
   const song: Record<SongFilter, string> = { any: "", has: "Has a song", soundcloud: "On SoundCloud", nosong: "No song yet" };
   const parts = [
     f.q.trim() ? `“${f.q.trim()}”` : "", f.genre === "-" ? "No genre yet" : f.genre, f.year, band ? `${band.label} BPM` : "",
-    f.daw ? dawName(f.daw) : "", f.rated ? `${f.rated}+ rated` : "", status[f.status], song[f.song],
+    f.daw ? dawName(f.daw) : "", f.pinned ? "Pinned" : "", f.rated ? `${f.rated}+ rated` : "", status[f.status], song[f.song],
   ].filter(Boolean);
   return parts.slice(0, 3).join(" · ") || "Everything";
 }

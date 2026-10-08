@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { showSettingsTab } from "./components/SetRow";
 import { Nav } from "./components/Nav";
 import { Setup } from "./screens/Setup";
 import { Home } from "./screens/Home";
@@ -32,6 +33,7 @@ import { COMPANION_KEYS, openCompanion, useCompanionCommand } from "./companion"
 import { NO_FILTERS, type LibFilters } from "./libraryFilter";
 import { dawLabel } from "./format";
 import { getRecents, openedWhen } from "./recents";
+import { SONG_FILE, claimedBySong, useSongDragActive } from "./songDrop";
 import type { LibraryItem } from "./types";
 
 const api = makeApi();
@@ -167,7 +169,13 @@ export default function App() {
 
   // Drop a folder (or a project file) on the window to add it to the folders Backups looks in.
   async function addDropped(items: Dropped[]) {
+    if (claimedBySong()) return;  // dropped on a project: that links a song instead
     if (!cfg || cfg === "error") return;
+    if (items.every((d) => d.kind === "file" && SONG_FILE.test(d.path))) {
+      toast("To link a song to its project, drop it on the project in Library.",
+        tab === "library" ? undefined : { label: "Open Library", onClick: () => setTab("library") });
+      return;
+    }
     const folders = [...new Set(items.flatMap((d) =>
       d.kind === "folder" && PROJECT_PACKAGE.test(d.path) ? [folderOf(d.path.replace(/[\\/]+$/, ""))]
         : d.kind === "folder" ? [d.path] : d.kind === "file" && PROJECT_FILE.test(d.path) ? [folderOf(d.path)] : []))];
@@ -187,6 +195,7 @@ export default function App() {
       toastWarn("Couldn't add that folder. Try Add folder in Settings.");
     }
   }
+  const songDrag = useSongDragActive();
   const dragging = useFileDrop(addDropped, !!cfg && cfg !== "error" && isConfigured(cfg));
 
   // Was the app already set up when it opened? Only then can "What's new" show
@@ -300,7 +309,7 @@ export default function App() {
               backup={live.backup}
               onBackupNow={() => setFlow("scan")}
               onFindProjects={() => { setScanLibraryNow(true); setTab("library"); }}
-              onOpenSettings={() => setTab("settings")}
+              onOpenSettings={() => { showSettingsTab("backups"); setTab("settings"); }}
               onResumeProgress={() => setFlow("progress")}
               onOpenHistory={() => setTab("library")}
               onOpenStatus={(status) => openLibrary({ status })}
@@ -336,7 +345,10 @@ export default function App() {
       <GenrePickHost />
       <CoverPickHost />
       <LivePalette items={paletteItems} />
-      <DropZone show={dragging} title="Drop to add" hint="Drop a project folder to add it to the folders Backups looks in." />
+      <DropZone show={dragging && !(songDrag && tab === "library")}
+        {...(songDrag
+          ? { title: "Drop on a project", hint: "Open Library and drop the song on its project to link them." }
+          : { title: "Drop to add", hint: "Drop a project folder to add it to the folders Backups looks in." })} />
       {showKeys && <ShortcutsPanel onClose={() => setShowKeys(false)} />}
       <Exit>{showFirstBackup && (
         <FirstBackupModal
