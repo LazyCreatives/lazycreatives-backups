@@ -43,7 +43,7 @@ export function Nav({ tab, onNavigate, busy, flowActive, onOpenRecent, openId }:
   return (
     <nav className="nav">
       <LcBrand app="Backups" tag={`Lazy Creatives · ${plan}`} busy={busy} />
-      <button type="button" className="nav__find" onClick={openPalette} title="Find a page, project or action" aria-label="Find anything">
+      <button type="button" className="nav__find" onClick={openPalette} title="Find a page, project or action">
         <Icon name="search" size={14} /><span>Find anything</span><kbd>{IS_MAC ? "⌘K" : "Ctrl K"}</kbd>
       </button>
       {ITEMS.map((it) => {

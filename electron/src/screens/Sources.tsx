@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import qrcode from "qrcode-generator";
-import { CopyButton, openMenu, toast } from "../components/Desktop";
+import { CopyButton, askConfirm, openMenu, toast } from "../components/Desktop";
 import { PAUSE_ON_MINIMIZE, baseName, copyText, keep, pausesOnMinimize } from "../desktop";
 import { makeApi, type PhoneCode, type PhoneStatus } from "../api";
 import type { Config, Overview } from "../types";
@@ -20,7 +20,7 @@ import { ReadingSettings } from "../components/ReadingSettings";
 import { fadeSwitch } from "../fade";
 import { UpdateCheck } from "../components/UpdateCheck";
 import { useEntitlement } from "../entitlement";
-import { fmtCount, fmtInterval, fmtClock, fmtDay, fmtSize } from "../format";
+import { fmtCount, fmtInterval, fmtNext, fmtDay, fmtSize } from "../format";
 import { osWords } from "../platform";
 import { useCloudFolders } from "../components/DestChoices";
 import { EXPORT_FOLDER_FROM, exportFolderRows } from "../exportFolders";
@@ -332,7 +332,7 @@ export function Sources() {
           onChange={(m) => setCfg({ ...cfg, interval_minutes: m })} />
         {canSchedule ? (
           cfg.interval_minutes > 0
-            ? <span className="pill pill--ok">On, backs up {fmtInterval(cfg.interval_minutes)}{nextRun ? `, next ${fmtClock(nextRun)}` : ""}</span>
+            ? <span className="pill pill--ok">On, backs up {fmtInterval(cfg.interval_minutes)}{nextRun ? `, next ${fmtNext(nextRun)}` : ""}</span>
             : <span className="pill pill--skipped">Off. You back up when you choose</span>
         ) : (
           <div className="locked-note"><Icon name="lock" size={14} /> Automatic backups are a <strong style={{ color: "var(--text)" }}>Pro</strong> feature.</div>
@@ -375,7 +375,7 @@ export function Sources() {
         <p className="set-about">Only in the folders you pick on the Backups tab: your own drive, or your own Dropbox, Google Drive or iCloud folder. Lazy Creatives has no copy and never sees your music.</p>
       </SetRow>
       <SetRow title={`What leaves your ${words.computer}`} help="No tracking, no accounts, no adverts.">
-        <p className="set-about">Checking for updates asks GitHub for the newest version number. If you turn on a second copy in the cloud, your backups go to your own cloud account.{SHOW_PHONE && " If you switch on the Phone tab, the songs you pick go to your own paired phone over your home Wi-Fi."} Nothing else is sent.</p>
+        <p className="set-about">Checking for updates asks GitHub for the newest version number. If you turn on a second copy in the cloud, your backups go to your own cloud account.{SHOW_PHONE && " If you switch on Let my phone connect, the songs you pick go to your own paired phone over your home Wi-Fi."} Nothing else is sent.</p>
       </SetRow>
       <SetRow title="Something not working?"
         help="Opens a short report on GitHub with your app version and computer type filled in. You read it before you send it. If the app ever crashes, it offers the same report the next time it opens.">
@@ -417,8 +417,13 @@ function YourPhone() {
   const [st, setSt] = useState<PhoneStatus | null>(null);
   const [code, setCode] = useState<PhoneCode | null>(null);
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => { api.phoneStatus().then(setSt).catch(() => {}); }, []);
+  function load() {
+    setFailed(false);
+    api.phoneStatus().then(setSt).catch(() => setFailed(true));
+  }
+  useEffect(load, []);
   // A fresh code while the switch is on; each lasts ten minutes, so renew it in time.
   useEffect(() => {
     if (!st?.enabled) { setCode(null); return; }
@@ -441,8 +446,15 @@ function YourPhone() {
     catch (e) { toast(`Couldn't switch it ${on ? "on" : "off"}: ${(e as Error).message}`); }
     finally { setBusy(false); }
   }
+  // Removing can't be undone (the phone has to pair again), so ask first.
   async function forget(id: string, name: string) {
-    try { setSt(await api.phoneForget(id)); toast(`${name} can't connect any more`); }
+    const ok = await askConfirm({
+      title: `Remove ${name}?`,
+      body: "It's cut off straight away. To use it again, pair it with a new code.",
+      confirm: "Remove phone", danger: true,
+    });
+    if (!ok) return;
+    try { setSt(await api.phoneForget(id)); toast(`${name} can't connect any more.`); }
     catch (e) { toast(`Couldn't remove it: ${(e as Error).message}`); }
   }
 
@@ -452,6 +464,12 @@ function YourPhone() {
       <SetRow title="Let my phone connect"
         help="Off until you switch it on. Only phones you've paired, on your home Wi-Fi.">
         <OnOff label="Let my phone connect" on={on} onChange={flip} disabled={busy || !st} />
+        {failed && !st && (
+          <div className="phone-failed" role="alert">
+            <span>Couldn't check whether your phone can connect.</span>
+            <Button variant="ghost" size="sm" onClick={load}>Try again</Button>
+          </div>
+        )}
         {on && code && (
           <div className="phone-pair">
             <QrCode text={code.link} />
@@ -464,7 +482,7 @@ function YourPhone() {
       </SetRow>
       <SetRow title="Paired phones" help="Remove one to cut it off straight away.">
         {!st || st.devices.length === 0
-          ? <p className="faint" style={{ margin: 0, fontSize: 13 }}>{st ? "No phones yet." : "Loading…"}</p>
+          ? <p className="faint" style={{ margin: 0, fontSize: 13 }}>{st ? "No phones yet." : failed ? "Couldn't load your paired phones." : "Loading…"}</p>
           : (
             <div className="table phone-cols">
               {st.devices.map((d) => (
@@ -473,7 +491,7 @@ function YourPhone() {
                   <span className="col-trunc" title={d.name}>{d.name}</span>
                   <span className="col-num">paired {fmtDay(d.paired_at * 1000, { year: false })}</span>
                   <span className="col-num">seen {fmtDay(d.last_seen * 1000, { year: false, time: true })}</span>
-                  <span className="col-act"><Button variant="quiet" size="sm" onClick={() => forget(d.id, d.name)}>Remove</Button></span>
+                  <span className="col-act"><Button variant="quiet" size="sm" aria-label={`Remove ${d.name}`} onClick={() => forget(d.id, d.name)}>Remove</Button></span>
                 </div>
               ))}
             </div>

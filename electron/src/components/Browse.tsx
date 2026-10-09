@@ -12,35 +12,39 @@ import { Icon, type IconName } from "./Icon";
 // Uploader (electron/src/components/Browse.tsx); change both together.
 
 export const NO_GENRE = "-";   // the Genre filter value for "No genre yet"
+export const NO_YEAR = "-";    // the Year filter value for "No date" (an item whose year isn't known)
 
 export interface Facet { value: string; label: string; n: number; colour?: string }
 
 // Genres (most first) and years (newest first) with how many items each holds.
 export function facets<T>(items: T[], genreOf: (t: T) => string | null | undefined, yearOf: (t: T) => string, genre: string): { genres: Facet[]; years: Facet[] } {
   const g = new Map<string, number>(), y = new Map<string, number>();
-  let none = 0;
+  let none = 0, noYear = 0;
   for (const it of items) {
     const name = (genreOf(it) || "").trim();
     if (name) g.set(name, (g.get(name) ?? 0) + 1); else none++;
     const inGenre = !genre || (genre === NO_GENRE ? !name : name === genre);
     const yr = yearOf(it);
     if (inGenre && yr) y.set(yr, (y.get(yr) ?? 0) + 1);
+    else if (inGenre) noYear++;
   }
   const genres: Facet[] = [...g].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([value, n]) => ({ value, label: value, n, colour: genreColor(value) }));
   if (none) genres.push({ value: NO_GENRE, label: "No genre yet", n: none, colour: genreColor(null) });
   const years: Facet[] = [...y].sort((a, b) => b[0].localeCompare(a[0])).map(([value, n]) => ({ value, label: value, n }));
+  if (noYear) years.push({ value: NO_YEAR, label: "No date", n: noYear });   // so the years add up to "All years"
   return { genres, years };
 }
 
 // One of your favourites to narrow by: "Pinned", "Rated".
 export interface Mark { key: string; label: string; icon: IconName; n: number; on: boolean; onToggle: () => void; tone?: "pin" | "rate" }
 
-function Opt({ on, onClick, stripe, children, n, cls = "" }: {
-  on: boolean; onClick: () => void; stripe?: string; children: ReactNode; n: number; cls?: string;
+function Opt({ on, onClick, stripe, children, label, n, cls = "" }: {
+  on: boolean; onClick: () => void; stripe?: string; children: ReactNode; label: string; n: number; cls?: string;
 }) {
+  // A long genre ends in "…" and shows whole on hover.
   return (
-    <button type="button" className={`browse__opt${on ? " browse__opt--on" : ""}${cls}`} aria-pressed={on} onClick={onClick}>
+    <button type="button" className={`browse__opt${on ? " browse__opt--on" : ""}${cls}`} aria-pressed={on} onClick={onClick} title={label}>
       {stripe && <span className="browse__stripe" style={{ background: stripe }} />}
       <span className="browse__name">{children}</span>
       <span className="browse__n">{n.toLocaleString()}</span>
@@ -60,16 +64,15 @@ function Column({ title, all, total, list, value, onPick, marks }: {
           <div className="browse__marks" role="group" aria-label="Favourites">
             <div className="browse__section">Favourites</div>
             {marks.map((m) => (
-              <Opt key={m.key} on={m.on} n={m.n} onClick={m.onToggle} cls={` browse__opt--mark${m.tone ? ` browse__opt--${m.tone}` : ""}${!m.n && !m.on ? " browse__opt--none" : ""}`}>
-                <Icon name={m.icon} size={13} className="browse__markicon" />{m.label}
+              <Opt key={m.key} on={m.on} n={m.n} label={m.label} onClick={m.onToggle} cls={` browse__opt--mark${m.tone ? ` browse__opt--${m.tone}` : ""}${!m.n && !m.on ? " browse__opt--none" : ""}`}>
+                <Icon name={m.icon} size={13} className="browse__markicon" /><span className="browse__label">{m.label}</span>
               </Opt>
             ))}
-            <div className="browse__section">{title}</div>
           </div>
         )}
-        <Opt on={!value} n={total} onClick={() => onPick("")}>{all}</Opt>
+        <Opt on={!value} n={total} label={all} onClick={() => onPick("")}><span className="browse__label">{all}</span></Opt>
         {list.map((f) => (
-          <Opt key={f.value} on={value === f.value} n={f.n} stripe={f.colour} onClick={() => onPick(value === f.value ? "" : f.value)}>{f.label}</Opt>
+          <Opt key={f.value} on={value === f.value} n={f.n} stripe={f.colour} label={f.label} onClick={() => onPick(value === f.value ? "" : f.value)}><span className="browse__label">{f.label}</span></Opt>
         ))}
       </div>
     </div>
@@ -100,6 +103,15 @@ export function ColumnBrowse({ genres, years, total, inGenre, genre, year, onGen
       </div>
     </div>
   );
+}
+
+// An item row opens when clicked anywhere except its own controls (pin, rating).
+// The row itself isn't a button (buttons can't hold buttons): its name is.
+export function openFromRow(open: () => void) {
+  return (e: { target: EventTarget | null }) => {
+    if ((e.target as HTMLElement | null)?.closest?.("button, [role='slider'], input, a")) return;
+    open();
+  };
 }
 
 // Sleeve: the same two choices as rows of chips over the wall.

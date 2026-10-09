@@ -106,7 +106,7 @@ export function applyFilters(items: LibraryItem[], f: LibFilters, skipStatus = f
     if (f.song === "has" && !it.latest_export) return;
     if (f.song === "soundcloud" && !it.latest_export?.uploaded) return;
     if (f.song === "nosong" && it.latest_export) return;
-    if (f.year && yearOf(it) !== f.year) return;
+    if (f.year && (yearOf(it) || "-") !== f.year) return;
     if (f.rated && ratingOf(it.project_id) < f.rated) return;
     if (f.pinned && !isPinned(it.project_id)) return;
     let score = 1;
@@ -193,7 +193,7 @@ export function describeFilters(f: LibFilters, dawName: (d: string) => string = 
   const status: Record<StatusFilter, string> = { all: "", safe: "Safe", changed: "Changed", missing: "Missing samples", none: "Not backed up" };
   const song: Record<SongFilter, string> = { any: "", has: "Has a song", soundcloud: "On SoundCloud", nosong: "No song yet" };
   const parts = [
-    f.q.trim() ? `“${f.q.trim()}”` : "", f.genre === "-" ? "No genre yet" : f.genre, f.year, band ? `${band.label} BPM` : "",
+    f.q.trim() ? `“${f.q.trim()}”` : "", f.genre === "-" ? "No genre yet" : f.genre, f.year === "-" ? "No date" : f.year, band ? `${band.label} BPM` : "",
     f.daw ? dawName(f.daw) : "", f.pinned ? "Pinned" : "", f.rated ? `${f.rated}+ rated` : "", status[f.status], song[f.song],
   ].filter(Boolean);
   return parts.slice(0, 3).join(" · ") || "Everything";

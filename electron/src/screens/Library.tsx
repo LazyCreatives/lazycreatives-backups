@@ -23,7 +23,7 @@ import { pickGenre, pickCrateColor } from "../components/GenrePick";
 import { PageHeader } from "../components/PageHeader";
 import { UnmatchedSongs } from "./UnmatchedSongs";
 import { SmartBar } from "../components/SmartBar";
-import { ColumnBrowse, NO_GENRE, facets } from "../components/Browse";
+import { ColumnBrowse, NO_GENRE, facets, openFromRow } from "../components/Browse";
 import { BPM_BANDS, FIRST_DIR, NO_FILTERS, applyFilters, describeFilters, yearOf, rememberSort, rememberedSort, sortItems, type LibSort, type SortKey, extraFilterCount, isFiltered, countStatuses, statusSummary, rememberFilters, rememberedFilters, type LibFilters, type LibraryView, type StatusFilter, viewFor } from "../libraryFilter";
 import { openMenu, toast, type MenuItem, toastWarn } from "../components/Desktop";
 import { copyText, keep, recall } from "../desktop";
@@ -131,6 +131,8 @@ let rememberedLimit = PAGE;
 // openProject: the project shown as its own page (its id, or its name when another
 // screen opened it), or null for the list. Opening and closing go through the app's
 // back/forward history, so the side mouse buttons step between list and project.
+const COLUMN_PAGE = 200;
+
 export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false, onScanStarted, show = null, onShown }: {
   scan: ScanProgress; openProject?: string | null;
   onOpen: (projectId: string) => void; onClose: () => void;
@@ -402,6 +404,9 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   // rows catch up between keys (React drops a half-drawn list when another key lands).
   const dFilters = useDeferredValue(filters);
   const shown = useMemo(() => pinnedFirst(sortItems(applyFilters(items, dFilters), sort), pins), [items, dFilters, sort, pins, rated]);
+  // The columns view draws COLUMN_PAGE projects and more on asking, so a big library stays quick.
+  const [columnShown, setColumnShown] = useState(COLUMN_PAGE);
+  useEffect(() => { setColumnShown(COLUMN_PAGE); }, [shown]);
   // Ticked projects, for doing one thing to several at once.
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const togglePick = (id: string) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -738,14 +743,17 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
           ]}
           cols="36px 24px minmax(0, 1fr) 80px 116px" narrowCols="36px 24px minmax(0, 1fr) 80px 10px"
           heads={["Rating", <span className="browse__headwide">Backup</span>]}>
-          {shown.length === 0 ? <p className="browse__empty">No projects here. Pick another genre or year.</p>
-            : shown.map((it) => {
+          {shown.length === 0 ? (filters.pinned || filters.rated > 0
+              ? <div className="browse__empty">Nothing {filters.pinned && filters.rated > 0 ? "pinned and rated" : filters.pinned ? "pinned" : "rated"} here.{" "}
+                  <button type="button" className="linkbtn" onClick={() => setFilters({ pinned: false, rated: 0 })}>Show every project</button></div>
+              : <p className="browse__empty">No projects here. Pick another genre or year.</p>)
+            : <>{shown.slice(0, columnShown).map((it) => {
               const st = statusLine(it);
               const isPin = pins.includes(it.project_id);
               const openIt = () => onOpen(it.project_id);
               return (
-                <SongDropTarget as="div" project={it} key={it.project_id} role="button" tabIndex={0} className={`browse__item${isPin ? " browse__item--pinned" : ""}`} data-nav-key={it.project_id}
-                  onClick={openIt} onKeyDown={rowKey(openIt)}
+                <SongDropTarget as="div" project={it} key={it.project_id} className={`browse__item${isPin ? " browse__item--pinned" : ""}`} data-nav-key={it.project_id}
+                  onClick={openFromRow(openIt)}
                   onContextMenu={(e: React.MouseEvent) => openMenu(e, [
                     { label: "Show backups & details", onClick: openIt },
                     { label: `Open in ${DAW_NAMES[it.daw ?? ""] ?? "its DAW"}`, onClick: () => openInDaw(it.path) },
@@ -761,10 +769,10 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                     onClick={(e) => { e.stopPropagation(); togglePin(it.project_id); }}>
                     <Icon name={isPin ? "starFilled" : "star"} size={14} />
                   </button>
-                  <span className="browse__itemtext">
+                  <button type="button" className="browse__itemtext browse__open" onClick={openIt}>
                     <span className="lib-name" title={it.name}>{it.name}</span>
                     <span className="lib-sub">{[it.genre || "", it.bpm ? `${Math.round(it.bpm)} BPM` : "", dawLabel(it.daw), yearOf(it)].filter(Boolean).join(" · ")}</span>
-                  </span>
+                  </button>
                   <Rating id={it.project_id} name={it.name} size={13} />
                   <span className={`browse__state${st.tone === "warn" ? " browse__state--warn" : ""}`}
                     title={st.tone === "ok" ? "Safe" : st.tone === "warn" ? `${st.text}` : st.text}>
@@ -774,6 +782,12 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                 </SongDropTarget>
               );
             })}
+            {shown.length > columnShown && (
+              <button type="button" className="browse__item browse__more" onClick={() => setColumnShown((n) => n + COLUMN_PAGE)}>
+                Show {fmtCount(Math.min(COLUMN_PAGE, shown.length - columnShown))} more
+                <span className="faint"> of {fmtCount(shown.length - columnShown)} left</span>
+              </button>
+            )}</>}
         </ColumnBrowse>
       ) : shown.length === 0 ? (
         onlyMissing

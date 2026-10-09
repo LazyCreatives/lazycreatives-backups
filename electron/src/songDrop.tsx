@@ -22,6 +22,12 @@ export interface DropSong {
 const hasFiles = (e: { dataTransfer: DataTransfer | null }) =>
   !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files");
 
+// The songs among dropped paths. A project folder, a project file or a picture isn't
+// one: those are left for the window, which adds a dropped folder to Backups.
+export function songPaths(paths: string[]): string[] {
+  return paths.filter((p) => SONG_FILE.test(p));
+}
+
 // True when what's being dragged looks like audio. While dragging the computer only
 // says what kind of file each one is, not its name, so an unknown kind counts as no.
 export function isSongDrag(dt: DataTransfer | null): boolean {
@@ -137,12 +143,15 @@ export async function linkSongs(paths: string[], project: DropProject): Promise<
 }
 
 // Props for anything a song can be dropped on: a Library row, a cover, a project page.
-// `over` is true while a file is held over it (for the highlight).
+// `over` is true while a song is held over it (for the highlight). Anything else
+// dragged over it (a project folder, say) passes through to the window.
 export function useSongDrop(project: DropProject | null) {
-  const [over, setOver] = useState(false);
+  const [held, setOver] = useState(false);
+  const songDrag = useSongDragActive();
   const depth = useRef(0);
   const proj = useRef(project);
   proj.current = project;
+  const over = held && songDrag;
   if (!project) return { over: false, props: {} };
   const props = {
     "data-songdrop": over ? "over" : undefined,
@@ -153,7 +162,7 @@ export function useSongDrop(project: DropProject | null) {
       setOver(true);
     },
     onDragOver: (e: React.DragEvent) => {
-      if (!hasFiles(e)) return;
+      if (!hasFiles(e) || !songDrag) return;  // not a song: the window says "copy"
       e.preventDefault();
       e.stopPropagation();  // keep the "link" pointer (the window would say "copy")
       e.dataTransfer.dropEffect = "link";
@@ -165,13 +174,14 @@ export function useSongDrop(project: DropProject | null) {
     },
     onDrop: (e: React.DragEvent) => {
       if (!hasFiles(e)) return;
-      e.preventDefault();
       depth.current = 0;
       setOver(false);
       const bridge = (window as any).ablebackup;
-      const paths = Array.from(e.dataTransfer.files)
-        .map((f) => bridge?.pathForFile?.(f) || (f as any).path || "").filter(Boolean);
+      const paths = songPaths(Array.from(e.dataTransfer.files)
+        .map((f) => bridge?.pathForFile?.(f) || (f as any).path || "").filter(Boolean));
+      // no songs (a project folder, say): let the drop reach the window, which adds it
       if (!paths.length || !proj.current) return;
+      e.preventDefault();
       claimed = performance.now();
       linkSongs(paths, proj.current);
     },

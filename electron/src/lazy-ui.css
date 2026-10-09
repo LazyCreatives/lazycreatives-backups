@@ -955,8 +955,16 @@ html:not(.lc-dealt) .sleeves > * { animation: lcRise 320ms var(--ease-glide) bot
 .gpick__main h2 { margin: 0; font-size: 18px; line-height: 1.25; }
 .gpick__now { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 1.5; }
 .gpick__now b { color: var(--text); font-weight: 600; }
-.gpick__field { position: relative; display: block; margin-top: 4px; }
-.gpick__field select { width: 100%; padding-left: 30px; }
+.gpick__finder { display: grid; gap: 6px; margin-top: 4px; }
+.gpick__find { position: relative; display: block; }
+.gpick__find input { width: 100%; padding-left: 30px; }
+.gpick__list { max-height: 208px; overflow-y: auto; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); padding: 2px 4px 4px; }
+.gpick__head { padding: 8px 8px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.gpick__opt { display: flex; align-items: center; gap: 9px; min-height: 30px; padding: 4px 8px; border-radius: var(--radius); font-size: 13px; color: var(--text-dim); cursor: pointer; }
+.gpick__opt:hover, .gpick__opt--at { background: var(--surface-3); color: var(--text); }
+.gpick__opt--on { color: var(--accent); font-weight: 600; }
+.gpick__opt--own { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0; color: var(--text); }
+.gpick__dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .gpick__swatch { position: absolute; left: 11px; top: 50%; width: 10px; height: 10px; margin-top: -5px; border-radius: 50%; z-index: 1; pointer-events: none; transition: background .2s; }
 .gpick__own { width: 100%; }
 .gpick__note { margin: 2px 0 0; color: var(--text-faint); font-size: 12px; line-height: 1.5; }
@@ -964,6 +972,8 @@ html:not(.lc-dealt) .sleeves > * { animation: lcRise 320ms var(--ease-glide) bot
 .gpick__reset { margin-right: auto; font-size: 12px; }
 [data-look="crate"] .gpick__art .cover { border-radius: 0; }
 [data-look="crate"] .gpick__swatch { border-radius: 0; width: 4px; height: 18px; margin-top: -9px; }
+[data-look="crate"] .gpick__dot { border-radius: 0; width: 4px; height: 16px; }
+[data-look="crate"] :is(.gpick__list, .gpick__opt) { border-radius: 0; }
 [data-look="sleeve"] .gpick { border-radius: 14px; }
 .genrechip {
   display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; cursor: pointer;
@@ -1179,15 +1189,17 @@ html:not(.lc-dealt) .sleeves > * { animation: lcRise 320ms var(--ease-glide) bot
   display: flex; align-items: center; min-height: 34px; padding: 0 12px 0 14px; font: 600 12px var(--font); color: var(--text-faint);
   background: var(--surface); border-bottom: 1px solid var(--border-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.browse__head--items { display: grid; grid-template-columns: var(--browse-cols); column-gap: 12px; padding: 0 14px 0 16px; }
+/* the list keeps its scrollbar's room even when it doesn't scroll, and the heading
+   leaves the same room, so "Rating" and "Backup" stay over their columns */
+.browse__head--items { display: grid; grid-template-columns: var(--browse-cols); column-gap: 12px; padding: 0 calc(14px + var(--browse-gutter, 10px)) 0 16px; }
 .browse__head--items > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .browse__list { overflow: auto; flex: 1; min-height: 0; }
+.browse__col--items .browse__list { scrollbar-gutter: stable; }
 .browse__section {
   padding: 12px 14px 5px; font: 600 11px var(--font); color: var(--text-faint); letter-spacing: 0.06em; text-transform: uppercase;
 }
 .browse__marks { border-bottom: 1px solid var(--border-strong); }
 .browse__marks .browse__opt:last-of-type { border-bottom: 0; }
-.browse__marks > .browse__section:last-child { border-top: 1px solid var(--border-strong); margin-top: 6px; }
 /* a genre or year: name, count lined up on the right, an arrow on the one picked */
 .browse__opt {
   position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto 12px; align-items: center; gap: 6px; width: 100%;
@@ -1197,9 +1209,11 @@ html:not(.lc-dealt) .sleeves > * { animation: lcRise 320ms var(--ease-glide) bot
 .browse__opt:hover { background: var(--row-hover); color: var(--text); }
 .browse__opt:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .browse__opt--on, .browse__opt--on:hover { background: var(--accent-soft); color: var(--text); font-weight: 600; }
-.browse__opt--on::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); z-index: 1; }
+/* the picked one is marked on the right: the left stripe is always the genre's colour */
+.browse__opt--on::before { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); }
 .browse__stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
-.browse__name { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse__name { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.browse__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .browse__n { font: 500 12px var(--font-mono); color: var(--text-faint); font-variant-numeric: tabular-nums; text-align: right; }
 .browse__opt--on .browse__n { color: var(--accent); }
 .browse__go { color: var(--accent); opacity: 0; }
@@ -1217,7 +1231,10 @@ html:not(.lc-dealt) .sleeves > * { animation: lcRise 320ms var(--ease-glide) bot
 .browse__item > * { min-width: 0; }
 .browse__item:nth-child(even) { background: var(--zebra-crate); }
 .browse__item:hover { background: var(--hover-crate); }
-.browse__item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.browse__item:has(.browse__open:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* the row's name is its button (the row holds the pin and rating, so it can't be one) */
+.browse__open { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.browse__open:focus-visible { outline: none; }
 .browse__item .stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; margin: 0; }
 .browse__item .rating { justify-self: start; }
 .browse__itemtext { display: grid; min-width: 0; gap: 1px; }
@@ -1234,7 +1251,14 @@ html:not(.lc-dealt) .sleeves > * { animation: lcRise 320ms var(--ease-glide) bot
 }
 @media (max-width: 1099px) {
   .browse__item, .browse__head--items { grid-template-columns: var(--browse-cols-narrow, var(--browse-cols)); }
-  .browse__stateword, .browse__head--items .browse__headwide { display: none; }
+  .browse__head--items .browse__headwide { display: none; }
+  /* no room for the word: screen readers still hear it, and each state gets its own
+     shape so it never rests on colour alone (filled = fine, diamond = needs you,
+     ring = changed or private) */
+  .browse__stateword { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .browse__state .dot--warn, .browse__state .dot--error { border-radius: 1px; transform: rotate(45deg) scale(0.9); }
+  .browse__state .dot--accent { background: transparent; box-shadow: inset 0 0 0 2px var(--accent); }
+  .browse__state .dot:not(.dot--ok):not(.dot--warn):not(.dot--error):not(.dot--accent) { background: transparent; box-shadow: inset 0 0 0 2px var(--text-faint); }
 }
 
 .facets { display: grid; gap: 8px; margin-top: 12px; }
@@ -1392,7 +1416,7 @@ html[data-theme="light"] select {
 }
 /* genre colours were picked for ink; on paper the pale ones (gold, mint, cyan) wash out,
    so stripes, dots and waveforms are drawn a shade deeper */
-html[data-theme="light"] :is(.stripe, .browse__stripe, .genrechip__dot, .facet__dot, .gpick__swatch, .wave, .songwave, .coll__bar i) {
+html[data-theme="light"] :is(.stripe, .browse__stripe, .genrechip__dot, .facet__dot, .gpick__swatch, .gpick__dot, .wave, .songwave, .coll__bar i) {
   filter: brightness(0.82) saturate(1.15);
 }
 /* little dark badges sitting on cover art stay ink in light mode too, so they keep the
@@ -1503,6 +1527,10 @@ button.wave__mark { cursor: pointer; }
 .set-note--bad { color: var(--danger); }
 .set-inline { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .set-row__body > input[type="text"], .set-row__body > textarea, .set-row__body > select, .set-row__body > .tags { max-width: 520px; }
+/* narrower windows: a narrower name column first, then one column under 880px */
+@media (max-width: 1099px) {
+  .set-row { grid-template-columns: 180px minmax(0, 1fr); column-gap: 24px; }
+}
 @media (max-width: 880px) {
   .set-row { grid-template-columns: minmax(0, 1fr); row-gap: 12px; }
 }
@@ -1516,7 +1544,11 @@ button.wave__mark { cursor: pointer; }
 .set-tabs__tab--on { color: var(--text); }
 .set-tabs__tab--on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; background: var(--accent); border-radius: 2px; }
 .set-tabs__tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.set-panel > .set-row:first-child, .set-panel > .set-group:first-child { border-top: 0; }
-.set-panel > .set-group:first-child { margin-top: 22px; }
+.set-panel:focus { outline: none; }
+.set-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.set-panel > .set-row:first-child, .set-panel > .set-group:first-child,
+.set-panel > .sr-only:first-child + .set-row, .set-panel > .sr-only:first-child + .set-group { border-top: 0; }
+.set-panel > .set-group:first-child, .set-panel > .sr-only:first-child + .set-group { margin-top: 22px; }
 .set-intro { margin: 18px 0 0; max-width: 72ch; font-size: 13px; line-height: 1.55; color: var(--text-dim); }
 .set-intro + .set-row { border-top: 0; }

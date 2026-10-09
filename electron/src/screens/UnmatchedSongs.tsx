@@ -8,7 +8,8 @@ import { Icon } from "../components/Icon";
 import { PlayButton, SongWave } from "../components/Player";
 import { ProjectPick, type Guess } from "../components/ProjectPick";
 import { EmptyState } from "../components/SlothSpot";
-import { fmtDay } from "../format";
+import { fmtCount, fmtDay } from "../format";
+import { extOf, groupSongs, type Group } from "../unmatched";
 
 const api = makeApi();
 const bridge = () => (window as any).ablebackup;
@@ -17,25 +18,6 @@ const fmtWhen = (secs: number | null) =>
   secs ? fmtDay(secs * 1000, { time: true }) : "";
 
 const folderOf = (p: string) => p.split(/[\\/]/).filter(Boolean).slice(-2, -1)[0] ?? "";
-const extOf = (p: string) => (p.match(/\.([a-z0-9]+)$/i)?.[1] ?? "").toUpperCase().replace("AIFF", "AIF");
-const LOSSLESS = new Set(["WAV", "AIF", "FLAC"]);
-
-// One row per song: the AIF and the MP3 of a song, or the same name in two folders,
-// are the same song, so they're listed (and linked, or put aside) together.
-type Group = { key: string; name: string; files: UnmatchedSong[]; main: UnmatchedSong };
-function groupSongs(list: UnmatchedSong[]): Group[] {
-  const by = new Map<string, UnmatchedSong[]>();
-  for (const s of list) {
-    const k = s.name.trim().toLowerCase();
-    by.set(k, [...(by.get(k) ?? []), s]);
-  }
-  return [...by.entries()].map(([key, files]) => {
-    const main = [...files].sort((a, b) => Number(b.exists) - Number(a.exists)
-      || Number(LOSSLESS.has(extOf(b.path))) - Number(LOSSLESS.has(extOf(a.path)))
-      || (b.mtime ?? 0) - (a.mtime ?? 0))[0];
-    return { key, name: main.name, files, main };
-  });
-}
 
 // "Songs not matched yet": renders in your exports folders that Backups couldn't tie
 // to a project. Each one can be played, linked to the suggested project (or one you
@@ -98,7 +80,7 @@ export function UnmatchedSongs({ items, onBack, onChanged }: {
   function allSamplesAside() {
     const files = samples.flatMap((g) => g.files);
     run("samples", () => Promise.all(files.map((f) => api.ignoreSong(f.path))));
-    toast(`${samples.length} samples won't be listed again.`,
+    toast(samples.length === 1 ? "1 sample won't be listed again." : `${fmtCount(samples.length)} samples won't be listed again.`,
       { label: "Undo", onClick: () => run("samples", () => Promise.all(files.map((f) => api.ignoreSong(f.path, false)))) });
   }
 
@@ -123,9 +105,11 @@ export function UnmatchedSongs({ items, onBack, onChanged }: {
           {s.exists
             ? <SongWave path={s.path} meta={{ title: s.name }} height={20} />
             : <div className="sub col-trunc" style={{ margin: 0, fontSize: 12 }}>File has been moved or deleted</div>}
-          <div className="faint col-trunc unm-where">in {folders.join(", ")}</div>
+          <div className="faint col-trunc unm-where">
+            in {folders.join(", ")}{s.mtime ? <span className="unm-when-sub"> · exported {fmtWhen(s.mtime)}</span> : null}
+          </div>
         </div>
-        <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{fmtWhen(s.mtime)}</div>
+        <div className="sub col-num unm-when" style={{ margin: 0, fontSize: 12 }}>{fmtWhen(s.mtime)}</div>
         {setAsideRow ? (
           <div className="sub" style={{ margin: 0, fontSize: 12 }}>Marked as not a song</div>
         ) : (
@@ -154,6 +138,12 @@ export function UnmatchedSongs({ items, onBack, onChanged }: {
     );
   };
 
+  const head = (
+    <div className="row cols unm-cols cols-head" aria-hidden>
+      <span /><span>Song</span><span className="col-num unm-when">Exported</span><span>Project</span><span />
+    </div>
+  );
+
   return (
     <>
       <button className="lib-back" onClick={onBack}><Icon name="arrowLeft" size={14} />Library</button>
@@ -173,9 +163,7 @@ export function UnmatchedSongs({ items, onBack, onChanged }: {
         <div className="empty">Every song has a project. Only things that look like samples are left, below.</div>
       ) : (
         <div className="table unm-table">
-          <div className="row cols unm-cols cols-head" aria-hidden>
-            <span /><span>Song</span><span className="col-num">Exported</span><span>Project</span><span />
-          </div>
+          {head}
           {groups.map((g) => row(g))}
         </div>
       )}
@@ -189,7 +177,7 @@ export function UnmatchedSongs({ items, onBack, onChanged }: {
             <span className="faint unm-group__say">Pack sounds, loops and resampled bits. Link any that really are songs.</span>
             <Button variant="ghost" size="sm" disabled={busy === "samples"} onClick={allSamplesAside}>None of these are songs</Button>
           </div>
-          {showSamples && <div className="table unm-table">{samples.map((g) => row(g))}</div>}
+          {showSamples && <div className="table unm-table">{head}{samples.map((g) => row(g))}</div>}
         </div>
       )}
       {asideGroups.length > 0 && (
@@ -198,7 +186,7 @@ export function UnmatchedSongs({ items, onBack, onChanged }: {
             onClick={() => setShowAside((v) => !v)}>
             <Icon name={showAside ? "chevronDown" : "chevronRight"} size={14} />Not a song ({asideGroups.length})
           </button>
-          {showAside && <div className="table unm-table">{asideGroups.map((g) => row(g, true))}</div>}
+          {showAside && <div className="table unm-table">{head}{asideGroups.map((g) => row(g, true))}</div>}
         </div>
       )}
     </>

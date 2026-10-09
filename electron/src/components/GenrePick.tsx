@@ -123,7 +123,7 @@ function GenreBox({ s, done: close }: { s: NonNullable<PickState>; done: (g: Gen
   useDialogFocus(ref);
 
   useEffect(() => {
-    ref.current?.querySelector<HTMLSelectElement>("select")?.focus();
+    ref.current?.querySelector<HTMLInputElement>(".gpick__find input")?.focus();
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(undefined); } };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -155,23 +155,8 @@ function GenreBox({ s, done: close }: { s: NonNullable<PickState>; done: (g: Gen
                   : <>We guessed <b>{s.current}</b>{s.why ? ` ${s.why}` : ""}.</>
                 : "No genre yet."}
             </p>
-            <label className="gpick__field">
-              <span className="gpick__swatch" style={{ background: genreColor(picked || null) }} />
-              <select value={choice} aria-label="Genre" onChange={(e) => setChoice(e.target.value)}>
-                {!s.current && <option value="">Pick a genre</option>}
-                {yours.length > 0 && (
-                  <optgroup label="Your genres">
-                    {yours.map((g) => <option key={g} value={g}>{g}</option>)}
-                  </optgroup>
-                )}
-                {GENRE_GROUPS.map((grp) => (
-                  <optgroup key={grp.label} label={grp.label}>
-                    {grp.genres.map(([g]) => <option key={g} value={g}>{g}</option>)}
-                  </optgroup>
-                ))}
-                <option value={OTHER}>Something else…</option>
-              </select>
-            </label>
+            <GenreFind yours={yours} value={picked}
+              onPick={(g) => { setChoice(g); setOwn(""); }} onOwn={(g) => { setChoice(OTHER); setOwn(g); }} />
             {choice === OTHER && (
               <input type="text" className="gpick__own" value={own} maxLength={40} autoFocus
                 placeholder="Type the genre, e.g. Afrobeats" onChange={(e) => setOwn(e.target.value)} />
@@ -196,6 +181,78 @@ function GenreBox({ s, done: close }: { s: NonNullable<PickState>; done: (g: Gen
           <button type="button" className="btn btn--primary" disabled={!picked || (!changed && !colourChanged)} onClick={save}>{changed || !colourChanged ? "Save genre" : "Save colour"}</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Type to find a genre among the built-in ones (in their groups) and your own. The
+// list stays open under the box: arrows move, Enter picks, and a name that isn't
+// listed can be used as it is.
+const fold = (x: string) => x.toLowerCase().normalize("NFKD").replace(/[^a-z0-9&]+/g, "");
+function GenreFind({ yours, value, onPick, onOwn }: {
+  yours: string[]; value: string; onPick: (g: string) => void; onOwn: (g: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [at, setAt] = useState(-1);
+  const list = useRef<HTMLDivElement | null>(null);
+  const all = [...(yours.length ? [{ label: "Your genres", genres: yours }] : []),
+    ...GENRE_GROUPS.map((g) => ({ label: g.label, genres: g.genres.map(([n]) => n) }))];
+  const k = fold(q);
+  // a group whose name matches shows whole ("dnb" finds the Drum & bass group too)
+  const groups = !k ? all : all.map((g) => ({ ...g, genres: fold(g.label).includes(k) ? g.genres : g.genres.filter((n) => fold(n).includes(k)) }))
+    .filter((g) => g.genres.length);
+  const flat = groups.flatMap((g) => g.genres);
+  const own = q.trim() && !flat.some((n) => fold(n) === k) ? q.trim().slice(0, 40) : "";
+  const count = flat.length + (own ? 1 : 0);
+  // the one picked shows in view when the box opens
+  useEffect(() => { list.current?.querySelector<HTMLElement>("[aria-selected='true']")?.scrollIntoView({ block: "center" }); }, []);
+  useEffect(() => { list.current?.querySelector<HTMLElement>(".gpick__opt--at")?.scrollIntoView({ block: "nearest" }); }, [at]);
+  const choose = (i: number) => { if (i < flat.length) onPick(flat[i]); else if (own) onOwn(own); setQ(""); setAt(-1); };
+  const onKey = (e: { key: string; preventDefault(): void; stopPropagation(): void }) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (count) setAt((a) => (a + (e.key === "ArrowDown" ? 1 : count - 1) + (a < 0 && e.key === "ArrowUp" ? 1 : 0)) % count);
+    } else if (e.key === "Enter" && q.trim()) {
+      // Enter picks what's typed (the first match, or the one moved to); a second Enter saves
+      e.preventDefault(); e.stopPropagation();
+      if (count) choose(Math.max(0, at));
+    }
+  };
+  let n = -1;
+  return (
+    <div className="gpick__finder">
+      <label className="gpick__find">
+        <span className="gpick__swatch" style={{ background: genreColor(value || null) }} />
+        <input type="text" value={q} role="combobox" aria-expanded="true" aria-controls="gpick-list" aria-autocomplete="list"
+          aria-activedescendant={at >= 0 ? `gpick-opt-${at}` : undefined} aria-label="Find a genre"
+          placeholder={value ? `${value} · type to find another` : `Type to find a genre (${GENRES.length} to pick from)`}
+          onChange={(e) => { setQ(e.target.value); setAt(e.target.value.trim() ? 0 : -1); }} onKeyDown={onKey} />
+      </label>
+      <div ref={list} id="gpick-list" className="gpick__list" role="listbox" aria-label="Genres">
+        {groups.map((g) => (
+          <div key={g.label} role="group" aria-labelledby={`gpick-g-${fold(g.label)}`}>
+            <div id={`gpick-g-${fold(g.label)}`} className="gpick__head">{g.label}</div>
+            {g.genres.map((name) => {
+              const i = ++n;
+              return (
+                <div key={name} id={`gpick-opt-${i}`} role="option" aria-selected={name === value}
+                  className={`gpick__opt${i === at ? " gpick__opt--at" : ""}${name === value ? " gpick__opt--on" : ""}`}
+                  onMouseDown={(e) => e.preventDefault()} onClick={() => choose(i)}>
+                  <span className="gpick__dot" style={{ background: genreColor(name) }} />{name}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        {own && (
+          <div id={`gpick-opt-${flat.length}`} role="option" aria-selected={false}
+            className={`gpick__opt gpick__opt--own${at === flat.length ? " gpick__opt--at" : ""}`}
+            onMouseDown={(e) => e.preventDefault()} onClick={() => choose(flat.length)}>
+            <span className="gpick__dot" style={{ background: genreColor(own) }} />Use “{own}”
+          </div>
+        )}
+      </div>
+      <span className="sr-only" role="status">{q.trim() ? `${count} ${count === 1 ? "match" : "matches"}` : ""}</span>
     </div>
   );
 }

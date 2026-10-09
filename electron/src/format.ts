@@ -70,10 +70,13 @@ export function fmtNext(iso?: string | null, now: Date = new Date()): string {
   return `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
 }
 
+// How often automatic backups run: "every hour", "every 6 hours", "once a day",
+// "every 2 days", "once a week".
 export function fmtInterval(min: number): string {
   if (!min || min <= 0) return "off";
-  if (min % 1440 === 0) { const d = min / 1440; return `every ${d} day${d > 1 ? "s" : ""}`; }
-  if (min % 60 === 0) { const h = min / 60; return `every ${h} hour${h > 1 ? "s" : ""}`; }
+  if (min === 10080) return "once a week";
+  if (min % 1440 === 0) { const d = min / 1440; return d === 1 ? "once a day" : `every ${d} days`; }
+  if (min % 60 === 0) { const h = min / 60; return h === 1 ? "every hour" : `every ${h} hours`; }
   return `every ${min} min`;
 }
 

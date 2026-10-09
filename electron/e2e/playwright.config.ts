@@ -5,6 +5,8 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: ".",
   testMatch: "*.spec.ts",
+  // Colour-blind pictures only run when asked for (npm run test:colourblind).
+  testIgnore: process.env.COLOURBLIND ? [] : ["colourblind.spec.ts"],
   globalSetup: "./global-setup.ts",
   outputDir: "./test-results",
   // One app at a time: every test drives the same window, one screen after another.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SONG_FILE, isSongDrag } from "./songDrop";
+import { SONG_FILE, isSongDrag, songPaths } from "./songDrop";
 
 const drag = (types: string[]) => ({ items: types.map((type) => ({ kind: "file", type })) }) as unknown as DataTransfer;
 
@@ -14,5 +14,10 @@ describe("dropping songs on a project", () => {
     expect(isSongDrag(drag([""]))).toBe(false);
     expect(isSongDrag(drag(["image/png"]))).toBe(false);
     expect(isSongDrag(null)).toBe(false);
+  });
+  it("leaves folders and other files for the window to add", () => {
+    expect(songPaths(["/Music/Night Drive Project", "/Music/Night Drive Project/Night Drive.als"])).toEqual([]);
+    expect(songPaths(["/Music/Projects/"])).toEqual([]);
+    expect(songPaths(["/a/cover.png", "/a/Mix.wav", "/a/Mix.MP3"])).toEqual(["/a/Mix.wav", "/a/Mix.MP3"]);
   });
 });

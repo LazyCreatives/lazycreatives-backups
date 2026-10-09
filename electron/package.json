@@ -1,7 +1,7 @@
 {
   "name": "lazycreatives-backups",
   "productName": "LazyCreatives Backups",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "LazyCreatives Backups — verified, deduplicated backups for Ableton & FL Studio projects",
   "main": "electron/main.js",
   "scripts": {
@@ -13,7 +13,9 @@
     "dist": "npm run build && npm run build:py && electron-builder",
     "test": "vitest run",
     "test:screens": "playwright test -c e2e/playwright.config.ts",
-    "test:screens:update": "playwright test -c e2e/playwright.config.ts --update-snapshots"
+    "test:screens:update": "playwright test -c e2e/playwright.config.ts --update-snapshots",
+    "lint:a11y": "eslint -c eslint.a11y.config.mjs src",
+    "test:colourblind": "cross-env COLOURBLIND=1 playwright test -c e2e/playwright.config.ts colourblind"
   },
   "build": {
     "appId": "com.lazycreatives.backups",
@@ -86,19 +88,26 @@
     ]
   },
   "devDependencies": {
+    "@guidepup/virtual-screen-reader": "^0.33.0",
     "@playwright/test": "1.63.0",
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.4",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^6.0.3",
+    "apca-check": "^0.1.1",
+    "axe-core": "^4.14.0",
     "concurrently": "^9.2.4",
     "cross-env": "^7.0.3",
     "electron": "^44.5.1",
     "electron-builder": "^26.15.3",
     "electron-playwright-helpers": "^3.1.2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "jsdom": "^25.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "typescript": "^5.5.4",
+    "typescript-eslint": "^8.71.1",
     "vite": "^8.1.0",
     "vitest": "^4.1.9",
     "wait-on": "^8.0.0"

@@ -15,6 +15,22 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.2.8 (9 October 2026)
+
+### Better
+- **Find a genre by typing.** The genre box now has a search: type "liq" or "dnb" and pick from what matches, with your own genres on top. A name that isn't listed can be used as it is.
+- **Tidier Genre and Year columns.** Long genre names end in "…" and show whole when you point at them, the genre's colour stripe stays put on the one you picked, the Rating and Backup headings stay over their columns, a big library loads 200 projects at a time, and "Nothing pinned here" offers to show every project.
+- **Settings fits a mid-size window.** Between the normal and the narrow window the setting names take less room, so rows of buttons no longer wrap.
+- **Easier with the keyboard and a screen reader.** On/Off buttons move with the arrow keys, Settings tabs jump with Home and End, every project in the columns view can be opened by its name, and Safe, Changed or Missing is still read out (and shown by shape) in the narrow window.
+
+### Fixed
+- **Dropping a project folder on the Library works again.** Dropping a folder (or any file that isn't a song) on a project row or page now adds it to your project folders, instead of saying "That isn't a song". Only songs light a project up as you drag.
+- **Two songs with the same file name stay apart.** On "Songs not matched yet", two different "Master.wav" from two song folders now get a row each, so Link no longer ties both to one project. Copies of the same file are still listed and linked together.
+- **"Songs not matched yet" fits a narrow window.** When the window is narrow the export date moves under the song's name, so the name has room to be read. The samples list has the same column headings as the main list, and one sample reads "1 sample".
+- **The project picker behaves better.** It opens toward the side of the window with more room instead of running off the bottom, closes when you Tab away, and keeps the folder and date hints lined up even next to long names. Screen readers hear how many projects match and which section each one is in.
+- **Backup times read naturally.** Automatic backup now says "once a day" and "every hour" instead of "every 1 day" and "every 1 hour", and Settings says whether the next backup is today or tomorrow.
+- **The Phone settings never get stuck.** If Backups can't check your phone settings, it says so with a Try again button instead of "Loading…" forever. Removing a paired phone now asks first, since the phone has to pair again afterwards.
+
 ## 0.2.7 (9 October 2026)
 
 ### New

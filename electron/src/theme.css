@@ -320,3 +320,8 @@ html[data-theme="light"] .table--crate.plug-table > .plug-item > .row:hover {
 .phone-qr { width: 132px; height: 132px; border-radius: 6px; flex: none; }
 .phone-cols { --cols: 16px minmax(0, 1fr) 110px 130px 84px; }
 .phone-cols .row { padding: 7px 12px; }
+/* mid-size windows: the paired date steps out so the phone's name keeps its room */
+@media (max-width: 1099px) {
+  .phone-cols { --cols: 16px minmax(0, 1fr) 128px 84px; }
+  .phone-cols .row > :nth-child(3) { display: none; }
+}
