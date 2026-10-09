@@ -353,3 +353,89 @@ def test_logic_bounces_folder_is_looked_in(tmp_path, monkeypatch):
     exports.refresh(cat)
     assert list(_rows(cat, "lg")) == ["Big Room"]
     assert str((home / "Music" / "Logic" / "Bounces").resolve()) in cat.get_setting("found_export_folders")
+
+
+# ---- shared words, best guesses, samples (Robert's exports, 8 Oct) -----------------
+def _wav_secs(p: Path, secs: float, mtime: float | None = None) -> Path:
+    """A real (silent) WAV header saying the sound lasts ``secs``; the data itself is
+    left out, only the length in the header counts."""
+    rate, align = 1000, 2
+    size = int(secs * rate * align)
+    fmt = struct.pack("<HHIIHH", 1, 1, rate, rate * align, align, 16)
+    data = b"RIFF" + struct.pack("<I", 36 + size) + b"WAVE" + b"fmt " + struct.pack("<I", 16) \
+        + fmt + b"data" + struct.pack("<I", size)
+    return _touch(p, data, mtime)
+
+
+def test_a_project_name_anywhere_in_the_song_name_links_it(tmp_path):
+    cat, shared = _setup(tmp_path)
+    _project(cat, "w", "140 Wobs", tmp_path / "p" / "W")
+    _project(cat, "a", "Aby Doors Bass arrangement", tmp_path / "p" / "A")
+    _project(cat, "s", "Just Serum", tmp_path / "p" / "S")
+    _touch(shared / "BREAKS 140 WOBS.aif")
+    _touch(shared / "Aby Doors Bass.mp3")
+    _touch(shared / "JUST SERUM 2 LMAO.mp3")
+    exports.refresh(cat)
+    assert "BREAKS 140 WOBS" in _rows(cat, "w")
+    assert _rows(cat, "w")["BREAKS 140 WOBS"]["sure"] == 0
+    assert "Aby Doors Bass" in _rows(cat, "a")
+    assert "JUST SERUM 2 LMAO" in _rows(cat, "s")
+    assert cat.unmatched() == []
+
+
+def test_unmatched_songs_get_best_guesses_by_shared_words(tmp_path):
+    cat, shared = _setup(tmp_path)
+    _project(cat, "l", "Launch Door Tune", tmp_path / "p" / "L")
+    _project(cat, "b", "BASS DROP 3", tmp_path / "p" / "B")
+    _project(cat, "x", "aphex twin", tmp_path / "p" / "X")
+    _touch(shared / "LAUNCH ABY DOORS BASS.wav")
+    exports.refresh(cat)
+    [u] = cat.unmatched()
+    ids = [g["project_id"] for g in u["guesses"]]
+    assert ids[0] == "l" and "x" not in ids
+    assert "launch door" in u["guesses"][0]["why"]
+    assert u["suggest_id"] == "l"
+
+
+def test_typo_and_cut_short_words_still_share(tmp_path):
+    from ablebackup.songmatch import shared_words
+    assert shared_words("mixx type beat", "mix type beat")[0] > 0.8
+    assert shared_words("breaks 140 wobs", "wob breaks")[0] > 0.6
+    assert shared_words("just serum 2", "aphex twin")[0] == 0
+    assert shared_words("type beat", "dark type beat")[0] < 0.5  # plain words count little
+
+
+def test_samples_and_resamples_sit_apart(tmp_path):
+    cat, shared = _setup(tmp_path)
+    _touch(shared / "Splice" / "packs" / "Atlanta" / "OS_ATL_kick_subby.wav")
+    _touch(shared / "OS_6IX_kick_lavish.wav")
+    _touch(shared / "1-Audio 0001 [2026-10-08 195233].aif")
+    _wav_secs(shared / "bounce thing.wav", 4)
+    _wav_secs(shared / "THE PENTHOUSE EXPERIMENT.wav", 200)
+    exports.refresh(cat)
+    got = {u["name"]: u for u in cat.unmatched()}
+    assert got["THE PENTHOUSE EXPERIMENT"]["kind"] == "song"
+    for n in ("OS_ATL_kick_subby", "OS_6IX_kick_lavish", "1-Audio 0001 [2026-10-08 195233]",
+              "bounce thing"):
+        assert got[n]["kind"] == "sample", n
+    assert got["bounce thing"]["suggest_why"] == "only 4 seconds long"
+
+
+def test_library_counts_each_song_once_and_leaves_out_samples(tmp_path):
+    cat, shared = _setup(tmp_path)
+    _touch(shared / "mixx type beat.aif")
+    _touch(shared / "mixx type beat.mp3")
+    _touch(shared / "OS_ATL_kick_subby.wav")
+    exports.refresh(cat)
+    cat.close() if hasattr(cat, "close") else None
+    app = create_app(token="t", db_path=tmp_path / "c.db")
+    with TestClient(app) as c:
+        assert c.get("/api/library", headers={"X-Auth-Token": "t"}).json()["unmatched_songs"] == 1
+
+
+def test_every_word_of_a_project_in_any_order_links_it(tmp_path):
+    cat, shared = _setup(tmp_path)
+    _project(cat, "w", "Wobs 140", tmp_path / "p" / "W")
+    _touch(shared / "BREAKS 140 WOBS.aif")
+    exports.refresh(cat)
+    assert "BREAKS 140 WOBS" in _rows(cat, "w")

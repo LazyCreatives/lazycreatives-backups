@@ -6,6 +6,7 @@ import type { LibraryItem, UnmatchedSong } from "../types";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { PlayButton, SongWave } from "../components/Player";
+import { ProjectPick, type Guess } from "../components/ProjectPick";
 import { EmptyState } from "../components/SlothSpot";
 import { fmtDay } from "../format";
 
@@ -16,6 +17,25 @@ const fmtWhen = (secs: number | null) =>
   secs ? fmtDay(secs * 1000, { time: true }) : "";
 
 const folderOf = (p: string) => p.split(/[\\/]/).filter(Boolean).slice(-2, -1)[0] ?? "";
+const extOf = (p: string) => (p.match(/\.([a-z0-9]+)$/i)?.[1] ?? "").toUpperCase().replace("AIFF", "AIF");
+const LOSSLESS = new Set(["WAV", "AIF", "FLAC"]);
+
+// One row per song: the AIF and the MP3 of a song, or the same name in two folders,
+// are the same song, so they're listed (and linked, or put aside) together.
+type Group = { key: string; name: string; files: UnmatchedSong[]; main: UnmatchedSong };
+function groupSongs(list: UnmatchedSong[]): Group[] {
+  const by = new Map<string, UnmatchedSong[]>();
+  for (const s of list) {
+    const k = s.name.trim().toLowerCase();
+    by.set(k, [...(by.get(k) ?? []), s]);
+  }
+  return [...by.entries()].map(([key, files]) => {
+    const main = [...files].sort((a, b) => Number(b.exists) - Number(a.exists)
+      || Number(LOSSLESS.has(extOf(b.path))) - Number(LOSSLESS.has(extOf(a.path)))
+      || (b.mtime ?? 0) - (a.mtime ?? 0))[0];
+    return { key, name: main.name, files, main };
+  });
+}
 
 // "Songs not matched yet": renders in your exports folders that Backups couldn't tie
 // to a project. Each one can be played, linked to the suggested project (or one you
@@ -26,6 +46,7 @@ export function UnmatchedSongs({ items, onBack, onChanged }: {
   const [songs, setSongs] = useState<UnmatchedSong[] | null>(null);
   const [aside, setAside] = useState<UnmatchedSong[]>([]);
   const [showAside, setShowAside] = useState(false);
+  const [showSamples, setShowSamples] = useState(false);
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -37,67 +58,95 @@ export function UnmatchedSongs({ items, onBack, onChanged }: {
   useEffect(load, []);
 
   const byId = useMemo(() => Object.fromEntries(items.map((i) => [i.project_id, i])), [items]);
-  const choices = useMemo(() => [...items].sort((a, b) => a.name.localeCompare(b.name)), [items]);
-  const target = (s: UnmatchedSong) => picked[s.path] ?? (s.suggest_id && byId[s.suggest_id] ? s.suggest_id : "");
+  const groups = useMemo(() => groupSongs((songs ?? []).filter((s) => s.kind !== "sample")), [songs]);
+  const samples = useMemo(() => groupSongs((songs ?? []).filter((s) => s.kind === "sample")), [songs]);
+  const asideGroups = useMemo(() => groupSongs(aside), [aside]);
+  const target = (g: Group) => {
+    const s = g.files.find((f) => f.suggest_id && byId[f.suggest_id]);
+    return picked[g.key] ?? (s?.suggest_id ?? "");
+  };
+  const guessesOf = (g: Group): Guess[] => {
+    const out: Guess[] = [];
+    const seen = new Set<string>();
+    for (const f of g.files) {
+      if (f.suggest_id && !seen.has(f.suggest_id)) { seen.add(f.suggest_id); out.push({ project_id: f.suggest_id, why: f.suggest_why ?? "" }); }
+    }
+    for (const f of g.files) for (const x of f.guesses ?? []) {
+      if (!seen.has(x.project_id)) { seen.add(x.project_id); out.push(x); }
+    }
+    return out.slice(0, 6);
+  };
 
-  async function run(path: string, fn: () => Promise<unknown>) {
-    setBusy(path); setErr(null);
+  async function run(key: string, fn: () => Promise<unknown>) {
+    setBusy(key); setErr(null);
     try { await fn(); load(); onChanged?.(); }
     catch (e: any) { setErr(String(e?.message ?? e)); }
     finally { setBusy(null); }
   }
-  function link(s: UnmatchedSong) {
-    const pid = target(s);
+  const each = (g: Group, fn: (path: string) => Promise<unknown>) => () => Promise.all(g.files.map((f) => fn(f.path)));
+  function link(g: Group) {
+    const pid = target(g);
     if (!pid) return;
-    run(s.path, () => api.linkExport(s.path, pid));
-    toast(`${s.name} is now with ${byId[pid]?.name ?? "that project"}.`,
-      { label: "Undo", onClick: () => run(s.path, () => api.unlinkExport(s.path, pid)) });
+    run(g.key, each(g, (p) => api.linkExport(p, pid)));
+    toast(`${g.name} is now with ${byId[pid]?.name ?? "that project"}.`,
+      { label: "Undo", onClick: () => run(g.key, each(g, (p) => api.unlinkExport(p, pid))) });
   }
-  function notASong(s: UnmatchedSong) {
-    run(s.path, () => api.ignoreSong(s.path));
-    toast(`${s.name} won't be listed again.`, { label: "Undo", onClick: () => run(s.path, () => api.ignoreSong(s.path, false)) });
+  function notASong(g: Group) {
+    run(g.key, each(g, (p) => api.ignoreSong(p)));
+    toast(`${g.name} won't be listed again.`, { label: "Undo", onClick: () => run(g.key, each(g, (p) => api.ignoreSong(p, false))) });
+  }
+  function allSamplesAside() {
+    const files = samples.flatMap((g) => g.files);
+    run("samples", () => Promise.all(files.map((f) => api.ignoreSong(f.path))));
+    toast(`${samples.length} samples won't be listed again.`,
+      { label: "Undo", onClick: () => run("samples", () => Promise.all(files.map((f) => api.ignoreSong(f.path, false)))) });
   }
 
-  const row = (s: UnmatchedSong, setAsideRow = false) => {
-    const pid = target(s);
-    const sug = s.suggest_id ? byId[s.suggest_id] : undefined;
+  const row = (g: Group, setAsideRow = false) => {
+    const s = g.main;
+    const pid = target(g);
+    const sug = g.files.find((f) => f.suggest_id === pid && byId[pid]);
+    const exts = [...new Set(g.files.map((f) => extOf(f.path)).filter(Boolean))];
+    const folders = [...new Set(g.files.map((f) => folderOf(f.path)))];
     return (
-      <div key={s.path} className="row cols unm-cols" onContextMenu={(ev) => openMenu(ev, [
+      <div key={g.key} className="row cols unm-cols" onContextMenu={(ev) => openMenu(ev, [
         ...(s.exists ? [{ label: "Show the file", onClick: () => bridge()?.revealPath?.(s.path) }] : []),
         { label: "Copy file path", onClick: () => { copyText(s.path); } },
       ])}>
         {s.exists ? <PlayButton path={s.path} title={s.name} meta={{ title: s.name }} /> : <span />}
         <div style={{ minWidth: 0 }}>
-          <div className="song-name" title={s.path}>{s.name}{s.kind === "stem" && <span className="unm-tag">stem</span>}</div>
+          <div className="song-name" title={g.files.map((f) => f.path).join("\n")}>{s.name}
+            {s.kind === "stem" && <span className="unm-tag">stem</span>}
+            {g.files.length > 1 && <span className="unm-tag" title={`${g.files.length} files, linked together`}>
+              {exts.length === g.files.length ? exts.join(" · ") : `${g.files.length} files`}</span>}
+          </div>
           {s.exists
             ? <SongWave path={s.path} meta={{ title: s.name }} height={20} />
             : <div className="sub col-trunc" style={{ margin: 0, fontSize: 12 }}>File has been moved or deleted</div>}
-          <div className="faint col-trunc unm-where">in {folderOf(s.path)}</div>
+          <div className="faint col-trunc unm-where">in {folders.join(", ")}</div>
         </div>
         <div className="sub col-num" style={{ margin: 0, fontSize: 12 }}>{fmtWhen(s.mtime)}</div>
         {setAsideRow ? (
           <div className="sub" style={{ margin: 0, fontSize: 12 }}>Marked as not a song</div>
         ) : (
           <div className="unm-pick">
-            <select className={pid ? "lib-pick lib-pick--on" : "lib-pick"} value={pid} aria-label={`Project for ${s.name}`}
-              onChange={(e) => setPicked((p) => ({ ...p, [s.path]: e.target.value }))}>
-              <option value="">Pick a project…</option>
-              {choices.map((i) => <option key={i.project_id} value={i.project_id}>{i.name}</option>)}
-            </select>
+            <ProjectPick items={items} value={pid} guesses={guessesOf(g)} song={s.name}
+              onPick={(id) => setPicked((p) => ({ ...p, [g.key]: id }))} />
             <div className="faint unm-why">
-              {sug && pid === s.suggest_id ? <>Suggested: {s.suggest_why}</> : !s.suggest_id ? "No likely project found" : " "}
+              {s.kind === "sample" ? <>Looks like a sample: {s.suggest_why}</>
+                : sug ? <>Suggested: {sug.suggest_why}</> : !pid && !guessesOf(g).length ? "No likely project found" : " "}
             </div>
           </div>
         )}
         <div className="song-actions">
           {setAsideRow ? (
-            <Button variant="ghost" size="sm" disabled={busy === s.path}
-              onClick={() => run(s.path, () => api.ignoreSong(s.path, false))}>Put back</Button>
+            <Button variant="ghost" size="sm" disabled={busy === g.key}
+              onClick={() => run(g.key, each(g, (p) => api.ignoreSong(p, false)))}>Put back</Button>
           ) : (
             <>
-              <Button size="sm" disabled={!pid || busy === s.path} onClick={() => link(s)}>Link</Button>
-              <button className="iconbtn" disabled={busy === s.path} title="Not a song: stop listing it here"
-                aria-label={`${s.name} is not a song`} onClick={() => notASong(s)}><Icon name="close" /></button>
+              <Button size="sm" disabled={!pid || busy === g.key} onClick={() => link(g)}>Link</Button>
+              <button className="iconbtn" disabled={busy === g.key} title="Not a song: stop listing it here"
+                aria-label={`${s.name} is not a song`} onClick={() => notASong(g)}><Icon name="close" /></button>
             </>
           )}
         </div>
@@ -118,23 +167,38 @@ export function UnmatchedSongs({ items, onBack, onChanged }: {
       {err && <div className="sub" style={{ color: "var(--danger)", margin: "0 0 8px" }}>{err}</div>}
       {songs === null ? (
         <div className="empty">Loading…</div>
-      ) : songs.length === 0 ? (
+      ) : groups.length === 0 && samples.length === 0 ? (
         <EmptyState pose="thumbs-up" title="Every song has a project" say="All matched up.">Nothing is waiting. New songs show here if Backups can't place them.</EmptyState>
+      ) : groups.length === 0 ? (
+        <div className="empty">Every song has a project. Only things that look like samples are left, below.</div>
       ) : (
         <div className="table unm-table">
           <div className="row cols unm-cols cols-head" aria-hidden>
             <span /><span>Song</span><span className="col-num">Exported</span><span>Project</span><span />
           </div>
-          {songs.map((s) => row(s))}
+          {groups.map((g) => row(g))}
         </div>
       )}
-      {aside.length > 0 && (
-        <div style={{ marginTop: 14 }}>
+      {samples.length > 0 && (
+        <div className="unm-group">
+          <div className="unm-group__head">
+            <button type="button" className="lib-back" aria-expanded={showSamples}
+              onClick={() => setShowSamples((v) => !v)}>
+              <Icon name={showSamples ? "chevronDown" : "chevronRight"} size={14} />Probably samples ({samples.length})
+            </button>
+            <span className="faint unm-group__say">Pack sounds, loops and resampled bits. Link any that really are songs.</span>
+            <Button variant="ghost" size="sm" disabled={busy === "samples"} onClick={allSamplesAside}>None of these are songs</Button>
+          </div>
+          {showSamples && <div className="table unm-table">{samples.map((g) => row(g))}</div>}
+        </div>
+      )}
+      {asideGroups.length > 0 && (
+        <div className="unm-group">
           <button type="button" className="lib-back" style={{ marginBottom: 8 }} aria-expanded={showAside}
             onClick={() => setShowAside((v) => !v)}>
-            <Icon name={showAside ? "chevronDown" : "chevronRight"} size={14} />Not a song ({aside.length})
+            <Icon name={showAside ? "chevronDown" : "chevronRight"} size={14} />Not a song ({asideGroups.length})
           </button>
-          {showAside && <div className="table unm-table">{aside.map((s) => row(s, true))}</div>}
+          {showAside && <div className="table unm-table">{asideGroups.map((g) => row(g, true))}</div>}
         </div>
       )}
     </>

@@ -28,7 +28,8 @@ import time
 from pathlib import Path
 
 from . import audiotags
-from .songmatch import (GENERIC, close_spelling, is_stem, minutes_text, name_variants,
+from .samples import sample_reason
+from .songmatch import (GENERIC, close_spelling, shared_words, is_stem, minutes_text, name_variants,
                         nearest, reaper_render, snapshot_time, squash, stem_folder_name)
 
 AUDIO_EXTS = {".wav", ".aiff", ".aif", ".aifc", ".flac", ".mp3", ".aac", ".m4a", ".ogg", ".wma",
@@ -298,6 +299,7 @@ class _NameIndex:
     def __init__(self, projects: list[dict], aliases: dict | None = None,
                  saves: dict | None = None):
         self.saves = saves or {}
+        self.aliases = aliases or {}
         self.projects = projects
         self.tiers: list[tuple[callable, dict[str, list[tuple]], list[str]]] = []
         for fn in (normalize_keep_numbers, normalize):
@@ -382,6 +384,9 @@ class _NameIndex:
             hit = self._lookup(text, f_mtime, plain=i == 0)
             if hit:
                 return hit
+        hit = self._contains(stem, f_mtime)
+        if hit:
+            return hit
         words = normalize(stem).split()
         for j in range(len(words), 0, -1):  # the whole name, then fewer words
             c = self.squashed.get("".join(words[:j]))
@@ -392,6 +397,90 @@ class _NameIndex:
                             "why": "the name matches with the spaces left out"}
                 break
         return None
+
+    @staticmethod
+    def _telling(key: str) -> bool:
+        """A name with enough in it to be found inside another: two words with a
+        real one among them ("aby doors", "140 wobs"), or one real word of 5+ letters."""
+        words = key.split()
+        real = [w for w in words if not w.isdigit() and w not in GENERIC and len(w) >= 3]
+        if len(words) >= 2:
+            return bool(real) and len(key) >= 6
+        return bool(real) and len(key) >= 5
+
+    def _contains(self, stem: str, f_mtime: float | None) -> dict | None:
+        """The song's name has a project's whole name in it, anywhere ("BREAKS 140
+        WOBS" -> "140 Wobs"), or a project's name starts with the song's whole name
+        ("Aby Doors" -> "Aby Doors Bass Arrangement"). The longest such name wins."""
+        for fn, by_key, keys in self.tiers:
+            k = fn(stem)
+            if not k:
+                continue
+            padded = f" {k} "
+            for key in keys:  # longest first
+                if len(key) > len(k) or not self._telling(key) or f" {key} " not in padded:
+                    continue
+                c = self._pick(by_key[key], f_mtime)
+                if c:
+                    return {"project_id": c[0]["project_id"], "sure": False,
+                            "why": f"the name has this project's name, “{c[2]}”, in it"}
+                break
+            song_words = set(k.split())
+            for key in keys:  # every word of a project's name, in any order ("Wobs 140")
+                kw = key.split()
+                if len(kw) >= 2 and len(key) <= len(k) and self._telling(key) and set(kw) <= song_words:
+                    c = self._pick(by_key[key], f_mtime)
+                    if c:
+                        return {"project_id": c[0]["project_id"], "sure": False,
+                                "why": f"the name has every word of this project's name, “{c[2]}”, in it"}
+                    break
+            if self._telling(k) and len(k.split()) >= 2:
+                longer = [key for key in by_key if key.startswith(k + " ")]
+                cands = [c for key in longer for c in by_key[key]]
+                if cands:
+                    c = self._pick(cands, f_mtime)
+                    if c:
+                        return {"project_id": c[0]["project_id"], "sure": False,
+                                "why": "this project's name starts with the song's name"}
+        return None
+
+    def guesses(self, stem: str, f_mtime: float | None, exclude: set[str] = frozenset(),
+                limit: int = 5) -> list[dict]:
+        """The projects a song most likely came from, best first, for the picker on
+        "Songs not matched yet": by the words their names share (in any order, with
+        typos and cut-short words allowed) and by how close to the export each project
+        was saved. Each is {"project_id", "why", "score"}."""
+        k = normalize_keep_numbers(stem)
+        variants = {k} | {normalize_keep_numbers(v) for v in name_variants(stem)}
+        variants.discard("")
+        out = []
+        for p in self.projects:
+            if p["project_id"] in exclude:
+                continue
+            best, words, pk_best = 0.0, [], ""
+            for n, _src in _project_names(p) + list(self.aliases.get(p["project_id"], [])):
+                pk = normalize_keep_numbers(n)
+                for v in variants:
+                    sc, w = shared_words(v, pk)
+                    if close_spelling(v, pk):
+                        sc, w = max(sc, 0.8), w or pk.split()
+                    if sc > best:
+                        best, words, pk_best = sc, w, pk
+            d = nearest(self.save_times(p), f_mtime) if f_mtime is not None else None
+            near = d is not None and d <= 6 * 3600
+            if best < 0.3 and not (d is not None and d <= _DATE_WINDOW):
+                continue
+            score = best + (0.35 * (1 - d / (6 * 3600)) if near else 0)
+            parts = []
+            if best >= 0.3:
+                parts.append(("same name" if pk_best == k else "almost the same name") if best >= 1 else
+                             "shares “" + " ".join(words) + "”" if words else "a similar name")
+            if near:
+                parts.append(_when_text(p, f_mtime, self.save_times(p)).replace("this project was", "it was"))
+            out.append({"project_id": p["project_id"], "why": ", ".join(parts),
+                        "score": round(score, 3), "_words": best})
+        out.sort(key=lambda g: -g["score"])
+        return out[:limit]
 
     def close(self, stem: str) -> list[dict]:
         """Projects whose name is spelled almost like the render's ("Nite Drive")."""
@@ -570,6 +659,10 @@ def _unmatched_row(f: Path, root: Path, index: _NameIndex, blocked_hit: dict | N
         st = f.stat()
     except OSError:
         return None
+    sample = sample_reason(f, root, st.st_size)
+    if sample:  # a Splice one-shot, a loop, a resampled clip: not a song to place
+        return {"path": str(f), "name": f.stem, "size": st.st_size, "mtime": st.st_mtime,
+                "kind": "sample", "suggest_id": None, "suggest_why": sample, "guesses": []}
     exclude = {blocked_hit["project_id"]} if blocked_hit else set()
     sid, why = None, None
     close = [p for p in index.close(f.stem) if p["project_id"] not in exclude]
@@ -580,9 +673,18 @@ def _unmatched_row(f: Path, root: Path, index: _NameIndex, blocked_hit: dict | N
         if t:
             p, _gap = t
             sid, why = p["project_id"], _when_text(p, st.st_mtime, index.save_times(p))
+    guesses = index.guesses(f.stem, st.st_mtime, exclude)
+    by_time = sid is not None and len(close) != 1
+    if (sid is None or by_time) and guesses:
+        top = guesses[0]
+        ahead = len(guesses) == 1 or top["score"] - guesses[1]["score"] >= 0.15
+        if top["_words"] >= 0.5 and (ahead or top["project_id"] == sid):  # a clear best guess by name
+            sid, why = top["project_id"], "the name " + top["why"]
+    for g in guesses:
+        g.pop("_words", None)
     return {"path": str(f), "name": f.stem, "size": st.st_size, "mtime": st.st_mtime,
             "kind": "stem" if is_stem(f, root) else "song",
-            "suggest_id": sid, "suggest_why": why}
+            "suggest_id": sid, "suggest_why": why, "guesses": guesses}
 
 
 def export_folders(catalog) -> list[Path]:

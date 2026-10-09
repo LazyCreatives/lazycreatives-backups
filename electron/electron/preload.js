@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer, webUtils } = require("electron");
+const { contextBridge, ipcRenderer, webFrame, webUtils } = require("electron");
 
 function argValue(flag) {
   const a = process.argv.find((x) => x.startsWith(flag + "="));
@@ -6,6 +6,8 @@ function argValue(flag) {
 }
 
 contextBridge.exposeInMainWorld("ablebackup", {
+  // Easier reading's text size: the whole window scales, so columns stay lined up (src/reading.ts).
+  setZoom: (f) => { if (typeof f === "number" && f >= 1 && f <= 1.5) webFrame.setZoomFactor(f); },
   token: argValue("--ablebackup-token"),
   port: argValue("--ablebackup-port"),
   // "vibrancy" (Mac), "mica" (Windows 11) or "none": see windowMaterial in desktop.js.

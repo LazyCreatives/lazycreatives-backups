@@ -144,3 +144,72 @@ def reaper_render(project_file, project_name: str) -> tuple[Path, str] | None:
     if folder == path.parent and name == project_name:
         return None
     return folder, name
+
+
+# ---- shared words ----------------------------------------------------------------
+# How much a word counts when two names are compared: plain words people put in many
+# names ("type", "beat", "idea") and bare numbers count for less than a real title word.
+_WEAK = GENERIC | {"type", "the", "a", "an", "and", "of", "my", "feat", "ft", "x",
+                   "remix", "edit", "version", "vip", "extended", "radio", "club"}
+
+
+def _weight(w: str) -> float:
+    if w.isdigit():
+        return 0.5
+    if w in _WEAK or w[:-1] in _WEAK or len(w) < 2:  # "beats" counts like "beat"
+        return 0.3
+    return 1.0
+
+
+def _same_word(a: str, b: str) -> bool:
+    """Two words that are the same once a typo, a plural or a cut-short ending is
+    allowed: "wob"/"wobs", "mixx"/"mix" (but never two different numbers)."""
+    if a == b:
+        return True
+    if a.isdigit() or b.isdigit():
+        return False
+    short, long_ = sorted((a, b), key=len)
+    if len(short) >= 3 and long_.startswith(short) and len(long_) - len(short) <= 2:
+        return True
+    n = len(short)
+    if n < 4:
+        return False
+    limit = 1 if n < 8 else 2
+    return abs(len(a) - len(b)) <= limit and _distance(a, b, limit) <= limit
+
+
+def shared_words(song: str, project: str) -> tuple[float, list[str]]:
+    """How alike two normalized names are by the words they share, from 0 (nothing
+    in common) to 1 (the same words), and the project's words that were found.
+    Word order doesn't matter, so "BREAKS 140 WOBS" meets "Wobs 140"."""
+    sw, pw = song.split(), project.split()
+    if not sw or not pw:
+        return 0.0, []
+    if squash(song) == squash(project):
+        return 1.0, pw
+    used: set[int] = set()
+    hit = 0.0
+    strong = False
+    found: list[str] = []
+    for w in pw:
+        for i, s in enumerate(sw):
+            if i not in used and _same_word(w, s):
+                used.add(i)
+                hit += _weight(w) + _weight(s)
+                strong = strong or max(_weight(w), _weight(s)) == 1.0
+                found.append(w)
+                break
+    total_s = sum(_weight(w) for w in sw)
+    total_p = sum(_weight(w) for w in pw)
+    score = hit / (total_s + total_p)
+    # a name run together on one side ("doorsbass" vs "doors bass")
+    if score < 0.6:
+        a, b = squash(song), squash(project)
+        short, long_ = sorted((a, b), key=len)
+        fewer = sw if len(squash(song)) <= len(squash(project)) else pw
+        if len(short) >= 6 and short in long_ and any(_weight(w) == 1.0 for w in fewer):
+            score = max(score, 0.6 * len(short) / len(long_) + 0.2)
+            found, strong = found or pw, True
+    if not strong and score < 1:
+        score *= 0.5  # only numbers or plain words in common
+    return round(score, 3), found

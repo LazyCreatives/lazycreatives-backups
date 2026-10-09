@@ -173,6 +173,50 @@
 .unm-where { font-size: 12px; margin-top: 2px; }
 .unm-pick { display: grid; gap: 4px; min-width: 0; }
 .unm-pick select { width: 100%; }
+.unm-group { margin-top: 14px; }
+.unm-group__head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.unm-group__head .lib-back { margin: 0; }
+.unm-group__say { font-size: 12px; flex: 1 1 220px; min-width: 0; }
+
+/* The project picker on "Songs not matched yet" (components/ProjectPick.tsx). */
+.ppick__btn {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; height: 30px; min-width: 0;
+  padding: 0 8px 0 10px; cursor: pointer; text-align: left;
+  background: var(--input-bg); color: var(--text-dim); border: 1px solid var(--border-strong); border-radius: var(--radius);
+  font: 400 12px var(--font);
+}
+.ppick__btn:hover { border-color: var(--border-interactive); }
+.ppick__btn--on { border-color: var(--accent); color: var(--text); }
+.ppick__btn svg { flex-shrink: 0; color: var(--text-faint); }
+.ppick__cur { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ppick__hint { color: var(--text-faint); }
+.ppick {
+  position: fixed; z-index: 200; display: grid; grid-template-rows: auto minmax(0, 1fr); max-height: 380px;
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop); animation: ctxIn var(--dur-quick) var(--ease-glide) both; overflow: hidden;
+}
+.ppick__find { display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--border-strong); color: var(--text-faint); }
+.ppick__find input { flex: 1; min-width: 0; height: 40px; border: none; background: transparent; color: var(--text); font: 400 13px var(--font); outline: none; padding: 0; box-shadow: none; }
+.ppick__find input:focus { border: none; box-shadow: none; }
+.ppick__find:focus-within { box-shadow: inset 0 -2px 0 var(--accent); }
+.ppick__list { overflow-y: auto; padding: 4px; }
+.ppick__head { padding: 8px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.ppick__opt {
+  display: grid; grid-template-columns: minmax(96px, max-content) minmax(0, 1fr); align-items: baseline; gap: 12px;
+  min-height: 34px; padding: 7px 10px; border-radius: var(--radius); cursor: pointer; font-size: 13px; color: var(--text);
+}
+.ppick__opt--at { background: var(--surface-3); }
+.ppick__opt--on .ppick__name { color: var(--accent); }
+.ppick__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ppick__meta { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-faint); text-align: right; }
+.ppick__none { padding: 14px 10px; font-size: 12px; color: var(--text-faint); }
+[data-look="crate"] .ppick__btn, [data-look="crate"] .ppick { border-radius: 2px; }
+[data-look="crate"] .ppick__list { padding: 0; }
+[data-look="crate"] .ppick__opt { border-radius: 0; border-bottom: 1px solid var(--border); }
+[data-look="crate"] .ppick__head { border-bottom: 1px solid var(--border-strong); }
+[data-look="sleeve"] .ppick { border-radius: 12px; }
+[data-look="sleeve"] .ppick__list { padding: 6px; }
+[data-look="sleeve"] .ppick__opt { border-radius: 8px; }
 .unm-why { font-size: 12px; line-height: 1.3; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .unm-tag { margin-left: 7px; padding: 1px 6px; border: 1px solid var(--border-strong); border-radius: 99px; font-size: 11px; color: var(--text-faint); vertical-align: 1px; }
 

@@ -43,9 +43,9 @@ def test_set_genre_survives_rescan_and_resets(tmp_path):
 def test_own_genre_words_are_kept(tmp_path):
     cat = Catalog(tmp_path / "c.db")
     cat.upsert_discovered([_row("a", None)], "t1")
-    cat.set_project_genre(["a"], "Afrobeats")
+    cat.set_project_genre(["a"], "Gqom")
     r = _lib(cat)["a"]
-    assert (r["genre"], r["genre_emoji"], r["genre_by_you"]) == ("Afrobeats", "🎵", 1)
+    assert (r["genre"], r["genre_emoji"], r["genre_by_you"]) == ("Gqom", "🎵", 1)
 
 
 def test_old_catalog_keeps_its_genres_as_the_guess(tmp_path):

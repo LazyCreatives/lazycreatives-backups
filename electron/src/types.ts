@@ -126,9 +126,10 @@ export interface UnmatchedSong {
   name: string;
   size: number | null;
   mtime: number | null;
-  kind: "song" | "stem";
+  kind: "song" | "stem" | "sample";  // sample: a pack one-shot, loop or resampled clip
   suggest_id: string | null;
-  suggest_why: string | null;
+  suggest_why: string | null;        // for a sample: why it looks like one
+  guesses?: { project_id: string; why: string; score?: number }[];  // likely projects, best first
   exists: boolean;
 }
 export interface ProjectExports {

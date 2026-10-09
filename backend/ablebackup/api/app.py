@@ -357,7 +357,11 @@ def create_app(token: str, db_path: Path) -> FastAPI:
                  "uploaded": ex["latest"]["path"] in uploaded} if ex else None)
         owners = sorted({r["owner"] or "system" for r in rows})
         return {"projects": rows, "owners": owners, "count": len(rows),
-                "unmatched_songs": len(app.state.catalog.unmatched())}
+                # one per song: the AIF and MP3 of a song (or the same name twice) count once,
+                # and samples sit apart
+                "unmatched_songs": len({u["name"].strip().lower()
+                                        for u in app.state.catalog.unmatched()
+                                        if u["kind"] != "sample"})}
 
     @app.get("/api/genres", dependencies=[Depends(require_token)])
     def genre_list():

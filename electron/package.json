@@ -1,7 +1,7 @@
 {
   "name": "lazycreatives-backups",
   "productName": "LazyCreatives Backups",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "LazyCreatives Backups — verified, deduplicated backups for Ableton & FL Studio projects",
   "main": "electron/main.js",
   "scripts": {
@@ -104,7 +104,9 @@
     "wait-on": "^8.0.0"
   },
   "dependencies": {
+    "@fontsource/atkinson-hyperlegible-next": "^5.3.0",
     "@fontsource/bebas-neue": "^5.3.0",
+    "@fontsource/opendyslexic": "^5.3.0",
     "@fontsource/schibsted-grotesk": "^5.3.0",
     "@number-flow/react": "^0.6.2",
     "@paper-design/shaders-react": "^0.0.81",

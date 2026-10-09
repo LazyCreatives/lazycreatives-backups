@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useDialogFocus } from "./a11y";
-import { CRATE_COLORS, GENRES, builtInColor, genreColor, pickedColor, setGenreColor } from "../look";
+import { CRATE_COLORS, GENRES, GENRE_GROUPS, builtInColor, genreColor, pickedColor, setGenreColor } from "../look";
 import { Cover } from "./Cover";
 import { useLeave } from "./Desktop";
 
@@ -164,9 +164,11 @@ function GenreBox({ s, done: close }: { s: NonNullable<PickState>; done: (g: Gen
                     {yours.map((g) => <option key={g} value={g}>{g}</option>)}
                   </optgroup>
                 )}
-                {yours.length > 0
-                  ? <optgroup label="All genres">{GENRES.map((g) => <option key={g} value={g}>{g}</option>)}</optgroup>
-                  : GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
+                {GENRE_GROUPS.map((grp) => (
+                  <optgroup key={grp.label} label={grp.label}>
+                    {grp.genres.map(([g]) => <option key={g} value={g}>{g}</option>)}
+                  </optgroup>
+                ))}
                 <option value={OTHER}>Something else…</option>
               </select>
             </label>

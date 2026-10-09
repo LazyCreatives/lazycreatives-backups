@@ -7,4 +7,16 @@
   var systemDark = !(window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches);
   var dark = choice === "system" ? systemDark : choice !== "light";
   document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  // Easier reading (src/reading.ts, applyReading), so the first paint already has it.
+  try {
+    var r = JSON.parse(localStorage.getItem("lc-reading") || "{}");
+    if (r && r.on === true) {
+      var h = document.documentElement;
+      h.setAttribute("data-reading", "on");
+      h.setAttribute("data-read-font", r.font || "atkinson");
+      h.setAttribute("data-read-space", r.space || "wider");
+      h.setAttribute("data-read-tint", r.tint || "none");
+      if (r.calm !== false) h.setAttribute("data-read-calm", "on");
+    }
+  } catch (e) { /* storage off or unreadable: reading view off */ }
 })();

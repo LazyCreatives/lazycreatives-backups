@@ -13,6 +13,20 @@ How to keep this up to date:
   The checks on pull requests fail if the app's version has no section here.
 -->
 
+## Unreleased
+
+## 0.2.7 (9 October 2026)
+
+### New
+- **Easier reading.** A new switch in Settings > Look for dyslexia or tired eyes: a clearer font (Atkinson Hyperlegible, or OpenDyslexic if you prefer it), more space between letters and words, bigger text, no capital-letter labels and less movement. Text size, spacing, font and a soft colour tint can each be changed, and lists stay lined up in columns.
+
+### Better
+- **Many more genres, in groups.** The genre box now lists 95 genres in ten groups that follow Splice's families, from Jerk, Rage, Plugg and UK drill to Jump up, Liquid and Neurofunk in a Drum & bass group, IDM, Experimental, Amapiano, Metal and Game music. New genres are only guessed when a project's name or samples mention them, so tempo-only guesses stay the same, and "deep house" or "uk drill" in a name now picks that genre rather than plain House or Drill. Genres you set or typed yourself stay as they are.
+- **Picking a song's project is quicker.** On "Songs not matched yet" the project list is now a box you type in, with the best guesses for that song on top and why each one is guessed. Projects that share a name show their folder and the day they were last saved, so you can tell them apart.
+- **Songs find their project more often.** Backups now matches on the words two names share, in any order, so "BREAKS 140 WOBS" finds "Wobs 140" and "THE PENTHOUSE EXPERIMENT" finds "Penthouse". Typos and cut-short words still count.
+- **Samples are tucked away.** Splice sounds, one-shots, loops and bits you resampled no longer crowd the list. They sit under "Probably samples", where one button puts them all aside. Nothing is moved or deleted.
+- **One row per song.** The AIF and MP3 of the same song (or the same name twice) share one row, and Link covers them both.
+
 ## 0.2.6 (8 October 2026)
 
 ### New

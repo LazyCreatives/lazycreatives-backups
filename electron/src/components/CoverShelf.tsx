@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { GENRES } from "../look";
+import { GENRE_GROUPS } from "../look";
 import { addPictureFromFile, changeCovers, coverSource, useCovers, type CoverPic, type CoverRule } from "../coverArt";
 import { Cover } from "./Cover";
 import { Icon } from "./Icon";
@@ -80,7 +80,11 @@ export function CoverShelf({ sample, sampleGenre, what = "project" }: {
                   <select className="covshelf__add" value="" aria-label={`Give ${p.name} to a genre`}
                     onChange={(e) => { const g = e.target.value; if (g) update(p.id, { genres: [...p.genres, g] }); }}>
                     <option value="">+ Genre</option>
-                    {GENRES.filter((g) => !p.genres.includes(g)).map((g) => <option key={g} value={g}>{g}</option>)}
+                    {GENRE_GROUPS.map((grp) => (
+                      <optgroup key={grp.label} label={grp.label}>
+                        {grp.genres.filter(([g]) => !p.genres.includes(g)).map(([g]) => <option key={g} value={g}>{g}</option>)}
+                      </optgroup>
+                    ))}
                   </select>
                 </span>
                 <span className="covshelf__count" data-none={!count(p) || undefined}>{count(p) || "–"}</span>

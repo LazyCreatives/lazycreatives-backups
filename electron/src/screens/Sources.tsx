@@ -16,6 +16,7 @@ import { CoverShelf } from "../components/CoverShelf";
 import { genreColor, useLook } from "../look";
 import { GlyphPicker } from "../components/Marks";
 import { ThemePicker } from "../components/LookPicker";
+import { ReadingSettings } from "../components/ReadingSettings";
 import { fadeSwitch } from "../fade";
 import { UpdateCheck } from "../components/UpdateCheck";
 import { useEntitlement } from "../entitlement";
@@ -354,6 +355,7 @@ export function Sources() {
       <SetRow title="Light or dark" help="Dark ink or light paper, in either look.">
         <ThemePicker />
       </SetRow>
+      <ReadingSettings />
       <SetRow title="Rating mark" help="What ratings are drawn with. Rate a project from its row, or right-click it.">
         <GlyphPicker />
       </SetRow>

@@ -1,0 +1,114 @@
+/* Easier reading (Settings > Look; reading.ts). SHARED FILE: the same file lives in
+   Backups and Uploader at electron/src/reading.css. Change both together.
+
+   Only switched on by data-reading on <html>, so the apps look exactly as before
+   when it is off. Works over both looks (Crate, Sleeve) and both themes:
+   - the face: Atkinson Hyperlegible Next (b/d, p/q, I/l/1, 0/O drawn to differ) or
+     OpenDyslexic, or the app's own; the brush titles switch to it too
+   - spacing: WCAG 1.4.12 amounts at "widest" (letters 0.12em, words 0.16em), half
+     that at "wider"; lists keep their fixed columns and long names end in "…"
+   - no capitals-only labels and no slanted text
+   - softer contrast in the dark theme (the paper theme is already off-white)
+   - a see-through tint over the window, for people who read better on colour
+   - "calm": no fades, slides or count-ups */
+
+html[data-read-font="atkinson"] { --read-face: "Atkinson Hyperlegible Next"; }
+html[data-read-font="opendyslexic"] { --read-face: "LC OpenDyslexic"; }
+html[data-read-font="app"] { --read-face: "Schibsted Grotesk"; }
+
+html[data-reading] {
+  --font: var(--read-face), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font);
+}
+html[data-reading]:not([data-theme="light"]) {
+  --text: #DCE3EA;
+  --text-dim: #A9B6C3;
+}
+
+/* OpenDyslexic is half as wide again as the app's face and very tall, so it overflowed
+   buttons, badges and rows. This copy of it (the same bundled files) is drawn a little
+   smaller and given the app face's line height, so it fits wherever the app's face fits. */
+@font-face {
+  font-family: "LC OpenDyslexic"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url("../node_modules/@fontsource/opendyslexic/files/opendyslexic-latin-400-normal.woff2") format("woff2");
+  size-adjust: 86%; ascent-override: 100%; descent-override: 30%; line-gap-override: 0%;
+}
+@font-face {
+  font-family: "LC OpenDyslexic"; font-style: normal; font-weight: 700; font-display: swap;
+  src: url("../node_modules/@fontsource/opendyslexic/files/opendyslexic-latin-700-normal.woff2") format("woff2");
+  size-adjust: 86%; ascent-override: 100%; descent-override: 30%; line-gap-override: 0%;
+}
+
+/* The brush titles (app name, big project and album names) become plain bold text. */
+html[data-reading] :is(.display, .lc-brand__name, .cw-head__name, .albpage__title, .proj-hero__name, .ondeck__name) {
+  font-family: var(--font); font-weight: 700;
+}
+
+/* No capitals-only labels and no slanted text. Drawn covers (svg) stay as they are. */
+html[data-reading] :not(svg, svg *) { text-transform: none !important; font-style: normal !important; }
+
+/* Spacing between letters and words, everywhere but drawn covers (it beats each label's own setting). */
+html[data-read-space="wider"] :not(svg, svg *) { letter-spacing: 0.06em !important; word-spacing: 0.1em !important; }
+html[data-read-space="widest"] :not(svg, svg *) { letter-spacing: 0.12em !important; word-spacing: 0.16em !important; }
+/* Inside lists the columns are fixed, so rows and column names stay at the "wider"
+   amount even on "widest": everything still lines up and fits its column. */
+html[data-read-space="widest"] :is(.row, .cols-head) :not(svg, svg *) { letter-spacing: 0.06em !important; word-spacing: 0.1em !important; }
+/* Short labels gain nothing from spacing out and must fit their box: badges, tags,
+   number columns and the descriptions on picker cards keep a light touch. */
+html[data-read-space]:not([data-read-space="normal"]) :is(.tag, .pill, .badge, [class*="__badge"], .col-num, .col-num *, .plug-fmt, small) {
+  letter-spacing: 0.02em !important; word-spacing: 0.05em !important;
+}
+/* A row's own buttons stay inside their column: a long label ends in "…" rather than
+   sliding over the column beside it (the full words are still read out). Same for a
+   state word in a narrow column. */
+html[data-reading] .col-act { min-width: 0; }
+html[data-reading] .col-act > .btn { display: inline-block; line-height: 32px; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-reading] .col-act > .btn--sm { line-height: 26px; }
+html[data-reading] .col-act > .btn > svg { vertical-align: middle; margin-right: 6px; }
+html[data-reading] .recent-state { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Number and date columns end in "…" too, rather than running into the next column. */
+html[data-reading] .cols > .col-num, html[data-reading] .cols > * > .col-num { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Taller lines in running text only; rows, buttons and badges keep their height. */
+html[data-read-space="wider"] :is(p, li, dd, .sub, .muted, .hint, .note) { line-height: 1.65; }
+html[data-read-space="widest"] :is(p, li, dd, .sub, .muted, .hint, .note) { line-height: 1.8; }
+html[data-read-space]:not([data-read-space="normal"]) p + p { margin-top: 0.9em; }
+
+/* Wider letters need room: a page's buttons drop under its title rather than squeezing
+   the line under it, and button rows wrap rather than cut their counts off. */
+html[data-reading] .page-head { flex-wrap: wrap; }
+html[data-reading] .page-head > :first-child { flex: 1 1 340px; }
+html[data-reading] .seg { flex-wrap: wrap; max-width: 100%; }
+html[data-reading] .seg__opt { white-space: nowrap; }
+
+/* Big counts stay on one line (Home's "24 / 34"), and the version row in Settings > App
+   puts its buttons on a line of their own so the words beside them keep their width. */
+html[data-reading] .deckcard__big { white-space: nowrap; }
+html[data-reading] .deckcard__big, html[data-reading] .deckcard__big * { letter-spacing: 0 !important; }
+/* Labels over big numbers (Uploader's Home and Your collection) wrap instead of ending in "…". */
+html[data-reading] dt { white-space: normal !important; text-overflow: clip !important; }
+/* ...and the numbers under them stay on one line across the row however many lines a label takes. */
+html[data-reading] .home-deck dt { min-height: 2.6em; line-height: 1.3; }
+html[data-reading] .updcheck__row { grid-template-columns: auto minmax(0, 1fr); row-gap: 8px; padding-block: 8px; }
+html[data-reading] .updcheck__act { grid-column: 1 / -1; justify-self: start; justify-content: flex-start; }
+
+/* A tint over the whole window, like a coloured reading sheet. */
+html[data-read-tint]:not([data-read-tint="none"])::after {
+  content: ""; position: fixed; inset: 0; z-index: 2147483000; pointer-events: none;
+  mix-blend-mode: multiply;
+}
+html[data-read-tint="cream"]::after { background: rgb(255 236 190 / 0.55); }
+html[data-read-tint="blue"]::after { background: rgb(190 220 255 / 0.5); }
+html[data-read-tint="grey"]::after { background: rgb(200 200 200 / 0.45); }
+/* On the dark theme a multiply would only darken: lay the colour on lightly instead. */
+html:not([data-theme="light"])[data-read-tint="cream"]::after { mix-blend-mode: screen; background: rgb(48 38 14 / 0.45); }
+html:not([data-theme="light"])[data-read-tint="blue"]::after { mix-blend-mode: screen; background: rgb(14 30 56 / 0.5); }
+html:not([data-theme="light"])[data-read-tint="grey"]::after { mix-blend-mode: screen; background: rgb(40 40 40 / 0.5); }
+
+/* Calm: nothing moves on its own. */
+html[data-read-calm] *, html[data-read-calm] *::before, html[data-read-calm] *::after {
+  animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+}
+
+/* The sample line under the Font choice in Settings (always shown in the font picked). */
+.read-sample { margin: 8px 0 0; font-size: 15px; color: var(--text-dim); }

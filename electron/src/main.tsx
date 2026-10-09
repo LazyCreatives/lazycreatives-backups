@@ -11,12 +11,22 @@ import "@fontsource/schibsted-grotesk/500.css";
 import "@fontsource/schibsted-grotesk/600.css";
 import "@fontsource/schibsted-grotesk/700.css";
 import "@fontsource/bebas-neue";
+// Easier reading faces (Settings > Look), both under the SIL Open Font License.
+// OpenDyslexic is loaded from reading.css, fitted to the app's line heights.
+import "@fontsource/atkinson-hyperlegible-next/400.css";
+import "@fontsource/atkinson-hyperlegible-next/600.css";
+import "@fontsource/atkinson-hyperlegible-next/700.css";
 import "./lazy-ui.css";  // shared look (same file in Uploader)
 import "./theme.css";    // Backups-only bits
 import "./flow.css";     // the step-by-step backup screens
 import "./companion.css"; // the narrow window and its sidebar button; after the shared styles so it wins ties
+import "./reading.css";   // Easier reading, last so it wins over every look
 import { Companion } from "./screens/Companion";
 import { fadeThemeChanges } from "./fade";
+import { applyReading } from "./reading";
+
+// Easier reading, and its text size on the window.
+applyReading();
 
 // Light / dark changes cross-fade (see fade.ts).
 fadeThemeChanges();

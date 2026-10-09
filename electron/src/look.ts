@@ -99,15 +99,58 @@ if (typeof document !== "undefined") {
   darkQuery()?.addEventListener?.("change", () => { if (getThemeChoice() === "system") applyTheme("system"); });
 }
 
-// One colour per genre, used for row stripes, cover art and waveforms.
-const GENRE_COLORS: Record<string, string> = {
-  "Lo-fi": "#D9B26B", "Boom bap": "#C98F5A", "Hip hop": "#E8C547", "Trap": "#56C08A",
-  "Drill": "#7FA36B", "Phonk": "#E0628A", "House": "#4FC3C9", "Tech house": "#3FA7B5",
-  "Techno": "#8C96A3", "Trance": "#7C8CF0", "UK garage": "#B48CF0", "Grime": "#5B9BD5",
-  "Dubstep": "#9B6BD8", "DnB": "#E0784F", "Jungle": "#C2B04A", "Hardstyle": "#E05A5A",
-  "Hyperpop": "#F08CD0", "Pop": "#F0A35E", "Ambient": "#79B8A6",
-};
-// The genres the apps know, in the order the genre picker lists them.
+// The genres the apps know, in the groups and order the genre picker lists them
+// (the families follow Splice's), each with its own colour for row stripes, cover
+// art and waveforms. Genres in a group share a family of colours.
+export const GENRE_GROUPS: { label: string; genres: [string, string][] }[] = [
+  { label: "Hip hop & R&B", genres: [
+    ["Hip hop", "#E8C547"], ["Boom bap", "#C98F5A"], ["Trap", "#56C08A"], ["Drill", "#7FA36B"],
+    ["UK drill", "#CEA67E"], ["Jerk", "#CCD279"], ["Rage", "#DAB17C"], ["Plugg", "#C5C775"], ["Pluggnb", "#D1B25C"],
+    ["Cloud rap", "#D3C96F"], ["UK rap", "#CBB680"], ["Phonk", "#E0628A"], ["Lo-fi", "#D9B26B"], ["R&B", "#D97AB0"],
+    ["Neo soul", "#D5A272"], ["Soul", "#C8D364"], ["Jersey club", "#CFB277"]
+  ] },
+  { label: "House & disco", genres: [
+    ["House", "#4FC3C9"], ["Deep house", "#5FB0D8"], ["Tech house", "#3FA7B5"], ["Afro house", "#D9A04F"],
+    ["Bass house", "#66C7B5"], ["Progressive house", "#68D4CA"], ["Acid house", "#6ACDB9"],
+    ["French house", "#65BBD2"], ["Future house", "#81CED5"], ["Disco", "#E8A0E0"], ["Nu disco", "#66C7C3"]
+  ] },
+  { label: "Techno & trance", genres: [
+    ["Techno", "#8C96A3"], ["Melodic techno", "#9AA6E0"], ["Minimal techno", "#6C7BD0"], ["Hard techno", "#B86A6A"],
+    ["Electro", "#6086D2"], ["Trance", "#7C8CF0"], ["Psytrance", "#A6C95A"], ["Hardstyle", "#E05A5A"]
+  ] },
+  { label: "Drum & bass", genres: [
+    ["DnB", "#E0784F"], ["Liquid DnB", "#CEAC7E"], ["Neurofunk", "#C8706A"], ["Jump up", "#DA8B77"],
+    ["Dancefloor DnB", "#D5736C"], ["Rollers", "#D09A67"], ["Minimal DnB", "#D4AB7D"], ["Techstep", "#D97D7E"],
+    ["Halftime", "#DB867B"], ["Drumstep", "#CF817D"], ["Jungle", "#C2B04A"]
+  ] },
+  { label: "UK & bass", genres: [
+    ["UK garage", "#B48CF0"], ["Grime", "#5B9BD5"], ["Dubstep", "#9B6BD8"], ["Riddim", "#A56BCC"],
+    ["Breakbeat", "#D0905A"], ["Future bass", "#8FC8EC"], ["Footwork", "#B284CD"]
+  ] },
+  { label: "Pop & EDM", genres: [
+    ["Pop", "#F0A35E"], ["Hyperpop", "#F08CD0"], ["Indie pop", "#C98973"], ["Synth-pop", "#D18E7A"],
+    ["K-pop", "#D0A686"], ["EDM", "#D6C080"], ["Big room", "#D58F6C"]
+  ] },
+  { label: "Electronic & experimental", genres: [
+    ["Ambient", "#79B8A6"], ["Downtempo", "#8FB89A"], ["Chillwave", "#7DD4A5"], ["Synthwave", "#C07CE0"],
+    ["Trip hop", "#75CCA4"], ["IDM", "#7ED79D"], ["Experimental", "#7FCC9F"], ["Glitch", "#67C18E"],
+    ["Industrial", "#63CAB0"], ["Chiptune", "#6BD6B6"]
+  ] },
+  { label: "Band & live", genres: [
+    ["Indie", "#C9B48C"], ["Rock", "#C8685A"], ["Metal", "#D67684"], ["Punk", "#CF878E"], ["Emo", "#C48F6E"],
+    ["Shoegaze", "#CD7A7D"], ["Funk", "#D07E58"], ["Jazz", "#C9A06B"], ["Blues", "#C26B6F"], ["Gospel", "#C57572"],
+    ["Folk", "#D49877"], ["Country", "#D4737C"], ["Classical", "#CC8B7B"]
+  ] },
+  { label: "Afro, Latin & world", genres: [
+    ["Afrobeats", "#F0C24F"], ["Amapiano", "#5FC0A0"], ["Reggaeton", "#F0886A"], ["Dancehall", "#9CC95A"],
+    ["Reggae", "#99D185"], ["Dub", "#B9D27F"], ["Moombahton", "#A0D076"], ["Baile funk", "#7ED05D"],
+    ["Latin", "#86D175"]
+  ] },
+  { label: "Film & games", genres: [
+    ["Cinematic", "#A8A090"], ["Game music", "#D79970"]
+  ] },
+];
+const GENRE_COLORS: Record<string, string> = Object.fromEntries(GENRE_GROUPS.flatMap((g) => g.genres));
 export const GENRES = Object.keys(GENRE_COLORS);
 const SPARE = ["#5B9BD5", "#E0784F", "#B48CF0", "#56C08A", "#E8C547", "#4FC3C9", "#E0628A"];
 export const NO_GENRE = "#4A525C";  // no genre yet: a quiet grey stripe

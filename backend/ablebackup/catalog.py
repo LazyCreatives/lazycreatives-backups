@@ -76,7 +76,8 @@ CREATE TABLE IF NOT EXISTS unmatched_exports (
     kind TEXT NOT NULL DEFAULT 'song',
     suggest_id TEXT,
     suggest_why TEXT,
-    ignored INTEGER NOT NULL DEFAULT 0
+    ignored INTEGER NOT NULL DEFAULT 0,
+    guesses TEXT                       -- JSON: likely projects, best first, for the picker
 );
 -- "Tidy names": each rename the user made from a project page, with everything
 -- needed to put every name back (one click Undo). steps = [[from, to], ...] in the
@@ -207,6 +208,9 @@ class Catalog:
                          "sure": "INTEGER NOT NULL DEFAULT 1"}.items():
             if col not in ecols:
                 self.conn.execute(f"ALTER TABLE exports ADD COLUMN {col} {typ}")
+        ucols = {r["name"] for r in self.conn.execute("PRAGMA table_info(unmatched_exports)")}
+        if "guesses" not in ucols:
+            self.conn.execute("ALTER TABLE unmatched_exports ADD COLUMN guesses TEXT")
 
     def record_snapshot(self, project_name, timestamp, total_size,
                         file_count, status, missing, error=None,
@@ -695,12 +699,13 @@ class Catalog:
                 self.conn.execute("DELETE FROM unmatched_exports WHERE ignored = 0")
             self.conn.executemany(
                 "INSERT INTO unmatched_exports "
-                "(path, name, size, mtime, kind, suggest_id, suggest_why) "
-                "VALUES (:path, :name, :size, :mtime, :kind, :suggest_id, :suggest_why) "
+                "(path, name, size, mtime, kind, suggest_id, suggest_why, guesses) "
+                "VALUES (:path, :name, :size, :mtime, :kind, :suggest_id, :suggest_why, :guesses) "
                 "ON CONFLICT(path) DO UPDATE SET name = excluded.name, size = excluded.size, "
                 "  mtime = excluded.mtime, kind = excluded.kind, "
-                "  suggest_id = excluded.suggest_id, suggest_why = excluded.suggest_why",
-                rows)
+                "  suggest_id = excluded.suggest_id, suggest_why = excluded.suggest_why, "
+                "  guesses = excluded.guesses",
+                [{**r, "guesses": json.dumps(r.get("guesses") or [])} for r in rows])
             self.conn.commit()
 
     def unmatched(self, ignored: bool = False) -> list[dict]:
@@ -710,7 +715,13 @@ class Catalog:
                 "SELECT u.* FROM unmatched_exports u WHERE u.ignored = ? AND NOT EXISTS "
                 "(SELECT 1 FROM exports e WHERE e.path = u.path AND e.hidden = 0) "
                 "ORDER BY u.mtime DESC", (1 if ignored else 0,)).fetchall()
-        return [dict(r) for r in rows]
+        out = [dict(r) for r in rows]
+        for r in out:
+            try:
+                r["guesses"] = json.loads(r.get("guesses") or "[]")
+            except ValueError:
+                r["guesses"] = []
+        return out
 
     def ignore_unmatched(self, path: str, ignored: bool = True) -> bool:
         with self._lock:
