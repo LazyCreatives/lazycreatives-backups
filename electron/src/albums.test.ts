@@ -93,3 +93,32 @@ describe("planning an album", () => {
     expect(tempoJump(null, 120)).toBeNull();
   });
 });
+
+describe("a newer export of an album song", () => {
+  const song = (path: string, project_id = "p1") => ({ path, title: "x", project: "", project_id, backup: null,
+    gapless_after: false, ready: null, needs: [], is_ready: true }) as AlbumSong;
+  const c = (path: string, exported: number, project_id = "p1") => ({ path, title: path.split("/").pop()!.replace(/\.\w+$/, ""), project: "P", project_id, exported });
+
+  it("knows two files of one song by their name, version words aside", async () => {
+    const { sameSong, songWords } = await import("./albums");
+    expect(songWords("/m/Night Drive v3 (Master) 2.wav")).toEqual(["night", "drive"]);
+    expect(sameSong("/m/PROBLEM CHILD.wav", "/m/Problem Child final v2.wav")).toBe(true);
+    expect(sameSong("/m/Psychidelly Ruined Mastered Better I Hope.wav", "/m/PSYCHIDELLY RUINED.wav")).toBe(true);
+    expect(sameSong("/m/Night Drive.wav", "/m/Bass Intro Loop.wav")).toBe(false);
+  });
+
+  it("offers a real re-export, never a copy, another song, a lossy file or one from the same session", async () => {
+    const { newerExport } = await import("./albums");
+    const s = song("/m/Night Drive.wav");
+    const base = c("/m/Night Drive.wav", 1000);
+    expect(newerExport(s, [base, c("/m/Night Drive v2.wav", 5000)])?.path).toBe("/m/Night Drive v2.wav");
+    expect(newerExport(s, [base, c("/m/Night Drive v2.wav", 5000), c("/m/Night Drive v3.wav", 9000)])?.path).toBe("/m/Night Drive v3.wav");
+    expect(newerExport(s, [base, c("/m/Night Drive.mp3", 5000)])).toBeNull();          // a WAV stays a WAV
+    expect(newerExport(s, [base, c("/m/Night Drive v2.wav", 1100)])).toBeNull();       // same session
+    expect(newerExport(s, [base, c("/m/Night Drive test.wav", 5000)])).toBeNull();     // a test copy
+    expect(newerExport(s, [base, c("/m/Synth Stab.wav", 5000)])).toBeNull();           // another song
+    expect(newerExport(s, [base, c("/m/Night Drive v2.wav", 5000, "p2")])).toBeNull(); // another project
+    expect(newerExport(s, [c("/m/Night Drive v2.wav", 5000)])).toBeNull();             // its own export unknown
+    expect(newerExport(s, [base, c("/m/Night Drive v2.wav", 5000)], new Set(["/m/Night Drive v2.wav"]))).toBeNull(); // already on the album
+  });
+});

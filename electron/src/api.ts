@@ -1,6 +1,6 @@
 import type { CloudFolder, Config, SuggestedFolder, ProjectExports, Entitlement, JobStatus, LibraryItem, Overview, PluginList, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, TidyBatch, TidyDone, TidyOptions, TidyPlan, UnmatchedSong, VerifyResult } from "./types";
 import type { CoverSource } from "./coverArt";
-import type { Album, AlbumCandidate, AlbumSongChange } from "./albums";
+import type { Album, AlbumCandidate, AlbumSongChange, SongCheck } from "./albums";
 import type { DropSong } from "./songDrop";
 import { plainProblem } from "./plainProblem";
 
@@ -40,7 +40,7 @@ export function makeApi() {
     async createAlbum(title: string, releaseDate = ""): Promise<Album> {
       return req("POST", "/api/albums", { title, release_date: releaseDate });
     },
-    async updateAlbum(id: string, change: { title?: string; release_date?: string; crossfade?: number }): Promise<Album> {
+    async updateAlbum(id: string, change: { title?: string; release_date?: string; crossfade?: number; kind?: string }): Promise<Album> {
       return req("PUT", `/api/albums/${id}`, change);
     },
     async deleteAlbum(id: string): Promise<{ ok: boolean }> { return req("DELETE", `/api/albums/${id}`); },
@@ -53,6 +53,12 @@ export function makeApi() {
     },
     async removeAlbumSong(id: string, path: string): Promise<Album> {
       return req("DELETE", `/api/albums/${id}/song?path=${encodeURIComponent(path)}`);
+    },
+    async swapAlbumSong(id: string, path: string, newPath: string): Promise<Album> {
+      return req("PUT", `/api/albums/${id}/swap`, { path, new_path: newPath });
+    },
+    async checkAlbumSong(path: string): Promise<SongCheck> {
+      return req("GET", `/api/albums/check?path=${encodeURIComponent(path)}`);
     },
     // Your phone: pair a phone and let it browse and fetch songs over home Wi-Fi.
     async phoneStatus(): Promise<PhoneStatus> { return req("GET", "/api/phone"); },

@@ -15,6 +15,14 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.2.10 (10 October 2026)
+
+### New
+- **Sync an album to SoundCloud.** The album page has a Sync to SoundCloud button that opens Uploader and puts the album's Ready songs on SoundCloud as one private playlist, in album order, posting the songs that aren't up yet and never posting one twice. Sync again after changing the album and the playlist follows: new order, new songs, a new name. Songs still being worked on wait until they're Ready.
+- **Check every song before it goes out.** A new Quality column on the album says "Plays anywhere" or names the problem: 32-bit float, 88.2 or 96 kHz, a low-bitrate MP3, FLAC, clipping, over 0 dB or very quiet. Click it to see the file's loudness and peak and what to change in your export, so it plays on DJ gear too. Your files are only read, never changed.
+- **Use the newest export.** When a song has a newer export of the same track, the album says so, and "Use newer" swaps it in when you press it. Both files stay where they are.
+- **Call it what it is.** An album can be called a Single, EP, Album, LP, Mixtape or Compilation. The app suggests one from its length (as Spotify and Apple Music count it), and a "?" explains what each name means.
+
 ## 0.2.9 (10 October 2026)
 
 ### Better

@@ -23,12 +23,27 @@ export interface AlbumSong {
   is_ready: boolean;
 }
 
+// Where the album is on SoundCloud, written by Uploader when it syncs the album.
+export interface AlbumLink {
+  playlist_id: number;
+  url: string | null;
+  sharing: "public" | "private";
+  synced_at: string;             // ISO time of the last sync
+  on: number;                    // songs in the playlist
+  of: number;                    // songs on the album then
+  waiting?: string[];            // songs left off until they're Ready
+  older?: string[];              // songs whose older version is what's on SoundCloud
+  failed?: string[];             // songs that couldn't go up
+}
+
 export interface Album {
   id: string;
   title: string;
   release_date: string;          // "2026-11-14", or "" for no date yet
   crossfade: number;             // seconds, 0 to 12
+  kind?: AlbumKind | "";         // what the producer calls it; "" = go by its length
   songs: AlbumSong[];
+  soundcloud?: AlbumLink | null;
   created_at: number;
   updated_at: number;
 }
@@ -73,6 +88,21 @@ export function releaseKind(songs: number, secs: number): ReleaseKind {
   if (songs >= 7 || secs >= 30 * 60) return "album";
   return songs >= 4 ? "EP" : "single";
 }
+
+// What the producer can call it. LP means the same as album (from 12-inch "long play"
+// vinyl); a mixtape is a looser set; a compilation gathers songs already out.
+export type AlbumKind = ReleaseKind | "LP" | "mixtape" | "compilation";
+export const KINDS: { kind: AlbumKind; name: string; rule: string }[] = [
+  { kind: "single", name: "Single", rule: "1 to 3 songs, under 30 minutes." },
+  { kind: "EP", name: "EP", rule: "4 to 6 songs, under 30 minutes. Short for extended play." },
+  { kind: "album", name: "Album", rule: "7 or more songs, or 30 minutes and over." },
+  { kind: "LP", name: "LP", rule: "The same as an album. Short for long play, from 12-inch vinyl. Whether it has a theme is up to you." },
+  { kind: "mixtape", name: "Mixtape", rule: "A looser set of songs with no overall theme. Stores still list it as a single, EP or album by its length." },
+  { kind: "compilation", name: "Compilation", rule: "Songs that are already out, gathered together." },
+];
+export const kindName = (k: AlbumKind) => KINDS.find((x) => x.kind === k)?.name ?? "Album";
+// "An EP", "An album", "A single": how the planning box says it.
+export const withArticle = (k: AlbumKind) => `${/^(EP|album|LP)$/.test(k) ? "An" : "A"} ${k === "EP" || k === "LP" ? k : k.toLowerCase()}`;
 
 // A change of tempo from one song to the next that a listener will notice. Half and
 // double time count as the same tempo (87 into 174 flows).
@@ -153,6 +183,8 @@ export const setReleaseDate = (id: string, release_date: string) =>
   change(id, (a) => ({ ...a, release_date }), () => api.updateAlbum(id, { release_date }));
 export const setCrossfade = (id: string, crossfade: number) =>
   change(id, (a) => ({ ...a, crossfade }), () => api.updateAlbum(id, { crossfade }));
+export const setKind = (id: string, kind: AlbumKind | "") =>
+  change(id, (a) => ({ ...a, kind }), () => api.updateAlbum(id, { kind }));
 export const addSongs = async (id: string, songs: { path: string; title?: string; project?: string; genre?: string }[]) =>
   keep(await api.addAlbumSongs(id, songs));
 export const orderSongs = (id: string, paths: string[]) =>
@@ -183,6 +215,101 @@ export async function deleteAlbum(id: string) {
   tell({ ...state, list: (state.list ?? []).filter((a) => a.id !== id) });
 }
 export const albumCandidates = () => api.albumCandidates();
+// Use a newer export in a song's place (it keeps its place, title and join).
+export const swapSong = async (id: string, path: string, newPath: string) => keep(await api.swapAlbumSong(id, path, newPath));
+
+// ── newer exports ──────────────────────────────────────────────────────────────
+
+// A file name with its version words taken off: "Night Drive v3 (Master) 2.wav" -> "night drive".
+const VERSION_WORDS = /^(v\d+|version|final|finished|master(ed)?|mix(down|ed)?|export(ed)?|bounce|render|wav|mp3|aiff?|flac|new|latest|\d+)$/;
+export function songWords(path: string): string[] {
+  const stem = (path.split(/[\\/]/).pop() ?? "").replace(/\.[^.]+$/, "").toLowerCase()
+    .replace(/[([{][^)\]}]*[)\]}]/g, " ");
+  return stem.split(/[^\p{L}\p{N}]+/u).filter((w) => w && !VERSION_WORDS.test(w));
+}
+
+// Two files of the same song: most of the shorter name's words are in the other one.
+export function sameSong(a: string, b: string): boolean {
+  const x = new Set(songWords(a)), y = new Set(songWords(b));
+  if (!x.size || !y.size) return true;
+  const [small, big] = x.size <= y.size ? [x, y] : [y, x];
+  let n = 0;
+  for (const w of small) if (big.has(w)) n++;
+  return n / small.size >= 0.5;
+}
+
+const LOSSLESS = /\.(wav|wave|aiff?|aifc|flac)$/i;
+const NEWER_BY = 5 * 60;   // seconds: renders this close together are one export (a WAV and an MP3)
+
+// A newer export of this album song from the same project, or null. Only a real
+// re-export counts: later by more than a few minutes, the same song by its name, not
+// an "old" or "test" copy, and never a lossy file in place of a lossless one.
+export function newerExport(s: AlbumSong, candidates: AlbumCandidate[], onAlbum?: Set<string>): AlbumCandidate | null {
+  const own = candidates.find((c) => c.path === s.path);
+  const project = s.project_id || own?.project_id;
+  if (!own?.exported || !project) return null;
+  let best: AlbumCandidate | null = null;
+  for (const c of candidates) {
+    if (c.path === s.path || onAlbum?.has(c.path) || c.project_id !== project || !c.exported || c.exported <= own.exported + NEWER_BY) continue;
+    if (LESSER.test(c.title) || !sameSong(c.path, s.path)) continue;
+    if (LOSSLESS.test(s.path) && !LOSSLESS.test(c.path)) continue;
+    if (!best || c.exported > (best.exported ?? 0)) best = c;
+  }
+  return best;
+}
+
+// The songs the album could use, read once per page and again when asked.
+let cands: { list: AlbumCandidate[] | null; at: number } = { list: null, at: 0 };
+let candsLoading: Promise<AlbumCandidate[]> | null = null;
+export function useCandidates(fresh = 60_000): AlbumCandidate[] | null {
+  const [list, setList] = useState(cands.list);
+  useEffect(() => {
+    if (cands.list && Date.now() - cands.at < fresh) return;
+    candsLoading ??= api.albumCandidates().then((l) => { cands = { list: l, at: Date.now() }; return l; })
+      .catch(() => cands.list ?? []).finally(() => { candsLoading = null; });
+    let live = true;
+    void candsLoading.then((l) => { if (live) setList(l); });
+    return () => { live = false; };
+  }, [fresh]);
+  return list;
+}
+
+// ── will each song play anywhere (format, bitrate, clipping, loudness) ─────────
+
+export interface SongProblem { short: string; what: string; fix: string }
+export interface SongCheck {
+  path: string;
+  state: "ok" | "check" | "missing" | "unreadable";
+  summary: string;               // "WAV · 24-bit · 44.1 kHz"
+  problems: SongProblem[];
+  lufs: number | null;
+  true_peak_db: number | null;
+}
+
+// Each file is read once by the app (and kept with the album list); here each answer
+// is kept for a minute, so a re-export of the same file is seen soon after.
+const checks = new Map<string, { at: number; check: SongCheck | null; wait?: Promise<SongCheck | null> }>();
+const checkSubs = new Set<() => void>();
+function askCheck(path: string): void {
+  const had = checks.get(path);
+  if (had?.wait || (had && Date.now() - had.at < 60_000)) return;
+  const wait = api.checkAlbumSong(path).catch(() => null);
+  checks.set(path, { at: had?.at ?? 0, check: had?.check ?? null, wait });
+  void wait.then((check) => { checks.set(path, { at: Date.now(), check }); checkSubs.forEach((f) => f()); });
+}
+export function useSongChecks(paths: string[]): Record<string, SongCheck | null | undefined> {
+  const [, bump] = useState(0);
+  const key = paths.join("\n");
+  useEffect(() => {
+    const f = () => bump((n) => n + 1);
+    checkSubs.add(f);
+    for (const p of paths) askCheck(p);
+    return () => { checkSubs.delete(f); };
+  }, [key]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const out: Record<string, SongCheck | null | undefined> = {};
+  for (const p of paths) { const c = checks.get(p); out[p] = c && !c.wait ? c.check : c?.check ?? undefined; }
+  return out;
+}
 
 // ── words and numbers for the pages ─────────────────────────────────────────────
 

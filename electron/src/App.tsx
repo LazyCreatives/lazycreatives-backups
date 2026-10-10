@@ -9,6 +9,7 @@ import { Library } from "./screens/Library";
 import { Dig } from "./screens/Dig";
 import { Plugins } from "./screens/Plugins";
 import { Albums } from "./components/Albums";
+import { albumSync } from "./albumSync";
 import { LcBrand } from "./components/LcBrand";
 import { FirstBackupModal } from "./components/FirstBackupModal";
 import { WhatsNewHost, openWhatsNew } from "./components/WhatsNew";
@@ -325,7 +326,7 @@ export default function App() {
             <Dig openCrate={sub} onOpenCrate={(key) => setTab("dig", key)} onCloseCrate={closeSub}
               onOpenProject={(name) => setTab("library", name)} />
           ) : tab === "albums" ? (
-            <Albums app="backups" open={sub} onOpen={(id) => setTab("albums", id)} onClose={() => setTab("albums")}
+            <Albums app="backups" sync={albumSync} open={sub} onOpen={(id) => setTab("albums", id)} onClose={() => setTab("albums")}
               metaFor={(s, a, i) => ({ title: s.title, project: s.project || undefined, projectId: s.project_id ?? undefined, genre: s.genre || null,
                 sub: `${a.title} · ${i + 1} of ${a.songs.length}` })}
               onOpenProject={(s) => { if (s.project_id) setTab("library", s.project_id); }} />

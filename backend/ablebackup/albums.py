@@ -13,6 +13,7 @@ Each call opens the file, does its work and closes it again, so the two apps nev
 hold it open against each other. Every change bumps `rev`, which each app asks for
 every few seconds to know when to reload.
 """
+import json
 import os
 import re
 import sqlite3
@@ -22,9 +23,13 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
+from . import songcheck
+
 LOSSLESS = {".wav", ".aiff", ".aif", ".flac", ".aifc"}
 AUDIO = LOSSLESS | {".mp3", ".aac", ".m4a", ".ogg", ".wma", ".opus"}
 MAX_FADE = 12.0
+# What an album can be called. '' means "go by its length" (single, EP or album, as stores count it).
+KINDS = ("single", "EP", "album", "LP", "mixtape", "compilation")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -33,6 +38,7 @@ CREATE TABLE IF NOT EXISTS albums (
   title TEXT NOT NULL,
   release_date TEXT NOT NULL DEFAULT '',
   crossfade REAL NOT NULL DEFAULT 0,
+  kind TEXT NOT NULL DEFAULT '',
   created_at REAL NOT NULL,
   updated_at REAL NOT NULL
 );
@@ -47,6 +53,13 @@ CREATE TABLE IF NOT EXISTS album_songs (
   genre TEXT NOT NULL DEFAULT '',
   added_at REAL NOT NULL,
   PRIMARY KEY (album_id, path)
+);
+CREATE TABLE IF NOT EXISTS song_checks (
+  path TEXT PRIMARY KEY,
+  size INTEGER NOT NULL,
+  mtime REAL NOT NULL,
+  info TEXT NOT NULL,
+  checked_at REAL NOT NULL
 );
 """
 
@@ -75,7 +88,7 @@ class Albums:
         self.path = Path(path) if path else None
 
     @contextmanager
-    def _db(self, write: bool = False):
+    def _db(self, write: bool = False, bump: bool = True):
         p = self.path or default_path()
         p.parent.mkdir(parents=True, exist_ok=True)
         con = sqlite3.connect(str(p), timeout=10)
@@ -91,12 +104,20 @@ class Albums:
             if "genre" not in {r["name"] for r in con.execute("PRAGMA table_info(album_songs)")}:
                 # a list made before songs kept their genre (the colour of the album's stripe)
                 con.execute("ALTER TABLE album_songs ADD COLUMN genre TEXT NOT NULL DEFAULT ''")
+            cols = {r["name"] for r in con.execute("PRAGMA table_info(albums)")}
+            if "kind" not in cols:
+                # what the producer calls it (single, EP, album, LP...); '' = go by its length
+                con.execute("ALTER TABLE albums ADD COLUMN kind TEXT NOT NULL DEFAULT ''")
+            if "soundcloud" not in cols:
+                # where Uploader last put the album on SoundCloud (a playlist), as JSON
+                con.execute("ALTER TABLE albums ADD COLUMN soundcloud TEXT NOT NULL DEFAULT ''")
             if write:
                 con.execute("BEGIN IMMEDIATE")
             yield con
-            if write:
+            if write and bump:
                 con.execute("INSERT INTO meta(key, value) VALUES ('rev', '1') "
                             "ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1")
+            if write:
                 con.commit()
         except BaseException:
             con.rollback()
@@ -122,6 +143,7 @@ class Albums:
                 d["ready"] = None if d["ready"] is None else bool(d["ready"])
                 songs.setdefault(d.pop("album_id"), []).append(d)
         for a in albums:
+            a["soundcloud"] = _json(a.get("soundcloud"))
             a["songs"] = songs.get(a["id"], [])
             for s in a["songs"]:
                 s.pop("pos", None)
@@ -150,8 +172,12 @@ class Albums:
         return self.get(aid)
 
     def update(self, album_id: str, *, title: str | None = None, release_date: str | None = None,
-               crossfade: float | None = None) -> dict:
+               crossfade: float | None = None, kind: str | None = None) -> dict:
         sets, args = [], []
+        if kind is not None:
+            if kind and kind not in KINDS:
+                raise ValueError(f"unknown kind {kind!r}")
+            sets.append("kind = ?"); args.append(kind)
         if title is not None:
             sets.append("title = ?"); args.append(title.strip() or "Untitled album")
         if release_date is not None:
@@ -225,11 +251,60 @@ class Albums:
                 raise NotFound(path)
         return self.get(album_id)
 
+    def swap_song(self, album_id: str, path: str, new_path: str) -> dict:
+        """Put another file (a newer export of the same song) in this song's place. It
+        keeps its place, title and join; your own Ready tick goes, since the file is new.
+        Neither file is changed."""
+        if Path(new_path).suffix.lower() not in AUDIO:
+            raise ValueError("That isn't an audio file")
+        with self._db(write=True) as con:
+            self._touch(con, album_id)
+            if con.execute("SELECT 1 FROM album_songs WHERE album_id = ? AND path = ?",
+                           (album_id, new_path)).fetchone():
+                raise ValueError("That file is already on this album")
+            if not con.execute("UPDATE album_songs SET path = ?, ready = NULL, added_at = ? "
+                               "WHERE album_id = ? AND path = ?",
+                               (new_path, time.time(), album_id, path)).rowcount:
+                raise NotFound(path)
+        return self.get(album_id)
+
+    def set_soundcloud(self, album_id: str, link: dict | None) -> dict:
+        """Remember where the album is on SoundCloud (Uploader writes it, both apps show it)."""
+        with self._db(write=True) as con:
+            self._touch(con, album_id, ["soundcloud = ?"], [json.dumps(link) if link else ""])
+        return self.get(album_id)
+
+    # ── song checks, kept so each song is only read once per version of its file ─
+
+    def cached_check(self, path: str, size: int, mtime: float) -> dict | None:
+        with self._db() as con:
+            r = con.execute("SELECT * FROM song_checks WHERE path = ?", (path,)).fetchone()
+        if not r or r["size"] != size or abs(r["mtime"] - mtime) > 0.001:
+            return None
+        info = _json(r["info"])
+        return info if info and info.get("v") == songcheck.MEASURE_VERSION else None
+
+    def save_check(self, path: str, size: int, mtime: float, info: dict) -> None:
+        # Not a change to any album, so the apps aren't told to reload.
+        with self._db(write=True, bump=False) as con:
+            con.execute("INSERT INTO song_checks(path, size, mtime, info, checked_at) VALUES (?, ?, ?, ?, ?) "
+                        "ON CONFLICT(path) DO UPDATE SET size = excluded.size, mtime = excluded.mtime, "
+                        "info = excluded.info, checked_at = excluded.checked_at",
+                        (path, size, mtime, json.dumps(info), time.time()))
+
     def _touch(self, con, album_id: str, sets: list[str] | None = None, args: list | None = None):
         sets = [*(sets or []), "updated_at = ?"]
         if not con.execute(f"UPDATE albums SET {', '.join(sets)} WHERE id = ?",
                            (*(args or []), time.time(), album_id)).rowcount:
             raise NotFound(album_id)
+
+
+def _json(raw) -> dict | None:
+    try:
+        v = json.loads(raw) if raw else None
+    except ValueError:
+        return None
+    return v if isinstance(v, dict) else None
 
 
 def _date(s: str | None) -> str:
@@ -350,3 +425,23 @@ def judge_album(album: dict, backups_db: Path | None) -> dict:
         s["needs"] = needs
         s["is_ready"] = s["ready"] if s.get("ready") is not None else not needs
     return album
+
+
+def check_song(store: Albums, path: str) -> dict:
+    """Will this song play anywhere (see songcheck)? The file is read once per version of
+    it: the result is kept with the album list, so both apps share it."""
+    out = {"path": path, "state": "ok", "summary": "", "problems": [], "lufs": None, "true_peak_db": None}
+    try:
+        st = Path(path).stat()
+    except OSError:
+        return {**out, "state": "missing"}
+    info = store.cached_check(path, st.st_size, st.st_mtime)
+    if info is None:
+        try:
+            info = songcheck.measure(path)
+        except songcheck.CannotCheck:
+            return {**out, "state": "unreadable"}
+        store.save_check(path, st.st_size, st.st_mtime, info)
+    problems = songcheck.judge(info)
+    return {**out, "state": "check" if problems else "ok", "summary": songcheck.summary(info),
+            "problems": problems, "lufs": info.get("lufs"), "true_peak_db": info.get("true_peak_db")}

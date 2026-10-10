@@ -7,13 +7,14 @@ Each app passes in what only it knows: its sign-in check, where Backups keeps it
 records, and the songs it can offer for an album.
 """
 import asyncio
+import threading
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .albums import Albums, NotFound, judge_album
+from .albums import Albums, NotFound, check_song, judge_album
 
 _PATH = 4096
 
@@ -27,6 +28,7 @@ class AlbumUpdate(BaseModel):
     title: str | None = Field(None, max_length=200)
     release_date: str | None = Field(None, max_length=10)
     crossfade: float | None = Field(None, ge=0, le=12)
+    kind: Literal["", "single", "EP", "album", "LP", "mixtape", "compilation"] | None = None
 
 
 class AlbumSongIn(BaseModel):
@@ -44,6 +46,11 @@ class AlbumOrder(BaseModel):
     paths: list[str] = Field(..., max_length=500)
 
 
+class AlbumSwap(BaseModel):
+    path: str = Field(..., min_length=1, max_length=_PATH)
+    new_path: str = Field(..., min_length=1, max_length=_PATH)
+
+
 class AlbumSongChange(BaseModel):
     path: str = Field(..., min_length=1, max_length=_PATH)
     title: str | None = Field(None, max_length=300)
@@ -56,6 +63,7 @@ def make_router(auth, backups_db: Callable[[], Path | None],
                 candidates: Callable[[], list[dict]], store: Albums | None = None) -> APIRouter:
     albums = store or Albums()
     r = APIRouter(dependencies=[Depends(auth)])
+    checking = threading.BoundedSemaphore(2)   # songs read at once, so the computer stays quick
 
     def judged(a: dict) -> dict:
         return judge_album(a, backups_db())
@@ -81,13 +89,25 @@ def make_router(auth, backups_db: Callable[[], Path | None],
     async def album_candidates():
         return await asyncio.to_thread(candidates)
 
+    @r.get("/api/albums/check")
+    async def check_album_song(path: str):
+        """Will this album song play anywhere: format, bit depth, sample rate, bitrate,
+        clipping, loudness. Only songs on an album, and only read."""
+        if path not in albums.paths():
+            raise HTTPException(status_code=404, detail="That song isn't on an album")
+
+        def go():
+            with checking:
+                return check_song(albums, path)
+        return await asyncio.to_thread(go)
+
     @r.post("/api/albums")
     def create_album(req: AlbumCreate):
         return judged(albums.create(req.title, req.release_date))
 
     @r.put("/api/albums/{album_id}")
     def update_album(album_id: str, req: AlbumUpdate):
-        return run(albums.update, album_id, title=req.title, release_date=req.release_date, crossfade=req.crossfade)
+        return run(albums.update, album_id, title=req.title, release_date=req.release_date, crossfade=req.crossfade, kind=req.kind)
 
     @r.delete("/api/albums/{album_id}")
     def delete_album(album_id: str):
@@ -110,6 +130,14 @@ def make_router(auth, backups_db: Callable[[], Path | None],
         ready = None if req.clear_ready else ("keep" if req.ready is None else req.ready)
         return run(albums.set_song, album_id, req.path, title=req.title,
                    gapless_after=req.gapless_after, ready=ready)
+
+    @r.put("/api/albums/{album_id}/swap")
+    def swap_album_song(album_id: str, req: AlbumSwap):
+        """Use a newer export of a song in its place on the album."""
+        try:
+            return run(albums.swap_song, album_id, req.path, req.new_path)
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from None
 
     @r.delete("/api/albums/{album_id}/song")
     def remove_album_song(album_id: str, path: str):

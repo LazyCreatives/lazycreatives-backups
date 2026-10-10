@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("ablebackup", {
   revealPath: (target) => ipcRenderer.invoke("reveal-path", target),
   openProject: (target) => ipcRenderer.invoke("open-project", target),
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
+  openUploader: (albumId) => ipcRenderer.invoke("open-uploader", albumId),
   reportProblem: () => ipcRenderer.invoke("report-problem"),
   openFdaSettings: () => ipcRenderer.invoke("open-fda-settings"),
   platform: process.platform,

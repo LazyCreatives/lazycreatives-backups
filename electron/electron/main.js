@@ -209,6 +209,16 @@ ipcMain.handle("open-external", (_e, url) => {
   if (typeof url === "string" && /^https?:\/\//.test(url)) shell.openExternal(url);
 });
 
+// "Sync to SoundCloud" on an album page: Uploader does the posting, so the album is
+// handed to it with a link it answers to (lazycreatives-uploader://album/<id>?sync=1).
+// False when Uploader isn't on this computer.
+ipcMain.handle("open-uploader", async (_e, albumId) => {
+  if (typeof albumId !== "string" || !/^[\w-]{1,64}$/.test(albumId)) return false;
+  const url = `lazycreatives-uploader://album/${albumId}?sync=1`;
+  if (!app.getApplicationNameForProtocol(url)) return false;
+  try { await shell.openExternal(url); return true; } catch { return false; }
+});
+
 // Deep-link to the macOS Full Disk Access pane so the user can grant the app access
 // to TCC-protected folders (Documents/Desktop/Downloads) that even root can't read.
 ipcMain.handle("open-fda-settings", () => {
