@@ -120,3 +120,61 @@ def sample_reason(path: Path, root: Path | None = None, size: int | None = None)
             and "_" in name:
         return "named like a sample"
     return None
+
+
+# Bits of a project rendered to audio inside it, not songs: FL's "SOFT (consolidated)",
+# a synth bounced on its own ("Serum_x64 #2"), "Pattern 3", "Insert 4", "Audio Track 2".
+_PART_WORDS = re.compile(r"\b(consolidated|consolidate|frozen|freeze|resampled|resampling|bounce in place)\b", re.I)
+_PART_NAME = re.compile(
+    r"^(pattern|insert|track|audio( track)?|midi( track)?|clip|channel|bus|send|return|sampler|slicer"
+    r"|serum|vital|sylenth1?|massive( x)?|kontakt|sytrus|flex|harmor|harmless|3x ?osc|omnisphere|diva"
+    r"|pigments|phase ?plant|spire|nexus|keyscape|battery|fpc|directwave|fruity \w+|operator|wavetable"
+    r"|simpler|drum rack|analog|electric|tension|collision|drift|meld|ana ?2|zebra2?|hive|dune ?3?"
+    r"|surge( xt)?|retrologue|halion|kick ?2|trilian|addictive drums|superior drummer|ez ?drummer)"
+    r"( ?x64| ?vst3?)?( ?#?\d+)?$", re.I)
+# Folders anywhere on the way to a file that only ever hold other people's sounds.
+_PACK_DIR = re.compile(r"^(splice|samples?|sample[\s_-]?packs?|packs?|one[\s_-]?shots?|loops?|drum[\s_-]?kits?"
+                       r"|cymatics|loopmasters|user library)$", re.I)
+_TAIL = re.compile(r"\s*(\((consolidated|copy|\d+)\)|#\d+|_x64|\bx64)\s*$", re.I)
+
+
+def album_skip(path: Path, root: Path | None = None, project: str = "") -> str | None:
+    """Plain words for why an export isn't a song to put on an album (a sample, or a
+    part of a project rendered on its own), or None when it looks like a song. A song
+    named like its project is always a song, even one called "Vital"."""
+    for part in path.parent.parts:
+        if _PACK_DIR.match(part.strip()):
+            return f"it's in a “{part}” folder"
+    try:
+        size = path.stat().st_size
+    except OSError:
+        size = None
+    why = sample_reason(path, root, size)
+    if why:
+        return why
+    name = path.stem.replace("_", " ").strip()
+    if _PART_WORDS.search(name):
+        return "a part of a project rendered on its own"
+    bare = name
+    for _ in range(3):
+        bare = _TAIL.sub("", bare).strip()
+    if _PART_NAME.match(bare) and bare.lower() != project.replace("_", " ").strip().lower():
+        return "named like one instrument or pattern, not a song"
+    return None
+
+
+_lengths: dict[tuple, float | None] = {}
+
+
+def seconds_cached(path: Path) -> float | None:
+    """`seconds`, remembered until the file changes (the album song list asks often)."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    key = (str(path), st.st_mtime, st.st_size)
+    if key not in _lengths:
+        if len(_lengths) > 20000:
+            _lengths.clear()
+        _lengths[key] = seconds(path)
+    return _lengths[key]

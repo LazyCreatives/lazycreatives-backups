@@ -62,7 +62,7 @@ button.alb-pill:hover { color: var(--text); text-decoration: underline; text-und
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-left: 1px solid var(--border);
 }
 .albpage--sleeve .albpage__title { font-family: var(--display); font-weight: 400; font-size: 64px; line-height: .95; letter-spacing: .02em; }
-.albpage--sleeve .alb-songs, .albpage--sleeve .alb-add { border-radius: 14px; }
+.albpage--sleeve .alb-songs, .albpage--sleeve .alb-pick, .albpage--sleeve .alb-plan, .albpage--sleeve .alb-dropzone { border-radius: 14px; }
 
 /* ---- OUT NOW: a stamp on the cover from release day on (pressed once on the day) ---- */
 .outnow {
@@ -135,23 +135,77 @@ button.alb-pill:hover { color: var(--text); text-decoration: underline; text-und
 .alb-status .alb-pill::before { position: absolute; left: 0; top: calc(0.675em - 3.5px); }
 .alb-more { font-size: 12px; }
 
-/* ---- adding songs ---- */
-.alb-add { margin-top: 22px; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
-.alb-add__head { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-.alb-add__head h2 { margin: 0; font-size: 14px; font-weight: 600; margin-right: auto; }
-.alb-search { flex: 0 1 300px; position: relative; display: flex; align-items: center; color: var(--text-faint); }
-.alb-search > svg { position: absolute; left: 11px; pointer-events: none; }
-.alb-search input[type="search"] { width: 100%; padding-left: 34px; }
-.alb-add__list { max-height: 360px; overflow-y: auto; }
-.alb-add__row {
-  display: grid; grid-template-columns: 32px minmax(0, 1.4fr) minmax(0, 1fr) 52px 26px; gap: 12px; align-items: center; width: 100%;
-  padding: 7px 14px; border: 0; border-top: 1px solid var(--border); background: transparent; color: var(--text);
-  font: inherit; text-align: left; cursor: pointer;
+/* ---- the page body: songs, and while adding, the song picker beside them ---- */
+.albpage__body { container: albbody / inline-size; }
+.albpage__inner { display: grid; gap: 20px; }
+.albpage__main { min-width: 0; display: grid; gap: 14px; align-content: start; }
+@container albbody (min-width: 1000px) {
+  .albpage__body--adding .albpage__inner { grid-template-columns: minmax(0, 1fr) minmax(340px, 400px); gap: 20px; align-items: start; }
+  .albpage__body--adding .alb-pick { position: sticky; top: 12px; margin-top: 0; }
+  .albpage__body--adding .alb-pick__list { max-height: calc(100vh - 260px); }
 }
-.alb-add__row:first-child { border-top: 0; }
-.alb-add__row:hover { background: var(--row-hover); }
-.alb-add__row:hover .alb-add__plus { color: var(--accent); border-color: var(--accent); }
-.alb-add__meta { font-size: 12px; }
-.alb-add__len { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
-.alb-add__plus { width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--border-strong); border-radius: 50%; color: var(--text-dim); }
+
+/* ---- planning: length, tempo, finished ---- */
+.alb-plan { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 4px 16px; display: grid; }
+.alb-plan__row { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--border); }
+.alb-plan__row:first-of-type { border-top: 0; }
+.alb-plan__label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
+.alb-plan__what { min-width: 0; font-size: 13px; }
+.alb-plan__line { margin-bottom: 8px; }
+.alb-plan__bar { position: relative; display: flex; gap: 2px; height: 10px; border-radius: 3px; background: var(--surface-2); margin-bottom: 18px; }
+.alb-plan__bar > i { display: block; height: 100%; border-radius: 2px; min-width: 3px; }
+.alb-plan__mark { position: absolute; top: -3px; bottom: -3px; width: 0; border-left: 1.5px dashed var(--text-dim); }
+.alb-plan__mark > span { position: absolute; top: 100%; left: 0; transform: translateX(-50%); margin-top: 3px; font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+.alb-plan__tempo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 0; }
+.alb-plan__step { display: inline-flex; align-items: baseline; }
+.alb-plan__bpm { font-variant-numeric: tabular-nums; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); font-size: 12px; }
+.alb-plan__bpm--jump { background: none; color: var(--warn); outline: 1.5px solid var(--warn); outline-offset: -1.5px; }
+.alb-plan__arrow { color: var(--text-faint); padding: 0 5px; font-size: 12px; }
+.alb-plan__arrow--jump { color: var(--warn); }
+.alb-plan__note { margin-left: 12px; font-size: 12px; }
+
+/* ---- dropping a song from the picker into the list ---- */
+.alb-drop-before::before, .alb-songs--drop-end > :last-child::after {
+  content: ""; position: absolute; left: 8px; right: 8px; height: 2px; background: var(--accent); border-radius: 1px; pointer-events: none; z-index: 2;
+}
+.alb-drop-before::before { top: -1px; }
+.alb-songs--drop-end > :last-child { position: relative; }
+.alb-songs--drop-end > :last-child::after { bottom: -1px; }
+.alb-dropzone {
+  display: flex; gap: 14px; align-items: center; padding: 28px 22px; border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-lg); color: var(--text-dim); font-size: 13px; line-height: 1.5;
+}
+.alb-dropzone b { color: var(--text); }
+.alb-dropzone--over { border-color: var(--accent); background: var(--row-hover); }
+
+/* ---- adding songs ---- */
+.alb-pick { margin-top: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; min-width: 0; }
+.alb-pick__head { display: grid; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.alb-pick__head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.alb-pick__head p { margin: 0; font-size: 12px; line-height: 1.45; }
+.alb-search { position: relative; display: flex; align-items: center; color: var(--text-faint); min-width: 0; }
+.alb-search > svg { position: absolute; left: 11px; pointer-events: none; }
+.alb-search input[type="search"] { width: 100%; min-width: 0; padding-left: 34px; }
+.alb-pick__list { max-height: 520px; overflow-y: auto; }
+.alb-pick__group { border-top: 1px solid var(--border); }
+.alb-pick__group:first-child { border-top: 0; }
+.alb-pick__row {
+  display: grid; grid-template-columns: 36px minmax(0, 1fr) 2.6em 3.2em 28px 28px; gap: 10px; align-items: center;
+  padding: 8px 12px; cursor: grab; position: relative;
+}
+.alb-pick__row:hover { background: var(--row-hover); }
+.alb-pick__row:hover .alb-add__plus { color: var(--accent); border-color: var(--accent); }
+.alb-pick__row--version { padding-top: 5px; padding-bottom: 5px; }
+.alb-pick__row--version .alb-pick__title { font-size: 12.5px; color: var(--text-dim); }
+.alb-pick__branch { justify-self: end; align-self: start; width: 14px; height: 12px; margin-top: 2px; border-left: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); border-bottom-left-radius: 4px; }
+.alb-pick__main { min-width: 0; display: grid; gap: 2px; }
+.alb-pick__title { font-size: 13px; font-weight: 500; }
+.alb-pick__sub { font-size: 12px; color: var(--text-faint); }
+.alb-pick__tags { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; margin-top: 2px; }
+.alb-pick__tags .alb-pill { font-size: 11.5px; }
+.alb-pick__more { display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; color: var(--text-dim); }
+.alb-pick__more:hover { color: var(--text); }
+.alb-pick__bpm, .alb-pick__len { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.alb-add__plus { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--border-strong); border-radius: 50%; color: var(--text-dim); background: transparent; cursor: pointer; padding: 0; }
+.alb-add__plus:hover, .alb-add__plus:focus-visible { color: var(--accent); border-color: var(--accent); }
 [data-look="crate"] .alb-add__plus { border-radius: 4px; }

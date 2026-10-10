@@ -15,6 +15,8 @@ export interface AlbumSong {
   daw?: string;
   genre?: string;                // its project's genre in Backups, else the one it was added with
   backup: "safe" | "changed" | "none" | null;   // the project's backup, from Backups
+  bpm?: number | null;           // its project's tempo, from Backups
+  working?: boolean;             // its project was saved after this export: still being worked on
   gapless_after: boolean;        // runs straight into the next song, no blend
   ready: boolean | null;         // your own tick (null = let the app judge)
   needs: string[];               // what's still missing, in plain words
@@ -34,6 +36,50 @@ export interface Album {
 export interface AlbumCandidate {
   path: string; title: string; project: string; project_id?: string | null; daw?: string;
   genre?: string; duration?: number | null; posted?: boolean;
+  bpm?: number | null;
+  exported?: number | null;      // when the file was saved, in seconds
+  saved?: number | null;         // when its project was last saved, in seconds
+}
+
+// One project's songs for the album picker: its newest proper mixdown first, the
+// rest (older versions, an "OLD" or "test" copy) behind it. Songs no project claims
+// stand on their own.
+export interface CandidateGroup { key: string; main: AlbumCandidate; more: AlbumCandidate[] }
+const LESSER = /\b(old|older|test|draft|backup|copy|unused|alt|rough)\b/i;
+const SAVED_AFTER = 120;  // seconds: a save this soon after the export is the same session
+
+export function groupCandidates(list: AlbumCandidate[]): CandidateGroup[] {
+  const by = new Map<string, AlbumCandidate[]>();
+  for (const c of list) {
+    const key = c.project_id || (c.project ? `p:${c.project.toLowerCase()}` : `f:${c.path}`);
+    const g = by.get(key);
+    if (g) g.push(c); else by.set(key, [c]);
+  }
+  const out: CandidateGroup[] = [];
+  for (const [key, songs] of by) {
+    songs.sort((a, b) => Number(LESSER.test(a.title)) - Number(LESSER.test(b.title)) || (b.exported ?? 0) - (a.exported ?? 0));
+    out.push({ key, main: songs[0], more: songs.slice(1) });
+  }
+  const newest = (g: CandidateGroup) => Math.max(...[g.main, ...g.more].map((c) => c.exported ?? 0));
+  return out.sort((a, b) => newest(b) - newest(a) || a.main.title.localeCompare(b.main.title));
+}
+
+// Saved after its newest export: the project is still being worked on.
+export const stillWorking = (c: AlbumCandidate) => !!(c.saved && c.exported && c.saved > c.exported + SAVED_AFTER);
+
+// Spotify and Apple Music call a release a single, EP or album by its songs and length.
+export type ReleaseKind = "single" | "EP" | "album";
+export function releaseKind(songs: number, secs: number): ReleaseKind {
+  if (songs >= 7 || secs >= 30 * 60) return "album";
+  return songs >= 4 ? "EP" : "single";
+}
+
+// A change of tempo from one song to the next that a listener will notice. Half and
+// double time count as the same tempo (87 into 174 flows).
+export function tempoJump(from?: number | null, to?: number | null): number | null {
+  if (!from || !to) return null;
+  const d = Math.min(Math.abs(to - from), Math.abs(to * 2 - from), Math.abs(to / 2 - from));
+  return d > 8 && d / from > 0.06 ? Math.round(to - from) : null;
 }
 
 export interface AlbumSongChange {

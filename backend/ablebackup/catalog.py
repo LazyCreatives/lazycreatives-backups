@@ -647,7 +647,8 @@ class Catalog:
         """Every linked song (no stems) with its project, for putting on an album."""
         with self._lock:
             rows = self.conn.execute(
-                "SELECT e.path, e.name, e.mtime, d.project_id, d.name AS project, d.daw, d.bpm, d.genre "
+                "SELECT e.path, e.name, e.mtime, d.project_id, d.name AS project, d.daw, d.bpm, d.genre, "
+                "d.path AS project_file, d.mtime AS saved "
                 "FROM exports e JOIN discovered d ON d.project_id = e.project_id "
                 "WHERE e.hidden = 0 AND e.kind != 'stem' ORDER BY d.name COLLATE NOCASE, e.mtime DESC"
             ).fetchall()

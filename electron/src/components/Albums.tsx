@@ -1,17 +1,18 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type RefObject } from "react";
 import {
-  addSongs, albumCandidates, albumState, changeSong, daysToGo, deleteAlbum, FADE_PRESETS, fadeLabel, fmtRelease,
+  addSongs, albumCandidates, albumState, changeSong, groupCandidates, releaseKind, stillWorking, tempoJump, daysToGo, deleteAlbum, FADE_PRESETS, fadeLabel, fmtRelease,
   mainGenre, makeAlbum, MAX_FADE, moveItem, orderSongs, putBack, readyCount, releaseDay, renameAlbum, setCrossfade,
   setReleaseDate, takeOut, useAlbums,
-  type Album, type AlbumCandidate, type AlbumSong,
+  type Album, type AlbumCandidate, type AlbumSong, type CandidateGroup,
 } from "../albums";
+import { ago } from "../companion";
 import { askConfirm, openMenu, toast, toastWarn, type MenuItem } from "./Desktop";
 import { Icon } from "./Icon";
 import { Cover } from "./Cover";
 import { EmptyState } from "./SlothSpot";
-import { playAlbum, stopAlbum, togglePlaying, updateAlbum, useAlbumPlaying, usePlayer, useSongLength, type QueueSong } from "./Player";
+import { PlayButton, playAlbum, stopAlbum, togglePlaying, updateAlbum, useAlbumPlaying, usePlayer, useSongLength, type QueueSong } from "./Player";
 import { fuzzyScore } from "../fuzzy";
-import { genreColor, useLook } from "../look";
+import { coverColor, genreColor, useLook } from "../look";
 import "../albums.css";
 
 // Albums: plan what comes out next. Each album has a title, a release date and songs in
@@ -311,10 +312,16 @@ function AlbumPage({ a, look, app, onClose, metaFor, onOpenProject }: AlbumsProp
         </div>
       </header>
 
-      {a.songs.length > 0 && <SongList a={a} app={app} nowAt={nowAt} playing={playing} onPlay={play} onOpenProject={onOpenProject} />}
-      {a.songs.length === 0 && !adding && <div className="table"><EmptyState pose="napping" title="No songs on it yet" say="Plenty of room.">
-        Press Add songs to pick from your exports.</EmptyState></div>}
-      {adding && <AddSongs a={a} app={app} />}
+      <div className={`albpage__body${adding ? " albpage__body--adding" : ""}`}><div className="albpage__inner">
+        <div className="albpage__main">
+          {a.songs.length > 0 && <Planner a={a} />}
+          {a.songs.length > 0 && <SongList a={a} app={app} nowAt={nowAt} playing={playing} onPlay={play} onOpenProject={onOpenProject} />}
+          {a.songs.length === 0 && !adding && <div className="table"><EmptyState pose="napping" title="No songs on it yet" say="Plenty of room.">
+            Press Add songs to pick from your exports.</EmptyState></div>}
+          {a.songs.length === 0 && adding && <EmptyDrop a={a} />}
+        </div>
+        {adding && <AddSongs a={a} app={app} onOpenProject={onOpenProject} />}
+      </div></div>
     </div>
   );
 }
@@ -383,6 +390,97 @@ function useGlide(list: RefObject<HTMLDivElement | null>, order: string) {
 }
 
 // The songs in order. Drag a row (or Alt + arrow keys) to move it; the others make room as it goes.
+// ── planning: how long it is, how the tempo moves, what's finished ─────────────
+
+const KIND_RULE = "Spotify and Apple Music count 1 to 3 songs as a single, 4 to 6 as an EP, and 7 songs or 30 minutes as an album.";
+
+function Planner({ a }: { a: Album }) {
+  const [lens, setLens] = useState<Record<string, number>>({});
+  const total = a.songs.reduce((t, s) => t + (lens[s.path] || 0), 0);
+  const known = a.songs.every((s) => lens[s.path]);
+  const kind = releaseKind(a.songs.length, total);
+  const toAlbum = Math.max(0, 30 * 60 - total), songsToAlbum = Math.max(0, 7 - a.songs.length);
+  const scale = Math.max(total * 1.08, 40 * 60);
+  const working = a.songs.filter((s) => s.working).length;
+  const tempos = a.songs.map((s) => s.bpm ?? null);
+  const jumps = tempos.slice(1).map((b, i) => tempoJump(tempos[i], b)).filter((j) => j !== null).length;
+  return (
+    <section className="alb-plan" aria-label="Plan">
+      {a.songs.map((s) => <Len key={s.path} path={s.path} onLen={(n) => setLens((l) => (l[s.path] === n ? l : { ...l, [s.path]: n }))} />)}
+      <div className="alb-plan__row">
+        <span className="alb-plan__label">Length</span>
+        <div className="alb-plan__what">
+          <div className="alb-plan__line" title={KIND_RULE}>
+            <b>{kind === "EP" ? "An EP" : kind === "album" ? "An album" : "A single"}</b>
+            <span className="faint"> · {a.songs.length} song{a.songs.length === 1 ? "" : "s"} · {known ? totalLength(total) : total ? `${totalLength(total)}+` : "—"}</span>
+            {kind !== "album" && known && <span className="faint"> · album at 30 min or 7 songs: {Math.ceil(toAlbum / 60)} min or {songsToAlbum} song{songsToAlbum === 1 ? "" : "s"} more</span>}
+          </div>
+          <div className="alb-plan__bar" role="img" aria-label={`${a.songs.length} songs, ${totalLength(total) || "length not known yet"}. The album mark is at 30 minutes.`}>
+            {a.songs.map((s, i) => <i key={s.path} style={{ width: `${((lens[s.path] || 0) / scale) * 100}%`, background: coverColor(s.genre || null, s.project || s.title) }}
+              title={`${i + 1}. ${s.title}${lens[s.path] ? ` · ${clock(lens[s.path])}` : ""}`} />)}
+            <span className="alb-plan__mark" style={{ left: `${(30 * 60 / scale) * 100}%` }}><span>30 min</span></span>
+          </div>
+        </div>
+      </div>
+      <div className="alb-plan__row">
+        <span className="alb-plan__label">Tempo</span>
+        <div className="alb-plan__what alb-plan__tempo">
+          {tempos.some((b) => b) && tempos.map((b, i) => {
+            const jump = i > 0 ? tempoJump(tempos[i - 1], b) : null;
+            return <span key={a.songs[i].path} className="alb-plan__step">
+              {i > 0 && <span className={`alb-plan__arrow${jump !== null ? " alb-plan__arrow--jump" : ""}`} aria-hidden>→</span>}
+              <span className={`alb-plan__bpm${jump !== null ? " alb-plan__bpm--jump" : ""}`}
+                title={jump !== null ? `${a.songs[i - 1].title} at ${Math.round(tempos[i - 1]!)} BPM into ${a.songs[i].title} at ${Math.round(b!)} BPM: a big change of pace. Move a song in between, or let it run straight in with no blend.`
+                  : `${i + 1}. ${a.songs[i].title}`}>
+                {b ? Math.round(b) : "?"}</span>
+            </span>;
+          })}
+          <span className={`faint${tempos.some((b) => b) ? " alb-plan__note" : ""}`}>{jumps ? `${jumps} big change${jumps === 1 ? "" : "s"} of pace` : tempos.some((b) => b) ? "BPM flows" : "No BPM known yet. Backups reads it from each project."}</span>
+        </div>
+      </div>
+      <div className="alb-plan__row">
+        <span className="alb-plan__label">Finished</span>
+        <div className="alb-plan__what">
+          <span><b>{a.songs.length - working} of {a.songs.length}</b></span>
+          {working > 0 && <span className="faint"> · still working on {a.songs.filter((s) => s.working).map((s) => s.title).join(", ")}</span>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Where a song dragged in from the picker lands: before the row under the pointer.
+function dropIndex(list: HTMLElement | null, y: number): number {
+  const rows = list ? [...list.querySelectorAll<HTMLElement>("[data-alb-row]")] : [];
+  const i = rows.findIndex((r) => { const b = r.getBoundingClientRect(); return y < b.top + b.height / 2; });
+  return i < 0 ? rows.length : i;
+}
+const dragged = (e: DragEvent) => e.dataTransfer.types.includes(DRAG_SONG);
+async function dropSong(a: Album, e: DragEvent, at: number) {
+  try {
+    const song = JSON.parse(e.dataTransfer.getData(DRAG_SONG)) as { path: string };
+    if (a.songs.some((s) => s.path === song.path)) return;
+    const after = await addSongs(a.id, [song]);
+    const order = after.songs.map((s) => s.path).filter((p) => p !== song.path);
+    order.splice(at, 0, song.path);
+    if (at < a.songs.length) await orderSongs(a.id, order);
+  } catch (err) { toastWarn(String((err as Error).message)); }
+}
+
+// An album with no songs yet, while adding: somewhere to drop the first one.
+function EmptyDrop({ a }: { a: Album }) {
+  const [over, setOver] = useState(false);
+  return (
+    <div className={`alb-dropzone${over ? " alb-dropzone--over" : ""}`}
+      onDragOver={(e) => { if (!dragged(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => { if (!dragged(e)) return; e.preventDefault(); setOver(false); void dropSong(a, e, 0); }}>
+      <Icon name="plus" size={18} />
+      <div><b>Drag songs here</b><br /><span className="faint">or press + beside a song. Drag them up and down later to set the order.</span></div>
+    </div>
+  );
+}
+
 function SongList({ a, app, nowAt, playing, onPlay, onOpenProject }: {
   a: Album; app: AlbumsProps["app"]; nowAt: number; playing: boolean; onPlay: (at: number) => void; onOpenProject?: (s: AlbumSong) => void;
 }) {
@@ -404,8 +502,12 @@ function SongList({ a, app, nowAt, playing, onPlay, onOpenProject }: {
     })).catch((e) => toastWarn(String(e.message)));
   };
   const backups = app === "backups";
+  const [dropAt, setDropAt] = useState<number | null>(null);  // a song from the picker, held over the list
   return (
-    <div ref={listRef} className={`table table--crate alb-songs${backups ? " alb-songs--backups" : ""}`}>
+    <div ref={listRef} className={`table table--crate alb-songs${backups ? " alb-songs--backups" : ""}${dropAt === shown.length ? " alb-songs--drop-end" : ""}`}
+      onDragOver={(e) => { if (!dragged(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDropAt(dropIndex(listRef.current, e.clientY)); }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropAt(null); }}
+      onDrop={(e) => { if (!dragged(e)) return; e.preventDefault(); const at = dropIndex(listRef.current, e.clientY); setDropAt(null); void dropSong(a, e, at); }}>
       <div className="row cols cols-head alb-song-cols">
         <span /><span className="col-num">#</span><span /><span /><span>Song</span>
         <span className="col-num">Length</span><span className="alb-into">Into next</span>{backups && <span>Backup</span>}<span>Status</span><span />
@@ -430,12 +532,13 @@ function SongList({ a, app, nowAt, playing, onPlay, onOpenProject }: {
           { label: "Take off this album", danger: true, onClick: () => remove(s) },
         ];
         const cls = ["row cols alb-song-cols alb-drag", !order && nowAt === ri ? "alb-song--now" : "",
-          drag === s.path ? "alb-drag--lifted" : ""].join(" ");
+          drag === s.path ? "alb-drag--lifted" : "", dropAt === i ? "alb-drop-before" : ""].join(" ");
         return (
           <div key={s.path} className={cls} data-alb-row data-glide={s.path} tabIndex={0} draggable
             aria-label={`${i + 1}. ${s.title}. ${s.is_ready ? "Ready" : s.needs.join(", ")}. Alt and arrow keys move it.`}
             onDragStart={(e) => { setDrag(s.path); setOrder(paths); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", s.path); }}
             onDragOver={(e) => {
+              if (dragged(e)) return;  // a song from the picker: the list handles it
               e.preventDefault(); e.dataTransfer.dropEffect = "move";
               if (!drag || drag === s.path) return;
               // Swap once the pointer passes the middle of the row it's heading into.
@@ -448,6 +551,7 @@ function SongList({ a, app, nowAt, playing, onPlay, onOpenProject }: {
               });
             }}
             onDrop={(e) => {
+              if (dragged(e)) return;
               e.preventDefault();
               if (order && order.join("\n") !== paths.join("\n"))
                 void orderSongs(a.id, order).catch((err) => toastWarn(String(err.message)));
@@ -477,7 +581,7 @@ function SongList({ a, app, nowAt, playing, onPlay, onOpenProject }: {
                   ? <button type="button" className="linkbtn alb-proj" onClick={(e) => { e.stopPropagation(); onOpenProject(s); }}
                       title={`Open the project ${s.project}`}>{s.project}</button>
                   : <span title={`From the project ${s.project}`}>{s.project}</span>)
-                : <span title="Not linked to a project yet">{fileLine(s)}</span>}{s.daw ? ` · ${dawName(s.daw)}` : ""}</div>
+                : <span title="Not linked to a project yet">{fileLine(s)}</span>}{s.daw ? ` · ${dawName(s.daw)}` : ""}{s.bpm ? ` · ${s.bpm} BPM` : ""}</div>
             </div>
             <span className="col-num"><SongLen path={s.path} /></span>
             <span className="alb-into">{last ? <span className="faint">—</span>
@@ -534,49 +638,105 @@ function JoinMark({ gapless }: { gapless: boolean }) {
   );
 }
 
-// Songs that aren't on the album yet, with a search. "+" adds one to the end.
-function AddSongs({ a, app }: { a: Album; app: AlbumsProps["app"] }) {
+// Songs that aren't on the album yet: one row per project with its newest proper
+// mixdown (older versions behind a small arrow), searchable. "+" adds a song to the
+// end; dragging one onto the album's song list drops it in that place.
+export const DRAG_SONG = "application/x-lazy-album-song";
+const SHOW_AT_ONCE = 100;
+
+function AddSongs({ a, app, onOpenProject }: { a: Album; app: AlbumsProps["app"]; onOpenProject?: AlbumsProps["onOpenProject"] }) {
   const [all, setAll] = useState<AlbumCandidate[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [open, setOpen] = useState<Set<string>>(new Set());
   useEffect(() => { albumCandidates().then(setAll).catch((e) => { setAll([]); setErr(String(e.message)); }); }, []);
   const onIt = new Set(a.songs.map((s) => s.path));
   const left = (all ?? []).filter((c) => !onIt.has(c.path));
-  const shown = q.trim() ? left.filter((c) => fuzzyScore(q, [c.title, c.project, c.genre ?? ""]) > 0) : left;
-  const add = (cs: AlbumCandidate[]) => void addSongs(a.id, cs.map((c) => ({ path: c.path, title: c.title, project: c.project, genre: c.genre || "" })))
-    .catch((e) => toastWarn(String(e.message)));
+  const groups = groupCandidates(left);
+  const words = q.trim();
+  const score = (g: CandidateGroup) => Math.max(...[g.main, ...g.more].map((c) => fuzzyScore(words, [c.title, c.project, c.genre ?? ""])));
+  const shown = words ? groups.map((g) => [g, score(g)] as const).filter(([, n]) => n > 0).sort((x, y) => y[1] - x[1]).map(([g]) => g) : groups;
+  const add = (cs: AlbumCandidate[]) => void addSongs(a.id, cs.map(asSong)).catch((e) => toastWarn(String(e.message)));
+  const toggleOpen = (k: string) => setOpen((o) => { const n = new Set(o); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const from = app === "backups" ? "your projects' exports" : "your watched folders";
   return (
-    <section className="alb-add" aria-label="Add songs">
-      <div className="alb-add__head">
-        <h2>Add from {from}</h2>
+    <section className="alb-pick" aria-label="Add songs">
+      <div className="alb-pick__head">
+        <h2>Add songs</h2>
+        <p className="faint">From {from}, newest mixdown of each project first. Drag one into place, or press +.</p>
         <label className="alb-search">
           <Icon name="search" size={15} />
           <input type="search" value={q} autoFocus onChange={(e) => setQ(e.target.value)} placeholder="Search songs and projects…"
             aria-label="Search songs" spellCheck={false} onKeyDown={(e) => { if (e.key === "Escape") setQ(""); }} />
         </label>
-        {shown.length > 1 && q.trim() && <button type="button" className="btn btn--sm" onClick={() => add(shown)}>Add all {shown.length}</button>}
       </div>
       {err && <div className="alb__err"><Icon name="alert" />{err}</div>}
       {all === null && <div className="faint alb__wait">Looking for your songs…</div>}
       {all && all.length === 0 && !err && <div className="faint alb__wait">{app === "backups"
         ? "No exported songs found yet. Songs show here once they're linked to a project in the Library."
-        : "No songs in your watched folders yet. Add a folder in Settings."}</div>}
+        : "No songs in your watched folders yet. Add a folder in Settings > Folders."}</div>}
       {all && all.length > 0 && left.length === 0 && <div className="faint alb__wait">Every song is on this album.</div>}
       {left.length > 0 && shown.length === 0 && <div className="faint alb__wait">Nothing matches “{q}”.</div>}
-      <div className="alb-add__list">
-        {shown.slice(0, 200).map((c) => (
-          <button key={c.path} type="button" className="alb-add__row" onClick={() => add([c])} title={`Add ${c.title}`}>
-            <Cover name={c.project || c.title} genre={c.genre} size={32} label={false} />
-            <span className="alb-add__title col-trunc">{c.title}</span>
-            <span className="alb-add__meta faint col-trunc">{[c.project, c.daw ? dawName(c.daw) : ""].filter(Boolean).join(" · ") || "Not linked"}</span>
-            <span className="alb-add__len faint">{c.duration ? clock(c.duration) : "—"}</span>
-            <span className="alb-add__plus" aria-hidden><Icon name="plus" size={14} /></span>
-          </button>
-        ))}
+      <div className="alb-pick__list" role="list">
+        {shown.slice(0, SHOW_AT_ONCE).map((g) => {
+          const isOpen = open.has(g.key) || (!!words && g.more.some((c) => fuzzyScore(words, [c.title]) > fuzzyScore(words, [g.main.title])));
+          const newest = Math.max(...[g.main, ...g.more].map((c) => c.exported ?? 0));
+          return (
+            <div key={g.key} role="listitem" className="alb-pick__group">
+              <PickRow c={g.main} main working={stillWorking({ ...g.main, exported: newest })} onAdd={() => add([g.main])} onOpenProject={onOpenProject}
+                more={g.more.length ? { n: g.more.length, open: isOpen, toggle: () => toggleOpen(g.key) } : undefined} />
+              {isOpen && g.more.map((c) => <PickRow key={c.path} c={c} onAdd={() => add([c])} />)}
+            </div>
+          );
+        })}
       </div>
-      {shown.length > 200 && <div className="faint alb__wait">Showing the first 200. Search to find the rest.</div>}
+      {shown.length > SHOW_AT_ONCE && <div className="faint alb__wait">Showing the newest {SHOW_AT_ONCE} of {shown.length}. Search to find the rest.</div>}
     </section>
+  );
+}
+
+const asSong = (c: AlbumCandidate) => ({ path: c.path, title: c.title, project: c.project, genre: c.genre || "" });
+const savedAgo = (t?: number | null) => (t ? ago(t * 1000).replace(/^Just now$/, "just now").replace(/^Yesterday$/, "yesterday") : "");
+
+// One song in the picker. The project's own row shows its cover, name, tempo and when
+// it was last saved; a version row under it shows the file and when it was exported.
+function PickRow({ c, main = false, working = false, more, onAdd, onOpenProject }: {
+  c: AlbumCandidate; main?: boolean; working?: boolean; onAdd: () => void; onOpenProject?: AlbumsProps["onOpenProject"];
+  more?: { n: number; open: boolean; toggle: () => void };
+}) {
+  const meta = { title: c.title, project: c.project, genre: c.genre || null };
+  const canOpen = main && onOpenProject && c.project_id;
+  return (
+    <div className={`alb-pick__row${main ? "" : " alb-pick__row--version"}`} draggable
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = "copy"; e.dataTransfer.setData(DRAG_SONG, JSON.stringify(asSong(c))); e.dataTransfer.setData("text/plain", c.title); }}
+      onDoubleClick={onAdd} title={`${c.title}\n${c.path}`}>
+      {main ? <Cover name={c.project || c.title} genre={c.genre || null} size={36} label={false} /> : <span className="alb-pick__branch" aria-hidden />}
+      <div className="alb-pick__main">
+        <div className="alb-pick__title col-trunc">{c.title}</div>
+        <div className="alb-pick__sub col-trunc">
+          {main
+            ? <>{c.project
+                ? (canOpen
+                  ? <button type="button" className="linkbtn alb-proj" title={`Open the project ${c.project}`}
+                      onClick={(e) => { e.stopPropagation(); onOpenProject!({ path: c.path, title: c.title, project: c.project, project_id: c.project_id ?? null } as AlbumSong); }}>{c.project}</button>
+                  : <span>{c.project}</span>)
+                : <span>Not linked to a project</span>}</>
+            : <span>exported {savedAgo(c.exported) || "—"}</span>}
+        </div>
+        {main && (c.saved || more) && <div className="alb-pick__tags">
+          {c.saved ? <span className={`pill alb-pill ${working ? "alb-pill--warn" : "alb-pill--ok"}`}
+            title={working ? "The project was saved after this export, so you may still be working on it" : "Nothing saved in the project since this export"}>
+            {working ? "Still working" : "Finished"}<span className="faint"> · saved {savedAgo(c.saved)}</span></span> : null}
+          {more && <button type="button" className="linkbtn alb-pick__more" aria-expanded={more.open} onClick={(e) => { e.stopPropagation(); more.toggle(); }}>
+            <Icon name={more.open ? "chevronDown" : "chevronRight"} size={12} />{more.n} more version{more.n === 1 ? "" : "s"}</button>}
+        </div>}
+      </div>
+      <span className="alb-pick__bpm col-num faint" title="Tempo (BPM)">{c.bpm ? Math.round(c.bpm) : ""}</span>
+      <span className="alb-pick__len col-num faint">{c.duration ? clock(c.duration) : <SongLen path={c.path} />}</span>
+      <PlayButton path={c.path} meta={meta} size={28} />
+      <button type="button" className="alb-add__plus" aria-label={`Add ${c.title} to the album`} title="Add to the end of the album"
+        onClick={(e) => { e.stopPropagation(); onAdd(); }}><Icon name="plus" size={14} /></button>
+    </div>
   );
 }
 

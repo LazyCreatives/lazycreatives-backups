@@ -66,6 +66,24 @@ def test_album_from_backups_exports(tmp_path):
     assert _digest(tmp_path / "Night Drive Project") == before
 
 
+def test_candidates_leave_out_samples_and_parts(tmp_path):
+    """Robert, 10 Oct: the album picker offered FL "consolidated" clips, a lone Serum
+    render and Splice samples. Only songs are offered; an "(OLD)" mix is still a song."""
+    d = tmp_path / "140 Conni"
+    keep = [_touch(d / "140 Conni.wav"), _touch(d / "140 Conni (OLD).wav")]
+    drop = [_touch(d / "SOFT (consolidated).wav"), _touch(d / "SOFT #2 (consolidated).wav"),
+            _touch(d / "Serum_x64 #2.wav"), _touch(d / "Pattern 3.wav"),
+            _touch(tmp_path / "Splice" / "sounds" / "packs" / "Dark Keys 140.wav")]
+    app = create_app(token="", db_path=tmp_path / "c.db")
+    cat = app.state.catalog
+    _project(cat, "p1", "140 Conni", d)
+    for path in keep + drop:
+        cat.link_export(str(path), "p1", path.stem, 1, 2.0)
+    cands = TestClient(app).get("/api/albums/candidates").json()
+    assert sorted(x["title"] for x in cands) == ["140 Conni", "140 Conni (OLD)"]
+    assert {"bpm", "duration", "exported", "saved", "project_id"} <= set(cands[0])
+
+
 def test_backup_state_per_song(tmp_path):
     d = tmp_path / "Song"
     wav = _touch(d / "Song.wav")

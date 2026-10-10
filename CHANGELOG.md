@@ -15,6 +15,11 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.2.9 (10 October 2026)
+
+### Better
+- **Planning an album is easier.** Add songs now opens beside the album: one row per project with its newest proper mixdown (older versions tucked under it), its cover, BPM, length and last save, a preview button, and a link to the project. Samples, Splice sounds and parts rendered on their own ("consolidated" clips, a lone synth) no longer show up. Drag a song straight into its place. Above the songs, the album shows whether it counts as a single, EP or album and how far it is from the 30-minute mark, how the BPM moves from song to song (big jumps marked), and which songs are finished or still being worked on.
+
 ## 0.2.8 (9 October 2026)
 
 ### Better

@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ablebackup import covers, entitlement, exports, markers, phone, playback, plugins, tidy, waveform
 from ablebackup.albums import LOSSLESS, Albums
+from ablebackup.samples import album_skip as album_song_skip, seconds_cached as song_seconds
 from ablebackup.albums_api import make_router as albums_router
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
@@ -617,17 +618,21 @@ def create_app(token: str, db_path: Path) -> FastAPI:
 
     def _album_candidates() -> list[dict]:
         """Songs that could go on an album: each project's exports, one file per song
-        (a WAV and an MP3 of the same export count once, the WAV wins)."""
+        (a WAV and an MP3 of the same export count once, the WAV wins). Samples and
+        parts rendered on their own ("SOFT (consolidated)", "Serum_x64") stay out."""
         best: dict[tuple, dict] = {}
         for r in app.state.catalog.album_candidates():
             p = Path(r["path"])
+            if album_song_skip(p, project=r["project"] or ""):
+                continue
             key = (r["project_id"], str(p.with_suffix("")).lower())
             lossless = p.suffix.lower() in LOSSLESS
             cur = best.get(key)
             if cur is None or (lossless and not cur["lossless"]):
                 best[key] = {"path": r["path"], "title": p.stem, "project": r["project"],
                              "project_id": r["project_id"], "daw": r["daw"] or "", "bpm": r["bpm"],
-                             "genre": r["genre"] or "", "exported": r["mtime"], "lossless": lossless}
+                             "genre": r["genre"] or "", "exported": r["mtime"], "saved": r["saved"],
+                             "duration": song_seconds(p), "lossless": lossless}
         return list(best.values())
 
     app.include_router(albums_router(require_token, lambda: Path(db_path), _album_candidates, albums))

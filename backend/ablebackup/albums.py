@@ -291,8 +291,9 @@ def project_info(paths: list[str], backups_db: Path | None) -> dict[str, dict]:
         marks = ",".join("?" * len(paths))
         cols = {r["name"] for r in con.execute("PRAGMA table_info(discovered)")}
         genre = "d.genre" if "genre" in cols else "''"
+        bpm = "d.bpm" if "bpm" in cols else "NULL"
         rows = con.execute(
-            f"SELECT e.path, e.mtime AS exported, d.project_id, d.name, d.daw, {genre} AS genre, d.path AS file, "
+            f"SELECT e.path, e.mtime AS exported, d.project_id, d.name, d.daw, {genre} AS genre, {bpm} AS bpm, d.path AS file, "
             "d.mtime AS saved, d.backed_mtime AS backed FROM exports e "
             "JOIN discovered d ON d.project_id = e.project_id "
             f"WHERE e.hidden = 0 AND e.path IN ({marks})", list(paths)).fetchall()
@@ -308,7 +309,7 @@ def project_info(paths: list[str], backups_db: Path | None) -> dict[str, dict]:
                 backup = "changed" if saved and saved > backed + 1 else "safe"
             out[r["path"]] = {
                 "project_id": r["project_id"], "project": r["name"], "daw": r["daw"] or "",
-                "genre": r["genre"] or "", "backup": backup,
+                "genre": r["genre"] or "", "backup": backup, "bpm": r["bpm"],
                 "changed_since_export": bool(saved and exported and saved > exported + _SAVED_AFTER),
             }
     except sqlite3.Error:
@@ -337,11 +338,14 @@ def judge_album(album: dict, backups_db: Path | None) -> dict:
             s["project_id"], s["daw"], s["backup"] = p["project_id"], p["daw"], p["backup"]
             s["project"] = s.get("project") or p["project"]
             s["genre"] = p["genre"] or s.get("genre") or ""
+            s["bpm"] = round(p["bpm"]) if p["bpm"] else None
+            s["working"] = p["changed_since_export"]
             if p["changed_since_export"] and needs != ["File moved or deleted"]:
-                needs.append("Project changed since export")
+                needs.append("Still working on it")
         else:
             s.setdefault("project_id", None)
             s.setdefault("backup", None)
+            s["bpm"], s["working"] = None, False
         s.setdefault("genre", "")
         s["needs"] = needs
         s["is_ready"] = s["ready"] if s.get("ready") is not None else not needs

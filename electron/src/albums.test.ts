@@ -67,3 +67,29 @@ describe("release day and the album's colour", () => {
     expect(mainGenre(a([]))).toBe("");
   });
 });
+
+describe("planning an album", () => {
+  it("offers each project's newest proper mixdown first, older and OLD copies behind it", async () => {
+    const { groupCandidates } = await import("./albums");
+    const c = (title: string, project: string, exported: number) => ({ path: `/x/${title}.wav`, title, project, project_id: project, exported });
+    const groups = groupCandidates([c("Conni v2", "conni", 10), c("Conni (OLD)", "conni", 30), c("Conni v3", "conni", 20), c("Loose", "", 5)]);
+    expect(groups.map((g) => g.main.title)).toEqual(["Conni v3", "Loose"]);
+    expect(groups[0].more.map((s) => s.title)).toEqual(["Conni v2", "Conni (OLD)"]);
+  });
+
+  it("calls it a single, EP or album the way Spotify and Apple Music do", async () => {
+    const { releaseKind } = await import("./albums");
+    expect(releaseKind(2, 600)).toBe("single");
+    expect(releaseKind(5, 1500)).toBe("EP");
+    expect(releaseKind(5, 1900)).toBe("album");
+    expect(releaseKind(7, 900)).toBe("album");
+  });
+
+  it("flags a big change of pace, but not half or double time", async () => {
+    const { tempoJump } = await import("./albums");
+    expect(tempoJump(140, 142)).toBeNull();
+    expect(tempoJump(87, 174)).toBeNull();
+    expect(tempoJump(126, 174)).toBe(48);
+    expect(tempoJump(null, 120)).toBeNull();
+  });
+});
