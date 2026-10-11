@@ -7,7 +7,9 @@ Both apps read and change one shared list, so an album made or reordered in one 
 shows in the other. The list is a small SQLite file in a "Lazy Creatives" folder
 beside the apps' own records (not inside either app's folder, so it works with only
 one of them installed). Songs are kept by the path of their audio file; the audio
-itself is only ever read, never changed, copied or converted.
+itself is only ever read, never changed, copied or converted. Each song also keeps
+its file's size and save time, so the album can follow the file when it's renamed
+(by Backups' Tidy names, or by hand in Finder or Explorer).
 
 Each call opens the file, does its work and closes it again, so the two apps never
 hold it open against each other. Every change bumps `rev`, which each app asks for
@@ -21,7 +23,9 @@ import sys
 import time
 import uuid
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from . import songcheck
 
@@ -52,6 +56,8 @@ CREATE TABLE IF NOT EXISTS album_songs (
   ready INTEGER,
   genre TEXT NOT NULL DEFAULT '',
   added_at REAL NOT NULL,
+  size INTEGER,
+  mtime REAL,
   PRIMARY KEY (album_id, path)
 );
 CREATE TABLE IF NOT EXISTS song_checks (
@@ -101,9 +107,14 @@ class Albums:
             except sqlite3.OperationalError:
                 pass  # some network drives refuse it; the default journal still works
             con.executescript(_SCHEMA)
-            if "genre" not in {r["name"] for r in con.execute("PRAGMA table_info(album_songs)")}:
+            song_cols = {r["name"] for r in con.execute("PRAGMA table_info(album_songs)")}
+            if "genre" not in song_cols:
                 # a list made before songs kept their genre (the colour of the album's stripe)
                 con.execute("ALTER TABLE album_songs ADD COLUMN genre TEXT NOT NULL DEFAULT ''")
+            if "size" not in song_cols:
+                # the file's size and save time, to know it again after a rename
+                con.execute("ALTER TABLE album_songs ADD COLUMN size INTEGER")
+                con.execute("ALTER TABLE album_songs ADD COLUMN mtime REAL")
             cols = {r["name"] for r in con.execute("PRAGMA table_info(albums)")}
             if "kind" not in cols:
                 # what the producer calls it (single, EP, album, LP...); '' = go by its length
@@ -141,6 +152,8 @@ class Albums:
                 d = dict(r)
                 d["gapless_after"] = bool(d["gapless_after"])
                 d["ready"] = None if d["ready"] is None else bool(d["ready"])
+                d.pop("size", None)
+                d.pop("mtime", None)
                 songs.setdefault(d.pop("album_id"), []).append(d)
         for a in albums:
             a["soundcloud"] = _json(a.get("soundcloud"))
@@ -208,10 +221,12 @@ class Albums:
                     continue
                 pos += 1
                 have.add(path)
-                con.execute("INSERT INTO album_songs(album_id, pos, path, title, project, genre, added_at) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                st = _stat(path)
+                con.execute("INSERT INTO album_songs(album_id, pos, path, title, project, genre, added_at, size, mtime) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             (album_id, pos, path, (s.get("title") or "").strip() or Path(path).stem,
-                             (s.get("project") or "").strip(), (s.get("genre") or "").strip(), now))
+                             (s.get("project") or "").strip(), (s.get("genre") or "").strip(), now,
+                             st.st_size if st else None, st.st_mtime if st else None))
         return self.get(album_id)
 
     def remove_song(self, album_id: str, path: str) -> dict:
@@ -262,9 +277,11 @@ class Albums:
             if con.execute("SELECT 1 FROM album_songs WHERE album_id = ? AND path = ?",
                            (album_id, new_path)).fetchone():
                 raise ValueError("That file is already on this album")
-            if not con.execute("UPDATE album_songs SET path = ?, ready = NULL, added_at = ? "
+            st = _stat(new_path)
+            if not con.execute("UPDATE album_songs SET path = ?, ready = NULL, added_at = ?, size = ?, mtime = ? "
                                "WHERE album_id = ? AND path = ?",
-                               (new_path, time.time(), album_id, path)).rowcount:
+                               (new_path, time.time(), st.st_size if st else None,
+                                st.st_mtime if st else None, album_id, path)).rowcount:
                 raise NotFound(path)
         return self.get(album_id)
 
@@ -297,6 +314,208 @@ class Albums:
         if not con.execute(f"UPDATE albums SET {', '.join(sets)} WHERE id = ?",
                            (*(args or []), time.time(), album_id)).rowcount:
             raise NotFound(album_id)
+
+
+# ── following a song when its file is renamed ───────────────────────────────────
+
+# A song whose file can't be found is looked for again at most this often (seconds).
+_LOOK_AGAIN = 60.0
+_missed: dict[str, float] = {}
+
+
+def follow_renames(store: Albums, backups_db: Path | None,
+                   more_paths: Callable[[], list[str]] | None = None) -> bool:
+    """Point each album song at its file again after the file was renamed or moved.
+
+    The file is known by its size and save time (a rename changes neither). It's
+    followed through Backups' own record of Tidy names renames (and their Undo), then
+    looked for beside its old place, then among the songs Backups has linked to
+    projects and the app's own songs (`more_paths`). A file that's still there under
+    its old name, or a newer export saved over it, stays as it is. Nothing is renamed,
+    moved or written except the album list. Says whether any song moved."""
+    with store._db() as con:
+        songs = [dict(r) for r in con.execute(
+            "SELECT album_id, path, title, added_at, size, mtime FROM album_songs")]
+        checked = {r["path"]: (r["size"], r["mtime"]) for r in con.execute(
+            "SELECT path, size, mtime FROM song_checks")}
+    if not songs:
+        return False
+    renames: list[dict] | None = None
+    pool: list[tuple[str, int | None, float | None]] | None = None
+    fill: list[tuple] = []
+    moves: list[tuple[dict, str, os.stat_result]] = []
+    now = time.time()
+    for s in songs:
+        path = s["path"]
+        known = (s["size"], s["mtime"]) if s["size"] is not None else checked.get(path)
+        st = _stat(path)
+        if st and (known is None or _same(st, known)):
+            if s["size"] is None or not _same(st, (s["size"], s["mtime"])):
+                fill.append((st.st_size, st.st_mtime, s["album_id"], path))
+            continue
+        # the file is gone, or a different file has its name now
+        if renames is None:
+            renames = _tidy_renames(backups_db)
+        new = _follow_tidy(renames, path, s["added_at"])
+        nst = _stat(new) if new != path else None
+        if nst and (known is None or _same(nst, known)):
+            moves.append((s, new, nst))
+            continue
+        if st:  # a newer export saved under the same name: it's still this song
+            fill.append((st.st_size, st.st_mtime, s["album_id"], path))
+            continue
+        if known is None or now - _missed.get(path, 0) < _LOOK_AGAIN:
+            continue
+        found = _beside(path, known)
+        if not found:
+            if pool is None:
+                pool = _pool(backups_db, more_paths)
+            found = _in_pool(pool, path, known)
+        if found:
+            moves.append((s, found, _stat(found)))
+            _missed.pop(path, None)
+        else:
+            _missed[path] = now
+    if fill:
+        with store._db(write=True, bump=False) as con:
+            con.executemany("UPDATE album_songs SET size = ?, mtime = ? WHERE album_id = ? AND path = ?", fill)
+    if not moves:
+        return False
+    with store._db(write=True) as con:
+        for s, new, nst in moves:
+            aid, old = s["album_id"], s["path"]
+            if con.execute("SELECT 1 FROM album_songs WHERE album_id = ? AND path = ?", (aid, new)).fetchone():
+                con.execute("DELETE FROM album_songs WHERE album_id = ? AND path = ?", (aid, old))
+                continue
+            # a title that was only the old file name follows the new name; your own stays
+            title = Path(new).stem if s["title"] == Path(old).stem else s["title"]
+            con.execute("UPDATE album_songs SET path = ?, title = ?, size = ?, mtime = ? "
+                        "WHERE album_id = ? AND path = ?",
+                        (new, title, nst.st_size if nst else None, nst.st_mtime if nst else None, aid, old))
+            if not Path(old).exists():
+                con.execute("UPDATE OR IGNORE song_checks SET path = ? WHERE path = ?", (new, old))
+    return True
+
+
+def _stat(path: str) -> os.stat_result | None:
+    try:
+        st = os.stat(path)
+    except (OSError, ValueError):
+        return None
+    return st if os.path.isfile(path) else None
+
+
+def _same(st: os.stat_result, known: tuple) -> bool:
+    size, mtime = known
+    # some drives (FAT, exFAT, network shares) keep save times to the nearest 2 seconds
+    return st.st_size == size and mtime is not None and abs(st.st_mtime - mtime) <= 2.0
+
+
+def _tidy_renames(backups_db: Path | None) -> list[dict]:
+    """Backups' record of files and folders renamed by Tidy names, oldest first
+    (opened read-only). An Undo takes its rows away again."""
+    if not backups_db:
+        return []
+    try:
+        if not Path(backups_db).is_file():
+            return []
+        con = sqlite3.connect(f"file:{Path(backups_db).as_posix()}?mode=ro", uri=True, timeout=5)
+    except (OSError, sqlite3.Error):
+        return []
+    try:
+        con.row_factory = sqlite3.Row
+        rows = [dict(r) for r in con.execute(
+            "SELECT old, new, kind, batch_id, at FROM renamed WHERE kind IN ('file', 'folder') "
+            "ORDER BY at, rowid")]
+    except sqlite3.Error:
+        return []
+    finally:
+        con.close()
+    for r in rows:
+        try:
+            r["t"] = datetime.strptime(r["at"], "%Y-%m-%d_%H%M%S").timestamp()
+        except (TypeError, ValueError):
+            r["t"] = 0.0
+    return rows
+
+
+def _follow_tidy(rows: list[dict], path: str, since: float) -> str:
+    """Where Tidy names renames made after `since` took this file, batch by batch
+    (within one rename each name moves once, as names can swap)."""
+    batches: list[tuple[dict, list]] = []
+    current = None
+    for r in rows:
+        if r["t"] < since - 2:
+            continue
+        if not batches or r["batch_id"] != current:
+            current = r["batch_id"]
+            batches.append(({}, []))
+        names, folders = batches[-1]
+        if r["kind"] == "folder":
+            folders.append((r["old"], r["new"]))
+        else:
+            names[r["old"]] = r["new"]
+    for names, folders in batches:
+        if path in names:
+            path = names[path]
+            continue
+        for o, n in folders:
+            if path.startswith(o + os.sep):
+                path = n + path[len(o):]
+                break
+    return path
+
+
+def _beside(path: str, known: tuple) -> str | None:
+    """The same file under another name in its old folder."""
+    old = Path(path)
+    try:
+        names = sorted(os.listdir(old.parent))
+    except OSError:
+        return None
+    for name in names:
+        p = old.parent / name
+        if p.suffix.lower() in AUDIO and name != old.name and (st := _stat(str(p))) and _same(st, known):
+            return str(p)
+    return None
+
+
+def _pool(backups_db: Path | None, more_paths: Callable[[], list[str]] | None) -> list[tuple]:
+    """Songs to look among: Backups' linked exports (with the size and save time it
+    noted) and the app's own songs."""
+    out: list[tuple] = []
+    if backups_db:
+        try:
+            if Path(backups_db).is_file():
+                con = sqlite3.connect(f"file:{Path(backups_db).as_posix()}?mode=ro", uri=True, timeout=5)
+                try:
+                    out += [(p, size, mtime) for p, size, mtime in
+                            con.execute("SELECT path, size, mtime FROM exports WHERE hidden = 0")]
+                finally:
+                    con.close()
+        except (OSError, sqlite3.Error):
+            pass
+    if more_paths:
+        try:
+            out += [(p, None, None) for p in more_paths() if p]
+        except Exception:
+            pass
+    return out
+
+
+def _in_pool(pool: list[tuple], path: str, known: tuple) -> str | None:
+    ext = Path(path).suffix.lower()
+    seen = set()
+    for p, size, mtime in pool:
+        if p == path or p in seen or Path(p).suffix.lower() != ext:
+            continue
+        seen.add(p)
+        if size is not None and size != known[0]:
+            continue  # Backups noted another size: not this file (saves reading it)
+        st = _stat(p)
+        if st and _same(st, known):
+            return p
+    return None
 
 
 def _json(raw) -> dict | None:
@@ -413,7 +632,7 @@ def judge_album(album: dict, backups_db: Path | None) -> dict:
             s["project_id"], s["daw"], s["backup"] = p["project_id"], p["daw"], p["backup"]
             s["project"] = s.get("project") or p["project"]
             s["genre"] = p["genre"] or s.get("genre") or ""
-            s["bpm"] = round(p["bpm"]) if p["bpm"] else None
+            s["bpm"] = round(p["bpm"]) if p["bpm"] and 10 <= p["bpm"] <= 999 else None  # misreads blank
             s["working"] = p["changed_since_export"]
             if p["changed_since_export"] and needs != ["File moved or deleted"]:
                 needs.append("Still working on it")

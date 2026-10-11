@@ -8,13 +8,14 @@ records, and the songs it can offer for an album.
 """
 import asyncio
 import threading
+import time
 from pathlib import Path
 from typing import Callable, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .albums import Albums, NotFound, check_song, judge_album
+from .albums import Albums, NotFound, check_song, follow_renames, judge_album
 
 _PATH = 4096
 
@@ -64,6 +65,14 @@ def make_router(auth, backups_db: Callable[[], Path | None],
     albums = store or Albums()
     r = APIRouter(dependencies=[Depends(auth)])
     checking = threading.BoundedSemaphore(2)   # songs read at once, so the computer stays quick
+    offered = {"at": 0.0, "paths": set()}       # the songs the album could use, kept a minute
+
+    def could_use(path: str) -> bool:
+        """A song the album could use (another version of one on it)."""
+        if time.monotonic() - offered["at"] > 60 or path not in offered["paths"]:
+            offered["paths"] = {c.get("path") for c in candidates()}
+            offered["at"] = time.monotonic()
+        return path in offered["paths"]
 
     def judged(a: dict) -> dict:
         return judge_album(a, backups_db())
@@ -78,6 +87,7 @@ def make_router(auth, backups_db: Callable[[], Path | None],
     async def list_albums():
         def go():
             db = backups_db()
+            follow_renames(albums, db, lambda: [c.get("path") for c in candidates()])  # renamed songs
             return {"rev": albums.rev(), "albums": [judge_album(a, db) for a in albums.all()]}
         return await asyncio.to_thread(go)
 
@@ -92,11 +102,11 @@ def make_router(auth, backups_db: Callable[[], Path | None],
     @r.get("/api/albums/check")
     async def check_album_song(path: str):
         """Will this album song play anywhere: format, bit depth, sample rate, bitrate,
-        clipping, loudness. Only songs on an album, and only read."""
-        if path not in albums.paths():
-            raise HTTPException(status_code=404, detail="That song isn't on an album")
-
+        clipping, loudness. Only songs on an album or another version of one (the
+        songs it could use), and only read."""
         def go():
+            if path not in albums.paths() and not could_use(path):
+                raise HTTPException(status_code=404, detail="That song isn't on an album")
             with checking:
                 return check_song(albums, path)
         return await asyncio.to_thread(go)

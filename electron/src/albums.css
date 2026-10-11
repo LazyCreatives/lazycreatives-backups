@@ -155,6 +155,35 @@ button.alb-pill:hover { color: var(--text); text-decoration: underline; text-und
 .alb-check__list b { font-weight: 600; }
 @container albsongs (max-width: 620px) { .alb-check { padding-left: 16px; } }
 
+/* Versions: every export of one song, under its row. One grid, so the columns line up
+   from version to version; the quality word and the button wrap under the name when
+   the list is narrow or the text is big. */
+.alb-song__title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.alb-song__title > .col-trunc { min-width: 0; }
+.alb-vers__toggle { flex: none; padding: 0 2px; display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 400; color: var(--text-dim); white-space: nowrap; }
+@container albsongs (max-width: 700px) {  /* the song's name keeps the room; the count and arrow stay */
+  .alb-vers__word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+.alb-vers__toggle:hover, .alb-vers__toggle[aria-expanded="true"] { color: var(--accent); }
+.alb-vers { padding: 10px 16px 12px 156px; border-top: 1px dashed var(--border); background: var(--surface-2); font-size: 13px; line-height: 1.45; }
+.alb-vers__head { margin-bottom: 6px; color: var(--text); }
+.alb-vers__head b { font-weight: 600; }
+.alb-vers__list { display: grid; grid-template-columns: 28px minmax(0, 1fr) max-content minmax(0, 170px) max-content; column-gap: 12px; }
+.alb-vers__row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; min-height: 44px; padding: 4px 8px; margin: 0 -8px; border-radius: 6px; }
+.alb-vers__row + .alb-vers__row { border-top: 1px solid var(--border); border-radius: 0; }
+.alb-vers__row--on { background: var(--row-selected); }
+.alb-vers__main { min-width: 0; display: grid; gap: 1px; }
+.alb-vers__file { font-weight: 500; }
+.alb-vers__sub { font-size: 12px; color: var(--text-faint); }
+.alb-vers__act { justify-self: end; font-size: 12px; white-space: nowrap; }
+@container albsongs (max-width: 760px) {
+  .alb-vers { padding-left: 16px; }
+  .alb-vers__list { grid-template-columns: 28px minmax(0, 1fr) max-content; }
+  .alb-vers__row { row-gap: 4px; padding-top: 6px; padding-bottom: 6px; }
+  .alb-vers__row .alb-q { grid-column: 2; grid-row: 2; }
+  .alb-vers__act { grid-column: 3; grid-row: 2; }
+}
+
 /* SoundCloud: where the album is on SoundCloud, and the button that syncs it */
 .alb-sc { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px; }
 .alb-sc__state { font-size: 12px; color: var(--text-dim); min-width: 0; }

@@ -12,7 +12,7 @@ from typing import Callable, Optional
 from ablebackup.daws.base import empty_meta, parse_with_meta
 from ablebackup.daws.registry import (DAW_REGISTRY, adapter_for_path, ignored_file,
                                       package_extensions)
-from ablebackup.models import FileRef, ProjectScan
+from ablebackup.models import FileRef, ProjectScan, plausible_bpm
 from ablebackup.resolver import resolve_refs
 
 # Kept for back-compat; discovery now uses each adapter's own skip_dirs.
@@ -250,7 +250,7 @@ def _resolve_parsed(project_path: Path, raw_refs: list[FileRef], locate,
         daw_id=adapter.daw_id,
         project_id=project_id(project_path),
         refs=refs,
-        tempo=meta.get("tempo"),
+        tempo=plausible_bpm(meta.get("tempo")),
         track_count=meta.get("tracks"),
         plugins=meta.get("plugins") or [],
     )

@@ -138,3 +138,18 @@ def test_what_you_call_the_album_is_kept_and_shared():
     assert Albums().get(a["id"])["kind"] == "LP"    # the other app sees it too
     assert c.put(f"/api/albums/{a['id']}", json={"kind": "boxset"}).status_code == 422
     assert c.put(f"/api/albums/{a['id']}", json={"kind": ""}).json()["kind"] == ""
+
+
+def test_other_versions_of_an_album_song_can_be_checked(tmp_path):
+    """The Versions list shows each version's quality: songs the album could use are
+    read too, still nothing else."""
+    old = _wav(tmp_path / "Mixes" / "Night Drive.wav", level=0.9)
+    other = _wav(tmp_path / "Mixes" / "Night Drive v2.wav", level=1.6)
+    stray = _wav(tmp_path / "Elsewhere" / "Secret.wav")
+    app = FastAPI()
+    app.include_router(make_router(lambda: None, lambda: None, lambda: [{"path": str(old)}, {"path": str(other)}]))
+    c = TestClient(app)
+    a = c.post("/api/albums", json={"title": "EP"}).json()
+    c.post(f"/api/albums/{a['id']}/songs", json={"songs": [{"path": str(old)}]})
+    assert c.get("/api/albums/check", params={"path": str(other)}).json()["state"] == "check"
+    assert c.get("/api/albums/check", params={"path": str(stray)}).status_code == 404

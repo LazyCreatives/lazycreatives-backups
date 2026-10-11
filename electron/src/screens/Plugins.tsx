@@ -11,7 +11,7 @@ import { EmptyState } from "../components/SlothSpot";
 import { CopyButton, toast } from "../components/Desktop";
 import { useLook } from "../look";
 import { fmtCount, fmtDay, shortPath } from "../format";
-import { baseName } from "../desktop";
+import { baseName, keep, recall } from "../desktop";
 import "../plugins.css";
 
 const api = makeApi();
@@ -25,11 +25,37 @@ const FORMAT_HELP: Record<PluginFormat, string> = {
   LV2: "LV2: mostly on Linux",
 };
 type Use = "any" | "used" | "unused";
-type SortKey = "name" | "maker" | "used";
+type SortKey = "name" | "used";
+type PlugSort = { key: SortKey; dir: 1 | -1 };
+// Inside each folder: name A to Z unless you click "Used in"; kept between launches.
+const SORT_KEY = "lc-plugins-sort";
+const DEFAULT_SORT: PlugSort = { key: "name", dir: 1 };
+const isSort = (v: any) => !!v && ["name", "used"].includes(v.key) && (v.dir === 1 || v.dir === -1);
+// The folders: one per maker (A to Z, unknown last), and inside it one per type
+// (instruments, effects, then unknown), like folders in a file browser.
+const KINDS: [PluginRow["kind"], string][] = [["Instrument", "Instruments"], ["Effect", "Effects"], ["", "Type not known"]];
+const OPEN_KEY = "lc-plugins-open";
+// A to Z ignoring case, "Plugin 2" before "Plugin 10".
+const text = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+export function sortPlugins(rows: PluginRow[], { key, dir }: PlugSort): PluginRow[] {
+  return [...rows].sort((a, b) => (key === "used" ? (a.used_in - b.used_in) * dir : text(a.name, b.name) * dir) || text(a.name, b.name));
+}
+export type PluginTree = { maker: string; kinds: { kind: PluginRow["kind"]; label: string; rows: PluginRow[] }[]; count: number }[];
+export function pluginTree(rows: PluginRow[]): PluginTree {
+  const m = new Map<string, PluginRow[]>();
+  for (const p of rows) { const k = p.maker || NO_MAKER; m.set(k, [...(m.get(k) ?? []), p]); }
+  return [...m.entries()]
+    .sort(([a], [b]) => (a === NO_MAKER ? 1 : b === NO_MAKER ? -1 : text(a, b)))
+    .map(([maker, list]) => ({
+      maker, count: list.length,
+      kinds: KINDS.map(([kind, label]) => ({ kind, label, rows: list.filter((p) => (KINDS.some(([k]) => k === p.kind) ? p.kind : "") === kind) }))
+        .filter((k) => k.rows.length),
+    }));
+}
 
+const NO_MAKER = "Maker not known";
 const plural = (n: number, w: string) => `${fmtCount(n)} ${w}${n === 1 ? "" : "s"}`;
 const reveal = (p: string) => (window as any).ablebackup?.revealPath?.(p);
-const NO_MAKER = "Maker not known";
 // "Pro-Q 3" -> "PQ", "Serum" -> "SE": the letters on a plug-in's tile in the Sleeve look.
 export function initials(name: string): string {
   const words = name.split(/[^A-Za-z0-9]+/).filter((w) => /^[A-Za-z]/.test(w));
@@ -45,8 +71,11 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
   const [q, setQ] = useState("");
   const [format, setFormat] = useState<PluginFormat | "all">("all");
   const [use, setUse] = useState<Use>("any");
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "name", dir: 1 });
+  const [sort, setSortState] = useState<PlugSort>(() => recall<PlugSort>(SORT_KEY, DEFAULT_SORT, isSort));
   const [open, setOpen] = useState<string | null>(null);
+  // Which maker and type folders are open (all closed at first), kept between launches.
+  const [folders, setFoldersState] = useState<string[]>(() => recall<string[]>(OPEN_KEY, [], Array.isArray));
+  const setFolders = (f: string[]) => { keep(OPEN_KEY, f); setFoldersState(f); };
 
   async function load(refresh = false) {
     setBusy(true); setErr(null);
@@ -77,23 +106,21 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
       (format === "all" || p.formats.includes(format))
       && (use === "any" || (use === "used" ? p.used_in > 0 : p.used_in === 0))
       && words.every((w) => `${p.name} ${p.maker} ${p.kind}`.toLowerCase().includes(w)));
-    const by = (p: PluginRow) => sort.key === "used" ? p.used_in : (sort.key === "maker" ? (p.maker || "￿") : p.name).toLowerCase();
-    return [...rows].sort((a, b) => {
-      const x = by(a), y = by(b);
-      return (x < y ? -1 : x > y ? 1 : a.name.localeCompare(b.name)) * sort.dir;
-    });
+    return sortPlugins(rows, sort);
   }, [list, q, format, use, sort]);
   const filtered = !!q.trim() || format !== "all" || use !== "any";
-  const sortBy = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "used" ? -1 : 1 }));
+  const sortBy = (key: SortKey) => setSortState((s) => {
+    const n: PlugSort = s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "used" ? -1 : 1 };
+    keep(SORT_KEY, n); return n;
+  });
   const noProjects = !!data && data.projects_scanned === 0;
   const fmtVar = { "--fmts": Math.max(1, formats.length) } as CSSProperties;
-  // Sleeve: one shelf per maker, like a label's catalogue; Crate: one long list.
-  const groups = useMemo(() => {
-    if (look !== "sleeve") return [];
-    const m = new Map<string, PluginRow[]>();
-    for (const p of shown) { const k = p.maker || NO_MAKER; m.set(k, [...(m.get(k) ?? []), p]); }
-    return [...m.entries()].sort(([a], [b]) => (a === NO_MAKER ? 1 : b === NO_MAKER ? -1 : a.localeCompare(b, undefined, { sensitivity: "base" })));
-  }, [shown, look]);
+  const tree = useMemo(() => pluginTree(shown), [shown]);
+  // While searching or filtering, every folder with a match is open.
+  const isOpen = (key: string) => filtered || folders.includes(key);
+  const toggleFolder = (key: string) => setFolders(folders.includes(key) ? folders.filter((k) => k !== key) : [...folders, key]);
+  const allKeys = tree.flatMap((t) => [t.maker, ...t.kinds.map((k) => `${t.maker}/${k.kind}`)]);
+  const allOpen = allKeys.every((k) => folders.includes(k));
 
   const header = (
     <PageHeader title="Plugins"
@@ -122,17 +149,13 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
     const toggle = () => setOpen(isOpen ? null : p.id);
     return (
       <div key={p.id} className={`plug-item${isOpen ? " plug-item--open" : ""}`}>
-        <div className={`row cols plug-row plug-cols${look === "sleeve" ? " plug-cols--grouped" : ""}`} role="button" tabIndex={0}
+        <div className="row cols plug-row plug-cols" role="button" tabIndex={0}
           aria-expanded={isOpen} onClick={toggle}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}>
           {look === "crate"
             ? <span className="stripe plug-stripe" data-kind={p.kind} title={p.kind || undefined} />
             : <span className="plug-tile" data-kind={p.kind} aria-hidden>{initials(p.name)}</span>}
-          <div style={{ minWidth: 0 }}>
-            <div className="lib-name col-trunc" title={p.name}>{p.name}</div>
-            {p.kind && <div className="lib-sub col-trunc">{p.kind}</div>}
-          </div>
-          {look === "crate" && <span className={`col-trunc${p.maker ? "" : " faint"}`} title={p.maker || undefined}>{p.maker || "—"}</span>}
+          <div className="lib-name col-trunc" title={p.name}>{p.name}</div>
           <span className="plug-formats">
             {formats.map((f) => p.formats.includes(f)
               ? <span key={f} className="tag plug-fmt" data-format={f} title={FORMAT_HELP[f]}>{f}</span>
@@ -172,21 +195,40 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
     );
   };
 
+  const sortButton = (k: SortKey, label: string, cls = "") => {
+    const on = sort.key === k;
+    return (
+      <button key={k} className={`lib-sort${cls}${on ? " lib-sort--on" : ""}`} onClick={() => sortBy(k)} aria-pressed={on}
+        aria-label={on ? `${label}, sorted ${sort.dir === 1 ? "up" : "down"}` : undefined} title={`Sort by ${label.toLowerCase()}`}>
+        {label}{on && <Icon name={sort.dir === 1 ? "arrowUp" : "arrowDown"} size={11} />}
+      </button>
+    );
+  };
   const head = (
-    <div className={`row cols cols-head plug-cols${look === "sleeve" ? " plug-cols--grouped" : ""}`}>
+    <div className="row cols cols-head plug-cols">
       <span />
-      {([["name", "Plugin", ""], ...(look === "crate" ? [["maker", "Maker", ""]] : []), ["", "Formats", ""], ["used", "Used in", " col-num"], ["", "Where", ""]] as [SortKey | "", string, string][]).map(([k, label, cls]) => {
-        if (!k) return <span key={label} className={cls}>{label}</span>;
-        const on = sort.key === k;
-        return (
-          <button key={k} className={`lib-sort${cls}${on ? " lib-sort--on" : ""}`} onClick={() => sortBy(k)} aria-pressed={on} title={`Sort by ${label.toLowerCase()}`}>
-            {label}{on && <Icon name={sort.dir === 1 ? "arrowUp" : "arrowDown"} size={11} />}
-          </button>
-        );
-      })}
+      {sortButton("name", "Plugin")}
+      <span>Formats</span>
+      {sortButton("used", "Used in", " col-num")}
+      <span>Where</span>
       <span />
     </div>
   );
+  const folderRow = (key: string, level: 1 | 2, name: string, count: number, faint: boolean) => {
+    const on = isOpen(key);
+    const toggle = () => { if (!filtered) toggleFolder(key); };
+    return (
+      <div className={`row plug-dir plug-dir--${level}${on ? " plug-dir--open" : ""}`} role="button" tabIndex={0} aria-expanded={on}
+        aria-label={`${name}, ${plural(count, "plugin")}`} onClick={toggle}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}>
+        <Icon name="chevronRight" size={14} className="plug-dir__chev" />
+        <Icon name="folder" size={level === 1 ? 17 : 15} className="plug-dir__icon" />
+        <span className={`plug-dir__name col-trunc${faint ? " faint" : ""}`} title={name}>{name}</span>
+        <span className="plug-dir__n faint">{plural(count, "plugin")}</span>
+      </div>
+    );
+  };
+
 
 
   return (
@@ -240,18 +282,33 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
 
           {!shown.length ? (
             <EmptyState pose="searching" title="No plugins match">Try fewer words, or clear the filters.</EmptyState>
-          ) : look === "crate" ? (
-            <div className="table table--crate plug-table" style={fmtVar}>{head}{shown.map(row)}</div>
           ) : (
-            groups.map(([maker, rows], i) => (
-              <section key={maker} className="plug-shelf">
-                <div className="plug-shelf__head">
-                  <h2 className={maker === NO_MAKER ? "faint" : undefined}>{maker}</h2>
-                  <span className="faint">{plural(rows.length, "plugin")}</span>
+            <>
+              {!filtered && (
+                <div className="plug-tree-bar">
+                  <button className="btn btn--ghost btn--sm" onClick={() => setFolders(allOpen ? [] : allKeys)}>
+                    <Icon name={allOpen ? "chevronUp" : "chevronDown"} size={13} />{allOpen ? "Close all folders" : "Open all folders"}
+                  </button>
                 </div>
-                <div className="table plug-table" style={fmtVar}>{i === 0 && head}{rows.map(row)}</div>
-              </section>
-            ))
+              )}
+              <div className={`table plug-table plug-tree${look === "crate" ? " table--crate" : ""}`} style={fmtVar}>
+                {head}
+                {tree.map((t) => (
+                  <div key={t.maker} className="plug-group">
+                    {folderRow(t.maker, 1, t.maker, t.count, t.maker === NO_MAKER)}
+                    {isOpen(t.maker) && t.kinds.map((k) => {
+                      const key = `${t.maker}/${k.kind}`;
+                      return (
+                        <div key={key} className="plug-group plug-group--kind" data-kind={k.kind}>
+                          {folderRow(key, 2, k.label, k.rows.length, !k.kind)}
+                          {isOpen(key) && k.rows.map(row)}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </>
       )}

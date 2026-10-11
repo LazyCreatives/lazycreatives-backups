@@ -6,6 +6,8 @@ import sqlite3
 import threading
 from pathlib import Path
 
+from ablebackup.models import MAX_BPM, MIN_BPM, plausible_bpm
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS snapshots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -211,6 +213,11 @@ class Catalog:
         ucols = {r["name"] for r in self.conn.execute("PRAGMA table_info(unmatched_exports)")}
         if "guesses" not in ucols:
             self.conn.execute("ALTER TABLE unmatched_exports ADD COLUMN guesses TEXT")
+        # A misread project file once stored tempos like 3221226 BPM: blank any tempo
+        # no project can have, so neither app shows it (the next scan reads it again).
+        for table in ("discovered", "snapshots"):
+            self.conn.execute(f"UPDATE {table} SET bpm = NULL WHERE bpm < ? OR bpm > ?",
+                              (MIN_BPM, MAX_BPM))
 
     def record_snapshot(self, project_name, timestamp, total_size,
                         file_count, status, missing, error=None,
@@ -466,7 +473,8 @@ class Catalog:
                 "  tracks=excluded.tracks, plugins=excluded.plugins, found_at=excluded.found_at",
                 # default genre/meta fields so rows that omit them still bind cleanly
                 [{"genre": None, "genre_emoji": None, "bpm": None, "tracks": None,
-                  "plugins": None, **r, "genre_raw": r.get("genre_raw", r.get("genre")),
+                  "plugins": None, **r, "bpm": plausible_bpm(r.get("bpm")),
+                  "genre_raw": r.get("genre_raw", r.get("genre")),
                   "found_at": found_at} for r in rows],
             )
             self.conn.commit()
@@ -759,7 +767,7 @@ class Catalog:
             self.conn.execute(
                 "UPDATE snapshots SET genre = ?, bpm = ?, genre_conf = ?, genre_done = 1 "
                 "WHERE id = ?",
-                (genre, bpm, confidence, snapshot_id),
+                (genre, plausible_bpm(bpm), confidence, snapshot_id),
             )
             self.conn.commit()
 

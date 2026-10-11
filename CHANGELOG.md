@@ -13,7 +13,18 @@ How to keep this up to date:
   The checks on pull requests fail if the app's version has no section here.
 -->
 
-## Unreleased
+## 0.2.11 (11 October 2026)
+
+### New
+- **Your phone (early test).** A new Phone tab in Settings lets the Lazy Creatives phone app connect over your home Wi-Fi: switch it on, scan the code with your phone, and the phone can browse your projects and albums and keep the songs you choose for listening anywhere. It's off until you turn it on, and you can remove a phone at any time. Your files on this computer are only read; the phone keeps its own copies.
+- **Pick which version of a song the album plays.** Click a song on an album (or its "2 versions" link) to see every version exported from its project, newest first, with when it was exported, its length and whether it plays anywhere. Press play to listen, then "Use this one". Undo puts the old one back.
+
+### Better
+- **Plugins in folders, like a file browser.** The Plugins page now shows a folder for each maker, and inside it a folder for instruments and one for effects, in both looks. Click a folder to open it, or open them all at once; searching opens the folders that match. The folders you leave open are remembered next time.
+
+### Fixed
+- **FL Studio projects read properly again.** Projects saved in FL Studio 26 showed an impossible BPM (like 3221226), scrambled sample and plugin names, and hundreds of samples "Not found anywhere". Backups now reads their real tempo, samples and plugins, also for projects saved in FL Studio 11 or older, and never shows a BPM no project could have.
+- **Renamed songs stay on their album.** Rename a song's file with Tidy names, undo it, or rename or move it yourself in Finder or Explorer, and the album now finds it under its new name instead of saying "File moved or deleted". If the song's album title was just the old file name, it takes the new name; a title you typed yourself stays.
 
 ## 0.2.10 (10 October 2026)
 

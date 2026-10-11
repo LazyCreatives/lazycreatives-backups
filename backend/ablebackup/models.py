@@ -2,6 +2,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+# Every DAW's tempo range sits inside 10–999 BPM (FL's is 10–522, Ableton's 20–999);
+# a number outside it is a misread file, never a real tempo.
+MIN_BPM, MAX_BPM = 10.0, 999.0
+
+
+def plausible_bpm(value) -> Optional[float]:
+    """The tempo if a project could really have it, else None (shown blank)."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    return v if MIN_BPM <= v <= MAX_BPM else None
+
 
 @dataclass
 class FileRef:

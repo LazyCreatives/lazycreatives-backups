@@ -29,11 +29,7 @@ const api = makeApi();
 
 const PRESETS = [[0, "Off"], [60, "Hourly"], [360, "Every 6 hours"], [1440, "Daily"], [10080, "Weekly"]] as const;
 
-// The Phone tab is held back from releases while the phone app is tested: it shows
-// in development, or after localStorage "lc-phone" is set to "1".
-const SHOW_PHONE = import.meta.env.DEV || (() => { try { return localStorage.getItem("lc-phone") === "1"; } catch { return false; } })();
-const ALL_TABS = [["folders", "Folders"], ["backups", "Backups"], ["look", "Look"], ["privacy", "Privacy"], ["phone", "Phone"], ["app", "App"]] as const;
-const TABS = ALL_TABS.filter(([k]) => SHOW_PHONE || k !== "phone");
+const TABS = [["folders", "Folders"], ["backups", "Backups"], ["look", "Look"], ["privacy", "Privacy"], ["phone", "Phone"], ["app", "App"]] as const;
 const TAB_KEYS = TABS.map(([k]) => k);
 
 export function Sources() {
@@ -375,14 +371,14 @@ export function Sources() {
         <p className="set-about">Only in the folders you pick on the Backups tab: your own drive, or your own Dropbox, Google Drive or iCloud folder. Lazy Creatives has no copy and never sees your music.</p>
       </SetRow>
       <SetRow title={`What leaves your ${words.computer}`} help="No tracking, no accounts, no adverts.">
-        <p className="set-about">Checking for updates asks GitHub for the newest version number. If you turn on a second copy in the cloud, your backups go to your own cloud account.{SHOW_PHONE && " If you switch on Let my phone connect, the songs you pick go to your own paired phone over your home Wi-Fi."} Nothing else is sent.</p>
+        <p className="set-about">Checking for updates asks GitHub for the newest version number. If you turn on a second copy in the cloud, your backups go to your own cloud account. If you switch on Let my phone connect, the songs you pick go to your own paired phone over your home Wi-Fi. Nothing else is sent.</p>
       </SetRow>
       <SetRow title="Something not working?"
         help="Opens a short report on GitHub with your app version and computer type filled in. You read it before you send it. If the app ever crashes, it offers the same report the next time it opens.">
         <Button variant="ghost" size="sm" onClick={() => (window as any).ablebackup?.reportProblem?.()}>Report a problem</Button>
       </SetRow>
       </>}
-      {SHOW_PHONE && tab === "phone" && <YourPhone />}
+      {tab === "phone" && <YourPhone />}
       {tab === "app" && <>
       {openAtLogin !== null && (
         <SetRow title={`Start with your ${words.computer}`}

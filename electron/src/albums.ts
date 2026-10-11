@@ -258,6 +258,22 @@ export function newerExport(s: AlbumSong, candidates: AlbumCandidate[], onAlbum?
   return best;
 }
 
+// Every version of an album song: the songs exported from its project (or, for a song no
+// project claims, the files beside it with the same name), newest first, the one on the
+// album among them.
+export function songVersions(s: AlbumSong, candidates: AlbumCandidate[]): AlbumCandidate[] {
+  const own = candidates.find((c) => c.path === s.path);
+  const project = s.project_id || own?.project_id || null;
+  const name = (s.project || own?.project || "").toLowerCase();
+  const dir = (p: string) => p.replace(/[\\/][^\\/]*$/, "");
+  const mine = (c: AlbumCandidate) => c.path === s.path || (project ? c.project_id === project
+    : name ? !c.project_id && (c.project || "").toLowerCase() === name
+    : !c.project && dir(c.path) === dir(s.path) && sameSong(c.path, s.path));
+  const list = candidates.filter(mine);
+  if (!own) list.push({ path: s.path, title: s.title, project: s.project, project_id: s.project_id });
+  return list.sort((a, b) => (b.exported ?? 0) - (a.exported ?? 0));
+}
+
 // The songs the album could use, read once per page and again when asked.
 let cands: { list: AlbumCandidate[] | null; at: number } = { list: null, at: 0 };
 let candsLoading: Promise<AlbumCandidate[]> | null = null;

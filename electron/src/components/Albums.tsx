@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type DragEvent,
 import {
   addSongs, albumCandidates, albumState, changeSong, groupCandidates, KINDS, kindName, releaseKind, setKind, stillWorking, withArticle, tempoJump, daysToGo, deleteAlbum, FADE_PRESETS, fadeLabel, fmtRelease,
   mainGenre, makeAlbum, MAX_FADE, moveItem, newerExport, orderSongs, putBack, readyCount, releaseDay, renameAlbum, setCrossfade,
-  setReleaseDate, swapSong, takeOut, useAlbums, useCandidates, useSongChecks,
+  setReleaseDate, songVersions, swapSong, takeOut, useAlbums, useCandidates, useSongChecks,
   type Album, type AlbumCandidate, type AlbumKind, type AlbumSong, type CandidateGroup, type SongCheck,
 } from "../albums";
 import { ago } from "../companion";
@@ -330,7 +330,7 @@ function AlbumPage({ a, look, app, onClose, metaFor, onOpenProject, sync }: Albu
         <div className="albpage__main">
           {a.songs.length > 0 && <Planner a={a} checks={checks} newer={newer} />}
           {a.songs.length > 0 && <SongList a={a} app={app} nowAt={nowAt} playing={playing} onPlay={play} onOpenProject={onOpenProject}
-            checks={checks} newer={newer} />}
+            checks={checks} newer={newer} cands={cands} />}
           {a.songs.length === 0 && !adding && <div className="table"><EmptyState pose="napping" title="No songs on it yet" say="Plenty of room.">
             Press Add songs to pick from your exports.</EmptyState></div>}
           {a.songs.length === 0 && adding && <EmptyDrop a={a} />}
@@ -410,11 +410,17 @@ const openLink = (url: string) => { const w = window as any; (w.ablebackup || w.
 type Checks = Record<string, SongCheck | null | undefined>;
 type Newer = Map<string, AlbumCandidate | null>;
 
-function QualityPill({ c, open, onToggle }: { c: SongCheck | null | undefined; open: boolean; onToggle: () => void }) {
+function QualityPill({ c, open = false, onToggle }: { c: SongCheck | null | undefined; open?: boolean; onToggle?: () => void }) {
   if (c === undefined) return <span className="faint alb-q">Checking…</span>;
   if (!c || c.state === "missing" || c.state === "unreadable") return <span className="faint alb-q" title={c ? "This file couldn't be read" : "Couldn't check this song"}>—</span>;
   const ok = c.state === "ok";
   const label = ok ? "Plays anywhere" : c.problems[0].short;
+  if (!onToggle) {  // just the word (a version not on the album yet)
+    return <span className="alb-q"><span className={`pill alb-pill alb-pill--${ok ? "ok" : "warn"}`}
+      title={`${c.summary}${ok ? "\nPlays on any CDJ, USB stick and club system." : `\n${c.problems.map((p) => p.what).join("\n")}`}`}>
+      <span className="alb-q__text">{label}</span></span>
+      {c.problems.length > 1 && <span className="faint alb-more">+{c.problems.length - 1}</span>}</span>;
+  }
   return (
     <span className="alb-q">
       <button type="button" className={`pill alb-pill alb-pill--${ok ? "ok" : "warn"} linkbtn`} aria-expanded={open}
@@ -632,12 +638,16 @@ function EmptyDrop({ a }: { a: Album }) {
   );
 }
 
-function SongList({ a, app, nowAt, playing, onPlay, onOpenProject, checks, newer }: {
+function SongList({ a, app, nowAt, playing, onPlay, onOpenProject, checks, newer, cands }: {
   a: Album; app: AlbumsProps["app"]; nowAt: number; playing: boolean; onPlay: (at: number) => void; onOpenProject?: (s: AlbumSong) => void;
-  checks: Checks; newer: Newer;
+  checks: Checks; newer: Newer; cands: AlbumCandidate[] | null;
 }) {
   const [details, setDetails] = useState<Set<string>>(new Set());
   const toggleDetails = (p: string) => setDetails((d) => { const n = new Set(d); if (n.has(p)) n.delete(p); else n.add(p); return n; });
+  // Songs whose Versions list is open (click the song, or "3 versions").
+  const [versions, setVersions] = useState<Set<string>>(new Set());
+  const toggleVersions = (p: string) => setVersions((d) => { const n = new Set(d); if (n.has(p)) n.delete(p); else n.add(p); return n; });
+  const reopen = (from: string, to: string) => setVersions((d) => { const n = new Set(d); if (n.delete(from)) n.add(to); return n; });
   const paths = a.songs.map((s) => s.path);
   const [drag, setDrag] = useState<string | null>(null);       // path of the song being dragged
   const [order, setOrder] = useState<string[] | null>(null);   // the order shown while dragging
@@ -669,8 +679,10 @@ function SongList({ a, app, nowAt, playing, onPlay, onOpenProject, checks, newer
       {shown.map((s, i) => {
         const last = i === shown.length - 1;
         const ri = order ? paths.indexOf(s.path) : i; // its place in the saved order
+        const vs = cands ? songVersions(s, cands) : [];
         const menu: MenuItem[] = [
           { label: "Play from here", onClick: () => onPlay(ri) },
+          ...(vs.length > 1 ? [{ label: versions.has(s.path) ? "Hide versions" : "Pick another version…", onClick: () => toggleVersions(s.path) }] : []),
           ...(onOpenProject && s.project_id ? [{ label: "Open project", onClick: () => onOpenProject(s) }] : []),
           "-",
           ...(newer.get(s.path) ? [{ label: "Use the newer export…", onClick: () => void takeNewer(a, s, newer.get(s.path)!) }] : []),
@@ -717,6 +729,10 @@ function SongList({ a, app, nowAt, playing, onPlay, onOpenProject, checks, newer
               endDrag();
             }}
             onDragEnd={endDrag}
+            onClick={(e) => {
+              // a click on the song itself opens its versions; buttons in the row do their own thing
+              if (vs.length > 1 && !(e.target as HTMLElement).closest("button, a, input")) toggleVersions(s.path);
+            }}
             onKeyDown={(e) => {
               if (e.target !== e.currentTarget) return;
               if (e.altKey && e.key === "ArrowUp" && i > 0) { e.preventDefault(); move(i, i - 1); focusRow(i - 1); }
@@ -734,7 +750,14 @@ function SongList({ a, app, nowAt, playing, onPlay, onOpenProject, checks, newer
             </button>
             <Cover name={s.project || s.title} genre={s.genre || null} size={36} label={false} />
             <div className="row__main">
-              <div className="row__title" title={s.path}>{s.title}</div>
+              <div className="row__title alb-song__title">
+                <span className="col-trunc" title={s.path}>{s.title}</span>
+                {vs.length > 1 && <button type="button" className="linkbtn alb-vers__toggle" aria-expanded={versions.has(s.path)}
+                  aria-label={`${versions.has(s.path) ? "Hide" : "Show"} the ${vs.length} versions of ${s.title}`}
+                  title="Listen to the other versions and pick the one the album plays"
+                  onClick={(e) => { e.stopPropagation(); toggleVersions(s.path); }}>
+                  {vs.length}<span className="alb-vers__word"> versions</span><Icon name={versions.has(s.path) ? "chevronDown" : "chevronRight"} size={12} /></button>}
+              </div>
               <div className="row__sub col-trunc">{s.project
                 ? (onOpenProject && s.project_id
                   ? <button type="button" className="linkbtn alb-proj" onClick={(e) => { e.stopPropagation(); onOpenProject(s); }}
@@ -769,11 +792,66 @@ function SongList({ a, app, nowAt, playing, onPlay, onOpenProject, checks, newer
             </span>
           </div>
           {details.has(s.path) && check && (check.state === "ok" || check.state === "check") && <QualityDetails c={check} />}
+          {versions.has(s.path) && vs.length > 1 && <VersionList a={a} s={s} list={vs} onSwapped={(to) => reopen(s.path, to)} />}
         </Fragment>);
       })}
     </div>
   );
 }
+
+// Every version of one album song, newest first: listen to each, then "Use this one" puts
+// it in the song's place (it keeps its place, title and join). The files are only read.
+function VersionList({ a, s, list, onSwapped }: { a: Album; s: AlbumSong; list: AlbumCandidate[]; onSwapped: (to: string) => void }) {
+  const checks = useSongChecks(list.map((c) => c.path));
+  const newest = list.find((c) => c.exported)?.path;
+  const elsewhere = new Map(a.songs.map((x, i) => [x.path, i] as const));
+  const use = async (c: AlbumCandidate) => {
+    const file = fileOf(c.path);
+    try {
+      await swapSong(a.id, s.path, c.path);
+      onSwapped(c.path);
+      toast(`${s.title} now plays ${file}.`, {
+        label: "Undo", onClick: () => void swapSong(a.id, c.path, s.path).then(() => onSwapped(s.path)).catch((e) => toastWarn(String(e.message))),
+      });
+    } catch (e) { toastWarn(String((e as Error).message)); }
+  };
+  return (
+    <div className="alb-vers" role="region" aria-label={`Versions of ${s.title}`}>
+      <div className="alb-vers__head">
+        <b>Versions of {s.title}</b>
+        <span className="faint"> · {s.project ? `every song exported from ${s.project}` : "files with the same name beside it"}, newest first. Listen, then pick the one the album plays.</span>
+      </div>
+      <div className="alb-vers__list" role="list">
+        {list.map((c) => {
+          const here = c.path === s.path;
+          const at = elsewhere.get(c.path);
+          const check = checks[c.path];
+          const meta = { title: c.title, project: c.project, genre: c.genre || null };
+          return (
+            <div key={c.path} role="listitem" className={`alb-vers__row${here ? " alb-vers__row--on" : ""}`}>
+              <PlayButton path={c.path} meta={meta} size={28} />
+              <div className="alb-vers__main">
+                <div className="alb-vers__file col-trunc" title={c.path}>{fileOf(c.path)}</div>
+                <div className="alb-vers__sub col-trunc">{c.exported ? `exported ${savedAgo(c.exported)}` : "export date not known"}{c.path === newest && list.length > 1 ? " · newest" : ""}</div>
+              </div>
+              <span className="col-num faint alb-vers__len">{c.duration ? clock(c.duration) : <SongLen path={c.path} />}</span>
+              <QualityPill c={check} />
+              <span className="alb-vers__act">
+                {here ? <span className="pill alb-pill alb-pill--ok">On the album</span>
+                  : at !== undefined ? <span className="faint" title="This file is already on the album as another song">On it as #{at + 1}</span>
+                  : <button type="button" className="btn btn--sm" onClick={() => void use(c)}
+                      aria-label={`Use ${fileOf(c.path)} for ${s.title} on the album`}
+                      title="Play this version on the album instead. Both files stay where they are.">Use this one</button>}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const fileOf = (path: string) => path.split(/[\\/]/).pop() || path;
 
 // The song's file name, which says which export it is (a WAV, a "final v2").
 const fileLine = (s: AlbumSong) => s.path.split(/[\\/]/).pop() || s.path;

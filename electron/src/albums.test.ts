@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Album, AlbumSong } from "./albums";
+import type { Album, AlbumCandidate, AlbumSong } from "./albums";
 
 // A tiny album engine: just enough of the real rules (add appends, order sorts,
 // a song change sets its flags) to see what Undo leaves behind.
@@ -120,5 +120,30 @@ describe("a newer export of an album song", () => {
     expect(newerExport(s, [base, c("/m/Night Drive v2.wav", 5000, "p2")])).toBeNull(); // another project
     expect(newerExport(s, [c("/m/Night Drive v2.wav", 5000)])).toBeNull();             // its own export unknown
     expect(newerExport(s, [base, c("/m/Night Drive v2.wav", 5000)], new Set(["/m/Night Drive v2.wav"]))).toBeNull(); // already on the album
+  });
+});
+
+describe("songVersions", async () => {
+  const { songVersions } = await import("./albums");
+  const song = (path: string, extra: Partial<AlbumSong> = {}): AlbumSong => ({
+    path, title: "Glasshouse", project: "Glasshouse", project_id: "p1", backup: null, gapless_after: false,
+    ready: null, needs: [], is_ready: true, ...extra,
+  });
+  const c = (path: string, exported: number, project_id: string | null = "p1", project = "Glasshouse"): AlbumCandidate =>
+    ({ path, title: path, project, project_id, exported });
+
+  it("lists every export of the song's project, newest first", () => {
+    const list = [c("/m/gh v1.wav", 100), c("/m/other.wav", 900, "p2", "Other"), c("/m/gh v3.wav", 300), c("/m/gh v2.wav", 200)];
+    expect(songVersions(song("/m/gh v2.wav"), list).map((x) => x.path)).toEqual(["/m/gh v3.wav", "/m/gh v2.wav", "/m/gh v1.wav"]);
+  });
+
+  it("keeps the song on the album even when it isn't offered any more", () => {
+    expect(songVersions(song("/m/gone.wav"), [c("/m/gh v3.wav", 300)]).map((x) => x.path)).toEqual(["/m/gh v3.wav", "/m/gone.wav"]);
+  });
+
+  it("for a song no project claims, uses files with the same name in the same folder", () => {
+    const loose = song("/x/Night Drive.wav", { project: "", project_id: null });
+    const list = [c("/x/Night Drive v2.wav", 200, null, ""), c("/x/Exit 9.wav", 300, null, ""), c("/y/Night Drive.wav", 400, null, "")];
+    expect(songVersions(loose, list).map((x) => x.path)).toEqual(["/x/Night Drive v2.wav", "/x/Night Drive.wav"]);
   });
 });
