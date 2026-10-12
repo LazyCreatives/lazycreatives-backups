@@ -147,3 +147,18 @@ describe("songVersions", async () => {
     expect(songVersions(loose, list).map((x) => x.path)).toEqual(["/x/Night Drive v2.wav", "/x/Night Drive.wav"]);
   });
 });
+
+describe("long lists and names in the album plan", () => {
+  it("names a few songs, then how many more", async () => {
+    const { someOf } = await import("./albums");
+    expect(someOf(["A", "B"])).toBe("A, B");
+    expect(someOf(["A", "B", "C", "D"])).toBe("A, B, C, D");
+    expect(someOf(["A", "B", "C", "D", "E", "F"])).toBe("A, B, C and 3 more");
+  });
+  it("shortens a long album name without splitting an emoji", async () => {
+    const { shortTitle } = await import("./albums");
+    expect(shortTitle("Late Night Tapes")).toBe("Late Night Tapes");
+    expect(shortTitle("x".repeat(60))).toBe(`${"x".repeat(39)}…`);
+    expect(shortTitle("🔥".repeat(50), 10)).toBe(`${"🔥".repeat(9)}…`);
+  });
+});

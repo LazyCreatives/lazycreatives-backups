@@ -9,6 +9,7 @@ import { PlayButton, SongWave } from "../components/Player";
 import { SONGS_LINKED } from "../songDrop";
 import { osWords } from "../platform";
 import { fmtSize, fmtDay } from "../format";
+import { isShortExport, shortExportSeconds } from "../exportFolders";
 
 const api = makeApi();
 const bridge = () => (window as any).ablebackup;
@@ -35,6 +36,10 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showStems, setShowStems] = useState(false);
+  // Songs shorter than Settings > "Hide short exports" (test bounces, clicks) wait
+  // behind a button; nothing is deleted.
+  const [minSecs] = useState(shortExportSeconds);
+  const [showShort, setShowShort] = useState(false);
   // While Backups is still looking through folders for songs: "folder 3 of 12".
   const [checking, setChecking] = useState<{ done: number; total: number } | null>(null);
 
@@ -111,15 +116,17 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
   }
 
   const rows = data?.exports ?? [];
-  const songs = rows.filter((e) => e.kind !== "stem");
+  const allSongs = rows.filter((e) => e.kind !== "stem");
+  const songs = allSongs.filter((e) => !isShortExport(e.seconds, minSecs));
+  const shortSongs = allSongs.filter((e) => isShortExport(e.seconds, minSecs));
   const stems = rows.filter((e) => e.kind === "stem");
   // The SoundCloud column only takes room when a song is actually on SoundCloud.
   const linked = rows.some((e) => e.upload?.url) || (data?.uploads_elsewhere ?? []).some((u) => u.url);
   const cols = `row cols song-cols${linked ? "" : " song-cols--nolink"}`;
   const lookIn = [...(folders?.folders ?? []), ...(folders?.found_folders ?? []), ...(folders?.uploader_folders ?? [])];
 
-  const songRow = (e: ExportRow) => (
-        <div key={e.path} className={cols} onContextMenu={(ev) => openMenu(ev, [
+  const songRow = (e: ExportRow, short = false) => (
+        <div key={e.path} className={`${cols}${short ? " song-row--short" : ""}`} onContextMenu={(ev) => openMenu(ev, [
           ...(e.upload?.url ? [
             { label: "Open on SoundCloud", onClick: () => bridge()?.openExternal?.(e.upload!.url) },
             { label: "Copy SoundCloud link", onClick: () => { copyText(e.upload!.url!); } }, "-" as const] : []),
@@ -133,7 +140,8 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
               <span className={e.sure === 0 ? "genre-guess" : undefined}
                 title={e.sure === 0
                   ? `Guessed: ${e.why}. Right-click to confirm it, or press × if it isn't from this project.\n${e.path}`
-                  : `${e.path}\n${e.why || HOW[e.match]}`}>{e.name}</span>
+                  : `${e.path}\n${e.why || HOW[e.match]}`}>{e.name}{short && <span className="pill pill--skipped song-short"
+                    title={`Shorter than ${minSecs} seconds (Settings, Folders)`}>Short</span>}</span>
             </div>
             {e.exists
               ? <SongWave path={e.path} meta={songMeta(e.name)} height={20} />
@@ -183,7 +191,15 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
         <div className={`${cols} cols-head`} aria-hidden>
           <span /><span>Song</span><span className="col-num">Exported</span><span className="col-num">Size</span>{linked && <span>SoundCloud</span>}<span />
         </div>
-      {songs.map(songRow)}
+      {songs.map((e) => songRow(e))}
+      {shortSongs.length > 0 && (
+        <button type="button" className={`${cols} stems-toggle`} aria-expanded={showShort}
+          onClick={() => setShowShort((v) => !v)}>
+          <span className="stems-toggle__icon"><Icon name={showShort ? "chevronDown" : "chevronRight"} size={14} /></span>
+          <span>{showShort ? "Hide" : "Show"} {shortSongs.length} short file{shortSongs.length === 1 ? "" : "s"} <span className="faint">· shorter than {minSecs} seconds, like test bounces</span></span>
+        </button>
+      )}
+      {showShort && shortSongs.map((e) => songRow(e, true))}
       {stems.length > 0 && (
         <button type="button" className={`${cols} stems-toggle`} aria-expanded={showStems}
           onClick={() => setShowStems((v) => !v)}>
@@ -191,7 +207,7 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
           <span>Stems <span className="faint">({stems.length}) · the separate parts: kick, vocals and so on</span></span>
         </button>
       )}
-      {showStems && stems.map(songRow)}
+      {showStems && stems.map((e) => songRow(e))}
 
       {(data?.uploads_elsewhere ?? []).map((u) => (
         <div key={u.url ?? u.title} className={cols}>

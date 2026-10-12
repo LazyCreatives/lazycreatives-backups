@@ -104,7 +104,7 @@
 [data-look="sleeve"] .pickbar .btn { border-radius: var(--radius); }
 .lib-sub { color: var(--text-faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib-state { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); min-width: 0; }
-.lib-row[role="button"] { cursor: pointer; }
+.lib-row { cursor: pointer; }
 .lib-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .lib-status { margin: 0; font-size: 13px; color: var(--text-faint); white-space: nowrap; }
 .lib-status--warn { color: var(--warn); }
@@ -156,6 +156,9 @@
 .stems-toggle > :last-child { grid-column: 2 / -1; }
 .stems-toggle__icon { display: flex; justify-content: center; color: var(--text-faint); }
 .stems-toggle:hover { color: var(--text); }
+/* a short export brought back with "Show N short files": faded and marked Short */
+.song-row--short > :not(.song-actions) { opacity: 0.6; }
+.song-short { margin-left: 8px; vertical-align: 1px; font-size: 11px; }
 
 /* "Songs not matched yet": the line on the Library, and its page */
 .lib-unmatched {

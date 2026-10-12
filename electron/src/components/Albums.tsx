@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type DragEvent,
 import {
   addSongs, albumCandidates, albumState, changeSong, groupCandidates, KINDS, kindName, releaseKind, setKind, stillWorking, withArticle, tempoJump, daysToGo, deleteAlbum, FADE_PRESETS, fadeLabel, fmtRelease,
   mainGenre, makeAlbum, MAX_FADE, moveItem, newerExport, orderSongs, putBack, readyCount, releaseDay, renameAlbum, setCrossfade,
-  setReleaseDate, songVersions, swapSong, takeOut, useAlbums, useCandidates, useSongChecks,
+  setReleaseDate, shortTitle, someOf, songVersions, swapSong, takeOut, useAlbums, useCandidates, useSongChecks,
   type Album, type AlbumCandidate, type AlbumKind, type AlbumSong, type CandidateGroup, type SongCheck,
 } from "../albums";
 import { ago } from "../companion";
@@ -74,7 +74,7 @@ function AlbumList({ list, error, look, composing, app, onOpen, onClose }: Album
   const empty = list !== null && list.length === 0;
   const next = (list ?? []).find((a) => a.release_date && daysToGo(a.release_date).endsWith("to go"));
   const sub = list === null ? "" : empty ? `Plan what comes out next. Albums here show in ${OTHER[app]} too.`
-    : `${list.length} album${list.length === 1 ? "" : "s"}${next ? ` · ${next.title} ${daysToGo(next.release_date).replace(" to go", " away")}` : ""} · shared with ${OTHER[app]}`;
+    : `${list.length} album${list.length === 1 ? "" : "s"}${next ? ` · ${shortTitle(next.title)} ${daysToGo(next.release_date).replace(" to go", " away")}` : ""} · shared with ${OTHER[app]}`;
   return (
     <div className="alb">
       <header className="page-head">
@@ -588,7 +588,7 @@ function Planner({ a, checks, newer }: { a: Album; checks: Checks; newer: Newer 
         <span className="alb-plan__label">Finished</span>
         <div className="alb-plan__what">
           <span><b>{a.songs.length - working} of {a.songs.length}</b></span>
-          {working > 0 && <span className="faint"> · still working on {a.songs.filter((s) => s.working).map((s) => s.title).join(", ")}</span>}
+          {working > 0 && <span className="faint"> · still working on {someOf(a.songs.filter((s) => s.working).map((s) => s.title))}</span>}
           {newerN > 0 && <span className="faint"> · {newerN} newer export{newerN === 1 ? "" : "s"} to use</span>}
         </div>
       </div>
@@ -597,7 +597,7 @@ function Planner({ a, checks, newer }: { a: Album; checks: Checks; newer: Newer 
         <div className="alb-plan__what" title="Checked for CDJs, USB sticks and club systems: file type, bit depth, sample rate, MP3 bitrate, clipping and loudness. Your files are only read.">
           {measured.length === 0 && checking ? <span className="faint">Checking each song…</span> : <>
             <span><b>{measured.length - toCheck.length} of {a.songs.length}</b> play anywhere</span>
-            {toCheck.length > 0 && <span className="faint"> · check {toCheck.map((s) => `${s.title} (${checks[s.path]!.problems.map((p) => p.short).join(", ")})`).join(", ")}</span>}
+            {toCheck.length > 0 && <span className="faint"> · check {someOf(toCheck.map((s) => `${s.title} (${checks[s.path]!.problems.map((p) => p.short).join(", ")})`))}</span>}
             {checking && <span className="faint"> · still checking</span>}
           </>}
         </div>

@@ -23,7 +23,7 @@ import { useEntitlement } from "../entitlement";
 import { fmtCount, fmtInterval, fmtNext, fmtDay, fmtSize } from "../format";
 import { osWords } from "../platform";
 import { useCloudFolders } from "../components/DestChoices";
-import { EXPORT_FOLDER_FROM, exportFolderRows } from "../exportFolders";
+import { EXPORT_FOLDER_FROM, SHORT_EXPORTS_DEFAULT, exportFolderRows, setShortExportSeconds, shortExportSeconds } from "../exportFolders";
 
 const api = makeApi();
 
@@ -235,6 +235,8 @@ export function Sources() {
         info="Backups always looks in each project's own folder, plus folders named like Exports or Bounces near your projects. Add any other place you save songs. It only reads these folders; it never moves or changes a file. Uploader uses the same list.">
         <ExportFolders />
       </SetRow>
+
+      <HideShortExports />
 
       <SetRow title="Sample folders"
         help={<>Where your samples live, so missing ones can be found and relinked. Your <code>~/Splice</code> folder is always searched.</>}
@@ -485,8 +487,8 @@ function YourPhone() {
                 <div key={d.id} className="row cols">
                   <Icon name="headphones" size={15} className="faint" />
                   <span className="col-trunc" title={d.name}>{d.name}</span>
-                  <span className="col-num">paired {fmtDay(d.paired_at * 1000, { year: false })}</span>
-                  <span className="col-num">seen {fmtDay(d.last_seen * 1000, { year: false, time: true })}</span>
+                  <span className="col-num">paired {fmtDay(d.paired_at * 1000, { year: "auto" })}</span>
+                  <span className="col-num">seen {fmtDay(d.last_seen * 1000, { year: "auto", time: true })}</span>
                   <span className="col-act"><Button variant="quiet" size="sm" aria-label={`Remove ${d.name}`} onClick={() => forget(d.id, d.name)}>Remove</Button></span>
                 </div>
               ))}
@@ -688,5 +690,29 @@ function LookThumb({ kind }: { kind: "crate" | "sleeve" }) {
         </div>
       ))}
     </div>
+  );
+}
+
+// Settings > Folders: hide very short exports (test bounces, clicks, one-shots) from a
+// project's songs list. Kept on this computer; a "Show N short files" button on the
+// list brings them back, and nothing is deleted. Same words as Uploader's setting.
+function HideShortExports() {
+  const [secs, setSecs] = useState(shortExportSeconds);
+  const save = (n: number) => { setShortExportSeconds(n); setSecs(n); };
+  const on = secs > 0;
+  return (
+    <SetRow title="Hide short exports" help="Keeps clicks, test bounces and one-shots out of a project's songs list. Nothing is deleted.">
+      <div className="set-inline">
+        <OnOff label="Hide short exports" on={on} onChange={(v) => save(v ? SHORT_EXPORTS_DEFAULT : 0)} />
+        <label className="set-inline" style={{ opacity: on ? 1 : 0.5 }}>
+          <span className="set-note">Shorter than</span>
+          <input type="number" min={1} max={3600} aria-label="Shortest length in seconds" disabled={!on}
+            value={secs || SHORT_EXPORTS_DEFAULT} style={{ width: 64 }}
+            onChange={(e) => save(Math.min(3600, Math.max(1, Math.round(Number(e.target.value)) || 1)))} />
+          <span className="set-note">seconds</span>
+        </label>
+      </div>
+      <p className="set-note">A project's page can still show them with "Show short files".</p>
+    </SetRow>
   );
 }

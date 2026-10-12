@@ -60,8 +60,11 @@ button.alb-pill:hover { color: var(--text); text-decoration: underline; text-und
   writing-mode: vertical-rl; transform: rotate(180deg); background: var(--surface-2); color: var(--text-dim);
   font-size: 10px; letter-spacing: .12em; text-transform: uppercase; text-align: center; padding: 8px 0;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-left: 1px solid var(--border);
+  contain: size; /* the cover sets the height; a long name is cut on the spine, not stretching it */
 }
 .albpage--sleeve .albpage__title { font-family: var(--display); font-weight: 400; font-size: 64px; line-height: .95; letter-spacing: .02em; }
+/* the big name wraps rather than being cut (long names, and Easier reading's bigger, spaced-out text) */
+.albpage--sleeve .albpage__title { white-space: normal; overflow-wrap: anywhere; text-wrap: balance; }
 .albpage--sleeve .alb-songs, .albpage--sleeve .alb-pick, .albpage--sleeve .alb-plan, .albpage--sleeve .alb-dropzone { border-radius: 14px; }
 
 /* ---- OUT NOW: a stamp on the cover from release day on (pressed once on the day) ---- */
@@ -114,7 +117,8 @@ button.alb-pill:hover { color: var(--text); text-decoration: underline; text-und
   .alb-songs--backups .alb-song-cols > :nth-child(8) { display: none; }
 }
 @container albsongs (max-width: 620px) {
-  .alb-song-cols, .alb-songs--backups .alb-song-cols { --cols: 14px 22px 28px 36px minmax(120px, 2fr) 52px 18px minmax(130px, 1fr) 32px; }
+  /* narrow, or Easier reading's big text: the name takes the spare room, "Length" fits its heading */
+  .alb-song-cols, .alb-songs--backups .alb-song-cols { --cols: 14px 22px 28px 36px minmax(120px, 1.6fr) 4.6em 18px minmax(110px, 1fr) 32px; }
   .alb-q__text, .alb-q-head, .alb-q .alb-more { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .alb-q .alb-pill { padding-left: 8px; }
 }
@@ -205,7 +209,7 @@ button.alb-pill:hover { color: var(--text); text-decoration: underline; text-und
 .alb-plan__row { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--border); }
 .alb-plan__row:first-of-type { border-top: 0; }
 .alb-plan__label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
-.alb-plan__what { min-width: 0; font-size: 13px; }
+.alb-plan__what { min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
 .alb-plan__line { margin-bottom: 8px; }
 .alb-plan__bar { position: relative; display: flex; gap: 2px; height: 10px; border-radius: 3px; background: var(--surface-2); margin-bottom: 18px; }
 .alb-plan__bar > i { display: block; height: 100%; border-radius: 2px; min-width: 3px; }

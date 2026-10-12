@@ -99,10 +99,15 @@
 .boxset__art { position: relative; aspect-ratio: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2px; background: var(--well-deep); }
 .boxset__art .cover { width: 100%; height: 100%; border-radius: 0; }
 .boxset--1 .boxset__art .cover { grid-area: 1 / 1 / 3 / 3; }
-.boxset--2 .boxset__art .cover { grid-row: 1 / 3; }
-.boxset--3 .boxset__art .cover:first-child { grid-row: 1 / 3; }
+/* two or three records: each cover keeps its own square, so word covers keep every letter
+   (a cover stretched down a half-width column lost its first and last letters);
+   two sit corner to corner, three leave the last corner empty */
+.boxset--2 .boxset__art .cover:nth-child(2) { grid-area: 2 / 2; }
 .boxset .sleeve__name { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; line-height: 1.2; }
 .boxset .sleeve__sub .vlabel { font-size: 12px; }
+/* the counts wrap onto a second line rather than stopping mid-word (big text, narrow cards) */
+.boxset .sleeve__sub { white-space: normal; overflow: visible; }
+.boxset .sleeve__sub .vlabel { overflow-wrap: break-word; }
 
 /* ---- dig view ---- */
 .crate-dig { position: relative; }

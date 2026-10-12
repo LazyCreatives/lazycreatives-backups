@@ -44,6 +44,11 @@ html[data-reading] :is(.display, .lc-brand__name, .cw-head__name, .albpage__titl
   font-family: var(--font); font-weight: 700;
 }
 
+/* Bigger, wider letters fit fewer on a line: a long album name wraps (up to three lines) instead of being cut to a word. */
+html[data-reading] .albpage__title {
+  white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+}
+
 /* No capitals-only labels and no slanted text. Drawn covers (svg) stay as they are. */
 html[data-reading] :not(svg, svg *) { text-transform: none !important; font-style: normal !important; }
 

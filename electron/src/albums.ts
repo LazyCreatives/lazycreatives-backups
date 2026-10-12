@@ -390,3 +390,16 @@ export function moveItem<T>(list: T[], from: number, to: number): T[] {
   out.splice(to, 0, it);
   return out;
 }
+
+// A few names from a long list, then how many more: the album plan stays a few lines
+// however many songs the album has (each song's own row says the rest).
+export function someOf(names: string[], keep = 3): string {
+  if (names.length <= keep + 1) return names.join(", ");
+  return `${names.slice(0, keep).join(", ")} and ${names.length - keep} more`;
+}
+
+// An album name short enough to sit in a sentence (cut between letters, never inside an emoji).
+export function shortTitle(t: string, max = 40): string {
+  const ch = Array.from(t);
+  return ch.length > max ? `${ch.slice(0, max - 1).join("").trimEnd()}…` : t;
+}

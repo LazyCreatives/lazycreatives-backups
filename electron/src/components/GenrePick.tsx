@@ -266,10 +266,11 @@ export function GenreChip({ genre, setByYou, onClick, className = "" }: {
     : "No genre yet. Click to set one";
   return (
     <button type="button" className={`genrechip${setByYou ? " genrechip--set" : ""} ${className}`.trim()}
-      title={label} aria-label={`${genre || "Set genre"}${genre ? (setByYou ? " set by you" : " guessed") : ""}. ${label}`} onClick={(e) => { e.stopPropagation(); onClick(); }}>
+      title={label} onClick={(e) => { e.stopPropagation(); onClick(); }}>
       <span className="genrechip__dot" style={{ background: genreColor(genre) }} />
       <span className={setByYou || !genre ? "" : "genre-guess"}>{genre || "Set genre"}</span>
-      {genre && <span className="genrechip__how">{setByYou ? "set by you" : "guessed"}</span>}
+      {genre && <>{" "}<span className="genrechip__how">{setByYou ? "set by you" : "guessed"}</span></>}
+      <span className="sr-only">. {label}</span>
       <svg className="genrechip__pen" viewBox="0 0 16 16" width="11" height="11" aria-hidden>
         <path d="M10.5 2.5l3 3L6 13H3v-3z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
       </svg>

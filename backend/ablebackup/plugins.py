@@ -276,3 +276,76 @@ def used_in(plugins: list[dict], projects: list[dict]) -> None:
                     names.append(n)
         row["used_in"] = len(names)
         row["used_by"] = sorted(names, key=str.lower)[:8]
+
+
+# Plug-ins that come with the music program itself: never "missing", because the
+# program brings them along wherever the project opens. Compared with ``key``.
+_STOCK = {
+    "flstudio": {
+        "3xosc", "autogun", "beepmap", "boobass", "dashboard", "directwave", "drumaxx", "drumpad",
+        "edison", "envelopecontroller", "fastdist", "flex", "fpc", "flkeys", "formulacontroller",
+        "gms", "grossbeat", "harmless", "harmor", "kepler", "keplerexo", "layer", "maximus",
+        "midiout", "minisynth", "morphine", "ogun", "patcher", "plucked", "poizone", "sakura",
+        "sawer", "simsynth", "slicex", "slicer", "soundgoodizer", "sytrus", "toxicbiohazard",
+        "transistorbass", "transientprocessor", "vfxkeyboardsplitter", "vocodex", "wasp",
+        "waspxt", "wavetraveller", "pitcher", "newtone", "newtime", "hardcore", "effector",
+        "convolver", "parametriceq2", "frequencyshifter", "frequencysplitter", "luxeverb",
+        "multibanddelay", "vintagechorus", "vintagephaser", "pitchshifter", "distructor",
+        "emaxxer", "spectrumanalyzer", "audiorecorder", "channelsampler", "audioclip",
+        "automationclip", "sampler", "fruitykick", "fruitydance", "vfxsequencer", "zgameeditorvisualizer",
+        "ftpdelay", "flstudiomobile", "pitchresonator", "vintagechorus", "gopher",
+    },
+    "studioone": {
+        "proeq", "proeq2", "proeq3", "compressor", "fatchannel", "fatchannelxt", "limiter", "limiter2",
+        "gate", "expander", "tricomp", "multibanddynamics", "channelstrip", "roomreverb", "mixverb",
+        "openair", "openair2", "analogdelay", "beatdelay", "groovedelay", "autofilter", "chorus",
+        "flange", "phaser", "rotor", "redlightdist", "ampire", "ampirext", "binauralpan",
+        "dualpan", "mixtool", "tuner", "spectrummeter", "scope", "phasemeter", "levelmeter",
+        "pipeline", "pipelinext", "pipelinestereo", "xtrem", "bitcrusher", "analogdelay",
+        "vocoder", "autoshaper", "splitter", "eventfx", "mojito", "maitai", "presence",
+        "presencext", "sampleone", "sampleonext", "impact", "impactxt", "mojitosynth",
+        "deepflight", "fxchain", "notefx", "inputfilter", "multiinstrument",
+    },
+}
+
+
+def _stock(name: str, daw: str) -> bool:
+    k = key(name)
+    if k.startswith("fruity") and daw == "flstudio":
+        return True
+    if daw == "reaper" and (k.startswith("rea") or name.lower().startswith(("js:", "jsfx"))):
+        return True   # ReaPlugs and JS effects install with Reaper
+    return k in _STOCK.get(daw, set())
+
+
+def missing(plugins: list[dict], projects: list[dict]) -> list[dict]:
+    """Plug-ins scanned projects use that aren't on this computer: one row per name,
+    with how many projects use it and a few of their names (``used_by``). A name
+    counts as here under the same matching as ``used_in``; plug-ins that come with
+    the project's own music program are left out."""
+    have: set[str] = set()
+    for row in plugins:
+        k, mk = row["id"], key(row.get("maker") or "")
+        have.add(k)
+        if mk and k.startswith(mk) and len(k) > len(mk) + 1:
+            have.add(k[len(mk):])
+        if mk:
+            have.add(mk + k)
+    out: dict[str, dict] = {}
+    for p in projects:
+        daw = (p.get("daw") or "").lower()
+        for n in p.get("plugins") or []:
+            k = key(n)
+            if not k or k in have or _stock(n, daw):
+                continue
+            row = out.setdefault(k, {"id": k, "name": _clean_name(re.sub(r"\s*\([^)]*\)\s*$", "", n)) or n,
+                                     "used_by": []})
+            name = p.get("name") or ""
+            if name not in row["used_by"]:
+                row["used_by"].append(name)
+    rows = list(out.values())
+    for r in rows:
+        r["used_in"] = len(r["used_by"])
+        r["used_by"] = sorted(r["used_by"], key=str.lower)[:8]
+    rows.sort(key=lambda r: (-r["used_in"], r["name"].lower()))
+    return rows

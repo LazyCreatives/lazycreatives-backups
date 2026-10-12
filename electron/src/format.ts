@@ -107,12 +107,13 @@ export function shortPath(p: string, keep = 2): string {
 // A plain calendar date (and optionally the time), in the computer's own date and
 // clock format: "7 Oct 2026" or "Oct 7, 2026", "14:05" or "2:05 PM". Takes a Date,
 // epoch milliseconds, or null. Use this rather than naming a locale on a screen.
-export function fmtDay(when: Date | number | null | undefined, opts: { time?: boolean; year?: boolean } = {}): string {
+// year: "auto" shows the year only when it isn't this year.
+export function fmtDay(when: Date | number | null | undefined, opts: { time?: boolean; year?: boolean | "auto" } = {}): string {
   if (when === null || when === undefined || when === 0) return "—";
   const d = typeof when === "number" ? new Date(when) : when;
   if (isNaN(d.getTime())) return "—";
   const o: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" };
-  if (opts.year !== false) o.year = "numeric";
+  if (opts.year === "auto" ? d.getFullYear() !== new Date().getFullYear() : opts.year !== false) o.year = "numeric";
   if (opts.time) { o.hour = "numeric"; o.minute = "2-digit"; }
   return d.toLocaleString([], o);
 }

@@ -43,11 +43,11 @@ export function MoreLikeThis({ seed, all, look, onPick, onClose }: {
     return (
       <div className="mlt mlt--sleeve">
         {head}
-        <div className="mlt__strip" role="list">
+        <div className="mlt__strip" role="group" aria-label="More like this">
           {matches.map((m) => {
             const g = genreOf(m.project);
             return (
-              <button key={m.project.id} role="listitem" className="mlt__card" onClick={() => onPick(m.project)}
+              <button key={m.project.id} type="button" className="mlt__card" onClick={() => onPick(m.project)}
                 aria-label={`${m.project.name}, ${m.score}% match. ${m.why.join(", ")}`}>
                 <span className="mlt__art">
                   <Cover name={m.project.name} genre={g} size={150} />

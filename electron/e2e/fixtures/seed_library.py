@@ -12,7 +12,13 @@ Creates <workdir>/home (a fake $HOME) holding:
   about half of the projects, a few projects with missing samples, and file times
   spread over the last ~10 months. Also some installed plug-ins (.vst3, .clap, .vst,
   .lv2 and "Mac Plugins/Components") for the Plugins page.
-Stdlib only; deterministic (seeded RNG).
+Also, for the extras (none of which change the main pictures):
+  - a few projects use plug-ins that aren't installed (Plugins > Missing from this computer),
+  - Velvet Static has an 8-second test bounce next to its song (hidden as a short export),
+  - Music/Logic/Moonlit Keys.logicx, a Logic project in C minor (its key shows on the
+    project page). Music/Logic is not one of the folders the picture tests scan; add it
+    as a project folder to see it.
+Stdlib only; deterministic (seeded RNG; the extras don't draw from it).
 """
 import gzip
 import math
@@ -68,6 +74,17 @@ PROJECTS = [
     ("Untitled Beat 17", "als", 92, False, False, 6),
     ("Cassette Daydream", "rpp", 82, True, False, 120),
 ]
+
+# Plug-ins some projects use that are NOT installed (see INSTALLED): the Plugins page's
+# "Missing from this computer" list. Put first, so every one is on a track.
+NOT_INSTALLED = {
+    "Neon Rain": ["Sylenth1", "Kickstart 2"],
+    "Night Market": ["Kickstart 2", "CamelCrusher"],
+    "Wobble Science": ["Sylenth1", "Kickstart 2", "Valhalla Supermassive"],
+    "Untitled Beat 17": ["Kickstart 2"],
+}
+SHORT_BOUNCE = "Velvet Static"   # gets "<name> test bounce.wav", 8 seconds long
+LOGIC_PROJECT = ("Moonlit Keys", 96, "C", "minor", 14)   # name, bpm, key, mode, tracks
 
 PLUGINS = ["Serum", "Vital", "FabFilter Pro-Q 3", "Valhalla VintageVerb", "Soundtoys Decapitator",
            "OTT", "Kontakt 7", "Omnisphere", "RC-20 Retro Color", "Pigments", "Diva",
@@ -126,6 +143,38 @@ def wav_song(path: Path, bpm: float, seconds: float = 48.0, rate: int = 8000) ->
         w.setsampwidth(2)
         w.setframerate(rate)
         w.writeframes(out.tobytes())
+
+
+def wav_tone(path: Path, seconds: float, rate: int = 8000) -> None:
+    """A plain fading tone (no random numbers, so the seeded library stays the same)."""
+    n = int(seconds * rate)
+    out = array("h", (int(9000 * math.exp(-3 * i / n) * math.sin(2 * math.pi * 110 * i / rate)) for i in range(n)))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(out.tobytes())
+
+
+def seed_logic(music: Path) -> Path:
+    """A Logic package: Alternatives/000/ProjectData plus MetaData.plist with the tempo, key
+    and track count, and one export next to it."""
+    name, bpm, key, mode, tracks = LOGIC_PROJECT
+    pkg = music / "Logic" / f"{name}.logicx"
+    alt = pkg / "Alternatives" / "000"
+    alt.mkdir(parents=True, exist_ok=True)
+    (alt / "ProjectData").write_bytes(b"\0" * 64)
+    with (alt / "MetaData.plist").open("wb") as fh:
+        plistlib.dump({"BeatsPerMinute": bpm, "SongKey": key, "SongGenderKey": mode,
+                       "NumberOfTracks": tracks, "AudioFiles": []}, fh)
+    (pkg / "Resources").mkdir(exist_ok=True)
+    (pkg / "Resources" / "ProjectInformation.plist").write_bytes(b"")
+    wav_tone(music / "Logic" / f"{name} mix.wav", 40.0)
+    ts = NOW - 8 * DAY
+    for p in [alt / "ProjectData", alt / "MetaData.plist", music / "Logic" / f"{name} mix.wav"]:
+        set_times(p, ts)
+    return pkg
 
 
 def als_xml(bpm: float, tracks: int, plugins: list[str], refs: list[tuple[str, str]]) -> str:
@@ -254,7 +303,7 @@ def main(workdir: str) -> None:
     made = 0
     for name, daw, bpm, exported, missing, age in PROJECTS:
         ts = NOW - age * DAY - RNG.randint(0, 20000)
-        plugins = RNG.sample(PLUGINS, RNG.randint(2, 6))
+        plugins = NOT_INSTALLED.get(name, []) + RNG.sample(PLUGINS, RNG.randint(2, 6))
         tracks = RNG.randint(6, 24)
         local_names = [f"{w}.wav" for w in RNG.sample(SAMPLE_WORDS["drums"], 3) + RNG.sample(SAMPLE_WORDS["music"], 3)]
         shared = RNG.sample(splice_files, RNG.randint(2, 5))
@@ -301,9 +350,14 @@ def main(workdir: str) -> None:
                 ep = folder / f"{name} {v}.wav"
                 wav_song(ep, bpm, seconds=RNG.uniform(36, 60))
                 set_times(ep, ts + 600 + j * 3600)
+            if name == SHORT_BOUNCE:   # a test bounce, saved before the song
+                tb = folder / f"{name} test bounce.wav"
+                wav_tone(tb, 8.0)
+                set_times(tb, ts + 300)
         set_times(folder, ts)
         made += 1
-    print(f"seeded {made} projects under {music}")
+    seed_logic(music)
+    print(f"seeded {made} projects under {music} (and a Logic project in {music / 'Logic'})")
     print(f"seeded {seed_plugins(home)} plug-ins under {home}")
 
 

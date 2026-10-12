@@ -354,8 +354,7 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
             {recent.map((it) => {
               const m = meta(it);
               return (
-                <div key={it.project_id} className="sleeve" data-nav-key={it.name} role="button" tabIndex={0} onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}
-                  onKeyDown={rowKey(() => onOpenProject(it.name))}>
+                <div key={it.project_id} className="sleeve" data-nav-key={it.name} onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}>
                   <div className="sleeve__art">
                     <Cover name={it.name} genre={it.genre} />
                     {pins.includes(it.project_id) && <span className="pin-badge" title="Pinned"><Icon name="starFilled" size={13} /></span>}
@@ -363,7 +362,7 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
                       <PlayButton path={it.latest_export.path} title={it.latest_export.name} meta={m} size={34} className="sleeve__play" />}
                   </div>
                   <div className="sleeve__meta">
-                    <div className="sleeve__name" title={it.name}>{it.name}</div>
+                    <button type="button" className="rowopen"><span className="sleeve__name" title={it.name}>{it.name}</span></button>
                     <div className="sleeve__sub">{subLine(it) || "No genre yet"}</div>
                   </div>
                 </div>
@@ -378,11 +377,10 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
           {changedHead}
           <div className="needcards">
             {changedShown.map((it) => (
-              <div key={"c" + it.project_id} className="needcard" data-nav-key={it.name} role="button" tabIndex={0} onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}
-                onKeyDown={rowKey(() => onOpenProject(it.name))}>
+              <div key={"c" + it.project_id} className="needcard" data-nav-key={it.name} onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}>
                 <Cover name={it.name} genre={it.genre} label={false} />
                 <div className="needcard__body">
-                  <div className="sleeve__name" title={it.name}>{it.name}</div>
+                  <button type="button" className="rowopen"><span className="sleeve__name" title={it.name}>{it.name}</span></button>
                   <div className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Changed</div>
                   {backupButton(it)}
                 </div>
@@ -397,11 +395,10 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
           {needsHead}
           <div className="needcards">
             {lookShown.map((it) => (
-              <div key={it.project_id} className="needcard" data-nav-key={it.name} role="button" tabIndex={0} onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}
-                onKeyDown={rowKey(() => onOpenProject(it.name))}>
+              <div key={it.project_id} className="needcard" data-nav-key={it.name} onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}>
                 <Cover name={it.name} genre={it.genre} label={false} />
                 <div className="needcard__body">
-                  <div className="sleeve__name" title={it.name}>{it.name}</div>
+                  <button type="button" className="rowopen"><span className="sleeve__name" title={it.name}>{it.name}</span></button>
                   <div className="warn-line"><span className="dot dot--warn" />{fmtCap(it.missing_count)} {it.missing_count === 1 ? "sample" : "samples"} missing</div>
                   {fixButtons(it, "Find missing samples")}
                 </div>
@@ -410,13 +407,12 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
             {failedShown.map((a) => {
               const it = byName.get(a.project_name);
               return (
-                <div key={"f" + a.project_name} className="needcard" data-nav-key={a.project_name} role="button" tabIndex={0} onClick={() => onOpenProject(a.project_name)}
-                  onKeyDown={rowKey(() => onOpenProject(a.project_name))}>
+                <div key={"f" + a.project_name} className="needcard" data-nav-key={a.project_name} onClick={() => onOpenProject(a.project_name)}>
                   <Cover name={a.project_name} genre={it?.genre} label={false} />
                   <div className="needcard__body">
                     <div className="sleeve__name" title={a.project_name}>{a.project_name}</div>
                     <div className="warn-line warn-line--error" title={a.reason}><span className="dot dot--error" />{a.reason}</div>
-                    <span className="col-act"><button className="btn btn--sm">Open</button></span>
+                    <span className="col-act"><button type="button" className="btn btn--sm" aria-label={`Open ${a.project_name}`}>Open</button></span>
                   </div>
                 </div>
               );
@@ -463,9 +459,9 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
               <span className={`deckcard__big${total >= 1000 ? " deckcard__big--long" : ""}`}><Rolling value={okCount} /><small>/<Rolling value={total} /></small></span>
               <span className="deckcard__lbl deckcard__lbl--r">{changedItems.length + lookCount > 0 ? `${fmtCount(changedItems.length + lookCount)} to do` : "All good"}</span>
             </div>
-            <div className={`spines${spines.length > 40 ? " spines--tight" : ""}`} role="list" aria-label="One line per project">
+            <div className={`spines${spines.length > 40 ? " spines--tight" : ""}`} role="group" aria-label="One line per project">
               {spines.map((sp, i) => (
-                <button key={i} role="listitem" className={`spine spine--${sp.tone}`}
+                <button key={i} type="button" className={`spine spine--${sp.tone}`}
                   title={sp.names.length === 1 ? `${sp.names[0]}: ${toneWord[sp.tone]}` : `${sp.names.length} projects ${toneWord[sp.tone]}`}
                   aria-label={sp.names.length === 1 ? `${sp.names[0]}, ${toneWord[sp.tone]}` : `${sp.names.length} projects ${toneWord[sp.tone]}`}
                   onClick={() => sp.names.length === 1 ? onOpenProject(sp.names[0]) : onOpenHistory()} />
@@ -485,12 +481,12 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
               {hasNeeds ? (<>
                 {changedItems.length > 0 && <>{changedHead}<div className="table table--crate">
                   {changedShown.map((it) => (
-                    <div key={"c" + it.project_id} data-nav-key={it.name} className="row cols needs-cols" role="button" tabIndex={0}
-                      onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)} onKeyDown={rowKey(() => onOpenProject(it.name))}>
+                    <div key={"c" + it.project_id} data-nav-key={it.name} className="row cols needs-cols"
+                      onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}>
                       <span className="stripe" style={{ background: genreColor(it.genre) }} />
                       <Cover name={it.name} genre={it.genre} size={36} />
                       <span style={{ minWidth: 0 }}>
-                        <div className="col-trunc" style={{ fontWeight: 500 }} title={it.name}>{it.name}</div>
+                        <button type="button" className="rowopen"><span className="col-trunc" style={{ fontWeight: 500 }} title={it.name}>{it.name}</span></button>
                         <div className="lib-sub">{subLine(it)}</div>
                       </span>
                       <span className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Changed</span>
@@ -500,12 +496,12 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
                 </div>{changedMore}</>}
                 {lookRows > 0 && <div style={changedItems.length > 0 ? { marginTop: 22 } : undefined}>{needsHead}<div className="table table--crate">
                   {lookShown.map((it) => (
-                    <div key={it.project_id} data-nav-key={it.name} className="row cols needs-cols" role="button" tabIndex={0}
-                      onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)} onKeyDown={rowKey(() => onOpenProject(it.name))}>
+                    <div key={it.project_id} data-nav-key={it.name} className="row cols needs-cols"
+                      onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}>
                       <span className="stripe" style={{ background: genreColor(it.genre) }} />
                       <Cover name={it.name} genre={it.genre} size={36} />
                       <span style={{ minWidth: 0 }}>
-                        <div className="col-trunc" style={{ fontWeight: 500 }} title={it.name}>{it.name}</div>
+                        <button type="button" className="rowopen"><span className="col-trunc" style={{ fontWeight: 500 }} title={it.name}>{it.name}</span></button>
                         <div className="lib-sub">{subLine(it)}</div>
                       </span>
                       <span className="warn-line" title={`${fmtCount(it.missing_count)} ${it.missing_count === 1 ? "sample" : "samples"} missing`}><span className="dot dot--warn" />{fmtCap(it.missing_count)} {it.missing_count === 1 ? "sample" : "samples"} missing</span>
@@ -515,13 +511,13 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
                   {failedShown.map((a) => {
                     const it = byName.get(a.project_name);
                     return (
-                      <div key={"f" + a.project_name} data-nav-key={a.project_name} className="row cols needs-cols" role="button" tabIndex={0}
-                        onClick={() => onOpenProject(a.project_name)} onKeyDown={rowKey(() => onOpenProject(a.project_name))}>
+                      <div key={"f" + a.project_name} data-nav-key={a.project_name} className="row cols needs-cols"
+                        onClick={() => onOpenProject(a.project_name)}>
                         <span className="stripe" style={{ background: "var(--danger)" }} />
                         <Cover name={a.project_name} genre={it?.genre} size={36} />
                         <span className="col-trunc" style={{ fontWeight: 500 }} title={a.project_name}>{a.project_name}</span>
                         <span className="warn-line warn-line--error" title={a.reason}><span className="dot dot--error" />{a.reason}</span>
-                        <span className="col-act"><button className="btn btn--sm">Open</button></span>
+                        <span className="col-act"><button type="button" className="btn btn--sm" aria-label={`Open ${a.project_name}`}>Open</button></span>
                       </div>
                     );
                   })}

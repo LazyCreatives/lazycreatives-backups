@@ -4,7 +4,7 @@
 // Linux, plus any folders you add at the bottom of the page.
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { makeApi } from "../api";
-import type { PluginFormat, PluginList, PluginRow } from "../types";
+import type { MissingPlugin, PluginFormat, PluginList, PluginRow } from "../types";
 import { PageHeader } from "../components/PageHeader";
 import { Icon } from "../components/Icon";
 import { EmptyState } from "../components/SlothSpot";
@@ -24,7 +24,8 @@ const FORMAT_HELP: Record<PluginFormat, string> = {
   AAX: "AAX: Pro Tools only",
   LV2: "LV2: mostly on Linux",
 };
-type Use = "any" | "used" | "unused";
+// "missing": plug-ins your projects use that aren't on this computer (a flat list: their maker isn't known)
+type Use = "any" | "used" | "unused" | "missing";
 type SortKey = "name" | "used";
 type PlugSort = { key: SortKey; dir: 1 | -1 };
 // Inside each folder: name A to Z unless you click "Used in"; kept between launches.
@@ -108,6 +109,13 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
       && words.every((w) => `${p.name} ${p.maker} ${p.kind}`.toLowerCase().includes(w)));
     return sortPlugins(rows, sort);
   }, [list, q, format, use, sort]);
+  const missing = data?.missing ?? [];
+  const missingShown = useMemo(() => {
+    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const rows = missing.filter((p) => words.every((w) => p.name.toLowerCase().includes(w)));
+    return [...rows].sort((a, b) => (sort.key === "used" ? (a.used_in - b.used_in) * sort.dir : text(a.name, b.name) * sort.dir) || text(a.name, b.name));
+  }, [missing, q, sort]);
+  const showMissing = use === "missing";
   const filtered = !!q.trim() || format !== "all" || use !== "any";
   const sortBy = (key: SortKey) => setSortState((s) => {
     const n: PlugSort = s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "used" ? -1 : 1 };
@@ -195,6 +203,40 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
     );
   };
 
+  // A plug-in your projects use that isn't here: its name and how many projects use it;
+  // open it for those projects.
+  const missingRow = (p: MissingPlugin) => {
+    const isOpen = open === `missing:${p.id}`;
+    const toggle = () => setOpen(isOpen ? null : `missing:${p.id}`);
+    return (
+      <div key={p.id} className={`plug-item${isOpen ? " plug-item--open" : ""}`}>
+        <div className="row cols plug-row plug-miss-cols" role="button" tabIndex={0}
+          aria-expanded={isOpen} onClick={toggle}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}>
+          {look === "crate"
+            ? <span className="stripe plug-stripe plug-stripe--missing" title="Not on this computer" />
+            : <span className="plug-tile plug-tile--missing" aria-hidden>{initials(p.name)}</span>}
+          <div className="lib-name col-trunc" title={p.name}>{p.name}</div>
+          <span className="col-num" title={`Used in ${p.used_by.join(", ")}${p.used_in > p.used_by.length ? "…" : ""}`}>
+            {plural(p.used_in, "project")}
+          </span>
+          <Icon name="chevronDown" size={14} className="plug-chev" />
+        </div>
+        {isOpen && (
+          <div className="plug-detail plug-detail--one">
+            <div className="plug-detail__col">
+              <div className="eyebrow">Used in</div>
+              <div className="plug-used">
+                {p.used_by.map((n) => <button key={n} className="tag plug-proj" onClick={() => onOpenProject(n)} title={`Open ${n}`}>{n}</button>)}
+                {p.used_in > p.used_by.length && <span className="faint">and {fmtCount(p.used_in - p.used_by.length)} more</span>}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const sortButton = (k: SortKey, label: string, cls = "") => {
     const on = sort.key === k;
     return (
@@ -219,11 +261,12 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
     const toggle = () => { if (!filtered) toggleFolder(key); };
     return (
       <div className={`row plug-dir plug-dir--${level}${on ? " plug-dir--open" : ""}`} role="button" tabIndex={0} aria-expanded={on}
-        aria-label={`${name}, ${plural(count, "plugin")}`} onClick={toggle}
+        onClick={toggle}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}>
         <Icon name="chevronRight" size={14} className="plug-dir__chev" />
         <Icon name="folder" size={level === 1 ? 17 : 15} className="plug-dir__icon" />
         <span className={`plug-dir__name col-trunc${faint ? " faint" : ""}`} title={name}>{name}</span>
+        <span className="sr-only">, </span>
         <span className="plug-dir__n faint">{plural(count, "plugin")}</span>
       </div>
     );
@@ -250,14 +293,14 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
                   onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setQ(""); }} />
                 {q && <button className="lib-search__x" aria-label="Clear search" onClick={() => setQ("")}><Icon name="close" size={13} /></button>}
               </label>
-              <div className="seg" role="group" aria-label="Format">
+              {!showMissing && <div className="seg" role="group" aria-label="Format">
                 {(["all", ...formats] as (PluginFormat | "all")[]).map((f) => (
                   <button key={f} className={`seg__opt${format === f ? " seg__opt--on" : ""}`} onClick={() => setFormat(f)}
                     title={f === "all" ? undefined : FORMAT_HELP[f]}>
                     {f === "all" ? "All" : f} <span className="lib-find__n">{fmtCount(countBy(f))}</span>
                   </button>
                 ))}
-              </div>
+              </div>}
             </div>
             <div className="lib-find__row">
               {!noProjects && (
@@ -266,10 +309,12 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
                   <option value="any">Used or not</option>
                   <option value="used">Used in your projects</option>
                   <option value="unused">Not used in any project</option>
+                  <option value="missing">Missing from this computer ({fmtCount(missing.length)})</option>
                 </select>
               )}
-              <span className="lib-find__count">
-                {filtered ? <>Showing <b>{fmtCount(shown.length)}</b> of {plural(list.length, "plugin")}</> : plural(list.length, "plugin")}
+              <span className={`lib-find__count${showMissing ? " plug-count--wrap" : ""}`}>
+                {showMissing ? <>{q.trim() ? <>Showing <b>{fmtCount(missingShown.length)}</b> of </> : null}{plural(missing.length, "plugin")} your projects use that {missing.length === 1 ? "isn't" : "aren't"} here</>
+                  : filtered ? <>Showing <b>{fmtCount(shown.length)}</b> of {plural(list.length, "plugin")}</> : plural(list.length, "plugin")}
                 {" · "}looked {fmtDay(data.scanned_at * 1000, { time: true })}
               </span>
               {filtered && (
@@ -280,7 +325,26 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
             </div>
           </div>
 
-          {!shown.length ? (
+          {showMissing ? (
+            !missing.length ? (
+              <EmptyState pose="thumbs-up" title="Nothing missing">Every plugin your projects use is on this computer.</EmptyState>
+            ) : !missingShown.length ? (
+              <EmptyState pose="searching" title="No plugins match">Try fewer words, or clear the filters.</EmptyState>
+            ) : (
+              <>
+                <div className={`table plug-table plug-missing${look === "crate" ? " table--crate" : ""}`}>
+                  <div className="row cols cols-head plug-miss-cols">
+                    <span />
+                    {sortButton("name", "Plugin")}
+                    {sortButton("used", "Used in", " col-num")}
+                    <span />
+                  </div>
+                  {missingShown.map(missingRow)}
+                </div>
+                {!data.complete && <p className="faint plug-note">Backups couldn't look through every plugin folder, so some of these may be on this computer after all.</p>}
+              </>
+            )
+          ) : !shown.length ? (
             <EmptyState pose="searching" title="No plugins match">Try fewer words, or clear the filters.</EmptyState>
           ) : (
             <>

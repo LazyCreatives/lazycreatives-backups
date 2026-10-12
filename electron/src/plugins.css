@@ -6,7 +6,7 @@
 .plug-table { --fmts-w: calc(var(--fmts, 4) * var(--fmt-w) + (var(--fmts, 4) - 1) * 4px); }
 /* stripe (Crate) or tile (Sleeve) · plugin · formats · used in · where · open */
 .plug-cols { --cols: var(--lead, 4px) minmax(0, 1.6fr) var(--fmts-w) 104px minmax(0, 1.2fr) 16px; }
-[data-look="sleeve"] .plug-cols { --lead: 34px; }
+[data-look="sleeve"] :is(.plug-cols, .plug-miss-cols) { --lead: 34px; }
 /* the default 1100px window drops Where; it shows from 1101px */
 @media (max-width: 1100px) {
   .plug-cols { --cols: var(--lead, 4px) minmax(0, 1.6fr) var(--fmts-w) 104px 16px; }
@@ -80,13 +80,28 @@
 .plug-group--kind .plug-dir__icon { color: var(--kind); }
 .plug-dir__name { min-width: 0; font-weight: 600; }
 .plug-dir--2 .plug-dir__name { font-weight: 500; }
-.plug-dir__n { flex: none; margin-left: auto; font-size: 12px; }
+/* how many plugins sit inside, next to the folder's name (the "Used in" column is for projects) */
+.plug-dir__n { flex: none; font-size: 12px; }
 /* the plugins sit one step in from their type folder; the headings line up with them */
 .plug-table.plug-tree .row { margin: 0; border: 0; border-radius: 0; }
 .plug-table.plug-tree .plug-dir--1 { padding-left: 14px; }
 .plug-table.plug-tree .plug-dir--2 { padding-left: calc(14px + var(--step)); }
-.plug-table.plug-tree > .cols-head, .plug-table.plug-tree .plug-item > .plug-row { padding-left: calc(14px + 2 * var(--step) + 8px); }
+.plug-table.plug-tree .plug-item > .plug-row { padding-left: calc(14px + 2 * var(--step) + 8px); }
+/* the "Plugin" heading starts where the makers' names start, like a file browser's Name column */
+.plug-table.plug-tree > .cols-head { padding-left: calc(14px + 2 * var(--step) - 7px - var(--lead, 4px) + 4px); }
 .plug-table.plug-tree .plug-group > .row, .plug-table.plug-tree .plug-item { border-top: 1px solid var(--border); }
 .table--crate.plug-tree > .plug-group > .plug-dir--1 { background: var(--zebra-crate); border-top-color: var(--border-strong); }
 [data-look="sleeve"] .plug-dir--1 .plug-dir__name { font-size: 16px; letter-spacing: -0.01em; }
 .plug-tree .plug-detail { padding-left: calc(14px + 2 * var(--step) + 8px); }
+
+/* Missing from this computer: one flat list (projects keep only a plug-in's name, so
+   there are no maker folders). stripe or tile · plugin · used in · open */
+.plug-miss-cols { --cols: var(--lead, 4px) minmax(0, 1fr) 104px 16px; }
+.plug-stripe--missing { background: var(--warn); }
+.plug-tile--missing { --kind: var(--warn); }
+.plug-table.plug-missing .row { margin: 0; border: 0; border-radius: 0; }
+.plug-table.plug-missing .plug-item { border-top: 1px solid var(--border); }
+.plug-detail--one { grid-template-columns: minmax(0, 1fr); }
+[data-look="sleeve"] .plug-missing .plug-detail { padding-left: 62px; }
+/* its count line is longer than the others: it may take two lines in a narrow window or with Easier reading */
+.lib-find__count.plug-count--wrap { white-space: normal; min-width: 0; }

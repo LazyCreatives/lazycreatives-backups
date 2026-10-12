@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from ablebackup import covers, entitlement, exports, markers, phone, playback, plugins, tidy, waveform
+from ablebackup import audiolen, covers, entitlement, exports, markers, phone, playback, plugins, tidy, waveform
 from ablebackup.albums import LOSSLESS, Albums
 from ablebackup.samples import album_skip as album_song_skip, seconds_cached as song_seconds
 from ablebackup.albums_api import make_router as albums_router
@@ -322,7 +322,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
              "dir": p["project_dir"], "daw": p["daw"], "owner": p.get("owner", "system"),
              "size": p["total_size"], "mtime": p["mtime"], "missing_count": p["missing_count"],
              "genre": p.get("genre"), "genre_emoji": p.get("genre_emoji"), "bpm": p.get("bpm"),
-             "tracks": p.get("tracks"),
+             "tracks": p.get("tracks"), "music_key": p.get("music_key"),
              "plugins": json.dumps(p.get("plugins") or []) if p.get("plugins") else None}
             for p in projects
         ], default_timestamp())
@@ -431,6 +431,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         rows = app.state.catalog.exports_for(project_id)
         for r in rows:
             r["exists"] = os.path.isfile(r["path"])
+            # length in seconds from the header, for hiding very short exports
+            r["seconds"] = audiolen.seconds(r["path"]) if r["exists"] else None
         elsewhere = exports.attach_uploads(rows, project_id,
                                            follow=tidy.follower(app.state.catalog),
                                            follow_id=tidy.id_follower(app.state.catalog))
@@ -481,7 +483,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         rows = [dict(r) for r in found["plugins"]]
         projects = cat.library()
         plugins.used_in(rows, projects)
-        return {**found, "plugins": rows, "projects_scanned": len(projects)}
+        return {**found, "plugins": rows, "projects_scanned": len(projects),
+                "missing": plugins.missing(rows, projects)}
 
     @app.get("/api/plugins", dependencies=[Depends(require_token)])
     def plugin_list(refresh: bool = False):

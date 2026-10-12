@@ -331,6 +331,7 @@ a { color: var(--accent); }
   display: inline-flex; align-items: center; height: 20px; padding: 0 6px; flex-shrink: 0;
   border: 1px solid var(--border-strong); border-radius: 4px; background: none;
   font: 500 12px var(--font-mono); color: var(--text-dim); letter-spacing: 0; text-transform: none; white-space: nowrap;
+  max-width: 100%; /* a long name inside goes in a .col-trunc span, which then ends in … */
 }
 [data-look="sleeve"] .tag { border-radius: var(--radius-cut); }
 /* filter chips (toggle on/off) */
@@ -381,7 +382,11 @@ label.field > span, div.field > span { font-weight: 500; }
 }
 .seg__opt + .seg__opt { border-left: 1px solid var(--border-strong); }
 .seg__opt:hover { color: var(--text); }
-.seg__opt--on, .seg__opt--on:hover { background: var(--surface-3); color: var(--text); }
+/* the picked option is plain to see: a blue wash, a blue edge and bold text (a shade lighter was too easy to miss) */
+.seg__opt--on, .seg__opt--on:hover {
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface)); color: var(--text); font-weight: 650;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 
 /* ---- progress ---- */
 .progress { background: var(--surface-3); border-radius: 3px; height: 6px; overflow: hidden; }
@@ -534,8 +539,12 @@ label.field > span, div.field > span { font-weight: 500; }
   font-size: 12px; font-weight: 500; color: var(--on-art);
 }
 .sleeve__play { position: absolute; right: 10px; bottom: 10px; }
+/* a Label strip cover prints the name and genre along its bottom quarter (26%): the play
+   button sits on the picture just above it, so it never covers the words */
+.sleeve__art:has(.cover--strip) .sleeve__play { bottom: calc(26% + 10px); }
 .sleeve__meta { padding: 10px 12px 12px; border-top: 1px solid var(--border); display: grid; gap: 2px; min-width: 0; }
-.sleeve__name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* names get two lines before they are cut, so "Amen Breakdown" reads whole on a card */
+.sleeve__name { font-weight: 600; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .sleeve__sub { color: var(--text-faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .playbtn.sleeve__play, .playbtn--solid { width: 34px; height: 34px; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
@@ -1235,6 +1244,18 @@ html:not(.lc-dealt) .sleeves > * { animation: lcRise 320ms var(--ease-glide) bot
 /* the row's name is its button (the row holds the pin and rating, so it can't be one) */
 .browse__open { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .browse__open:focus-visible { outline: none; }
+/* the same for a list row or card that holds buttons of its own (play, pin, Back up, ···):
+   a button can't hold buttons, so its name is the button that opens it (looking just like
+   the plain name it replaces), a click anywhere on it still opens it, and the whole row or
+   card shows the focus ring */
+.rowopen {
+  display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; min-width: 0; margin: 0; padding: 0;
+  border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; word-spacing: inherit;
+  text-align: left; text-transform: inherit; cursor: pointer;
+}
+.rowopen:focus-visible { outline: none; }
+:is(.row, .sleeve, .needcard):has(.rowopen:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sleeve:has(.rowopen:focus-visible) .sleeve__art .cover { transform: translateX(-22%); }
 .browse__item .stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; margin: 0; }
 .browse__item .rating { justify-self: start; }
 .browse__itemtext { display: grid; min-width: 0; gap: 1px; }

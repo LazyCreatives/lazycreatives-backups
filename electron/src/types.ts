@@ -97,6 +97,7 @@ export interface LibraryItem {
   bpm?: number | null;
   tracks?: number | null;      // content track/lane count (null if the format hides it)
   plugins?: string[];          // plugin names the project uses
+  music_key?: string | null;   // the song's key ("C minor"): Logic and Studio One keep it
   found_at: string;
   last_backup: string | null;
   snapshot_count: number;
@@ -119,6 +120,7 @@ export interface ExportRow {
   sure?: number;                 // 0: a guess (dotted underline)
   exists: boolean;
   upload: ExportUpload | null;   // on SoundCloud (via Uploader), if it was uploaded
+  seconds?: number | null;       // length read from the file's header; null when not known (never hidden)
 }
 // A song in an exports folder that no project matched, with the likeliest project.
 export interface UnmatchedSong {
@@ -245,10 +247,19 @@ export interface PluginRow {
   used_by: string[];             // a few of their names
 }
 export interface PluginFolder { path: string; yours: boolean; exists: boolean; count: number }
+// A plug-in scanned projects use that isn't on this computer (the music program's own
+// plug-ins are left out). The maker isn't known: projects only keep the name.
+export interface MissingPlugin {
+  id: string;
+  name: string;
+  used_in: number;               // scanned projects that use it
+  used_by: string[];             // a few of their names
+}
 export interface PluginList {
   plugins: PluginRow[];
   folders: PluginFolder[];
   scanned_at: number;
   complete: boolean;
   projects_scanned: number;
+  missing?: MissingPlugin[];     // used by your projects, not on this computer
 }

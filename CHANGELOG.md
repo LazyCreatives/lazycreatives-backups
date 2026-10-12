@@ -13,6 +13,32 @@ How to keep this up to date:
   The checks on pull requests fail if the app's version has no section here.
 -->
 
+## 0.2.12 (12 October 2026)
+
+### New
+- **Plugins missing from this computer.** On the Plugins page, choose "Missing from this computer" to see the plugins your projects use that aren't installed here, and how many projects use each. Click one to see those projects and open them. The plugins that come with your music program are left out.
+- **Short exports stay out of the way.** Test bounces, clicks and one-shots shorter than 30 seconds are hidden from a project's songs list. "Show short files" brings them back, faded and marked Short. Change the length or switch it off in Settings, Folders ("Hide short exports"). Nothing is deleted.
+- **A project's key.** Logic Pro and Studio One projects now show their key (like "C minor") next to the tempo on the project's page.
+
+### Better
+- **Easier to see what's picked.** In every switch (On / Off, Daily / Weekly, All / Safe and the rest) the picked option now has a blue edge and bold text, instead of being a shade lighter.
+- **Whole names on cards.** Project and album cards give a name two lines before cutting it short, so "Amen Breakdown" no longer reads "Amen Breakdo…".
+- **Dig crates show whole covers.** A crate with two or three records shows each cover whole in its own square, so word covers keep all their letters.
+- **Plugins.** The "Plugin" heading lines up with the makers' names, and each maker's folder shows its plugin count next to its name instead of under "Used in".
+
+### Fixed
+- Label strip covers: the play button no longer hides the name and genre.
+- Screen readers: project rows and cards no longer put buttons inside a button, the Home shelf of project lines reads as buttons, and the welcome screen has a main area.
+- **Easier reading.** Long Sleeve album names wrap instead of showing only the first word, and the counts under each Dig crate wrap instead of stopping mid-word.
+- **The latest song's name on a project page** keeps its room; the export date moves underneath when both don't fit.
+- **The record label on a project page** is readable in light mode.
+- **Album song list.** In a narrow window or with Easier reading, song names take the spare room and the "Length" heading fits.
+- **Screen readers** read the genre button and the plugin folders by the words they show.
+- **Very long names no longer break pages.** A long project or album name is cut neatly (with the full name on hover) instead of running off the edge or filling the whole page, on the project page, the album page and the cover art, in both looks and with Easier reading on.
+- **Long album plans stay short.** When many songs on an album are still being worked on or need a quality check, the plan names the first few and says how many more, instead of listing every song.
+- **Plugin names fit.** A very long plugin name on a project page is cut to fit instead of running past the edge.
+- **Big numbers read properly.** Missing-sample counts in the thousands get their commas (12,345), and a phone paired last year shows the year.
+
 ## 0.2.11 (11 October 2026)
 
 ### New

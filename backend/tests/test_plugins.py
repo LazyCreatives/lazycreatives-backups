@@ -107,3 +107,16 @@ def test_api_lists_and_keeps_the_last_look(tmp_path, monkeypatch):
     assert [p["name"] for p in c.get("/api/plugins").json()["plugins"]] == ["Vital"]  # kept
     assert [p["name"] for p in c.get("/api/plugins?refresh=true").json()["plugins"]] == ["Diva", "Vital"]
     assert c.get("/api/plugins").json()["folders"][0]["path"] == str(plug)
+
+
+def test_missing_lists_plugins_not_on_this_computer():
+    have = [{"id": plugins.key("Pro-Q 3"), "name": "Pro-Q 3", "maker": "FabFilter"},
+            {"id": plugins.key("Serum"), "name": "Serum", "maker": "Xfer Records"}]
+    projects = [
+        {"name": "Night", "daw": "ableton", "plugins": ["FabFilter Pro-Q 3", "Diva", "Serum (Xfer Records)"]},
+        {"name": "Day", "daw": "flstudio", "plugins": ["Fruity Limiter", "Sytrus", "Diva", "Kickstart 2"]},
+        {"name": "Dusk", "daw": "reaper", "plugins": ["ReaEQ (Cockos)", "JS: 1175 Compressor", "Valhalla Room"]},
+    ]
+    rows = plugins.missing(have, projects)
+    assert [(r["name"], r["used_in"], r["used_by"]) for r in rows] == [
+        ("Diva", 2, ["Day", "Night"]), ("Kickstart 2", 1, ["Day"]), ("Valhalla Room", 1, ["Dusk"])]

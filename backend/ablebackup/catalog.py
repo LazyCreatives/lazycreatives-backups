@@ -193,7 +193,7 @@ class Catalog:
         # discovered: genre + metadata columns added after that table shipped
         dcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(discovered)")}
         for col, typ in {"genre": "TEXT", "genre_emoji": "TEXT", "bpm": "REAL",
-                         "tracks": "INTEGER", "plugins": "TEXT",
+                         "tracks": "INTEGER", "plugins": "TEXT", "music_key": "TEXT",
                          # the project file's save time when it was last backed up
                          # (or found identical to its last backup)
                          "backed_mtime": "REAL",
@@ -460,8 +460,8 @@ class Catalog:
         with self._lock:
             self.conn.executemany(
                 "INSERT INTO discovered "
-                "(project_id, name, path, dir, daw, owner, size, mtime, missing_count, genre, genre_emoji, genre_guess, bpm, tracks, plugins, found_at) "
-                "VALUES (:project_id, :name, :path, :dir, :daw, :owner, :size, :mtime, :missing_count, :genre, :genre_emoji, :genre_raw, :bpm, :tracks, :plugins, :found_at) "
+                "(project_id, name, path, dir, daw, owner, size, mtime, missing_count, genre, genre_emoji, genre_guess, bpm, tracks, plugins, music_key, found_at) "
+                "VALUES (:project_id, :name, :path, :dir, :daw, :owner, :size, :mtime, :missing_count, :genre, :genre_emoji, :genre_raw, :bpm, :tracks, :plugins, :music_key, :found_at) "
                 "ON CONFLICT(project_id) DO UPDATE SET "
                 "  name=excluded.name, path=excluded.path, dir=excluded.dir, daw=excluded.daw, "
                 "  owner=excluded.owner, size=excluded.size, mtime=excluded.mtime, "
@@ -470,10 +470,10 @@ class Catalog:
                 "  genre=CASE WHEN discovered.genre_by_you = 1 THEN discovered.genre ELSE excluded.genre END, "
                 "  genre_emoji=CASE WHEN discovered.genre_by_you = 1 THEN discovered.genre_emoji ELSE excluded.genre_emoji END, "
                 "  bpm=excluded.bpm, "
-                "  tracks=excluded.tracks, plugins=excluded.plugins, found_at=excluded.found_at",
+                "  tracks=excluded.tracks, plugins=excluded.plugins, music_key=excluded.music_key, found_at=excluded.found_at",
                 # default genre/meta fields so rows that omit them still bind cleanly
                 [{"genre": None, "genre_emoji": None, "bpm": None, "tracks": None,
-                  "plugins": None, **r, "bpm": plausible_bpm(r.get("bpm")),
+                  "plugins": None, "music_key": None, **r, "bpm": plausible_bpm(r.get("bpm")),
                   "genre_raw": r.get("genre_raw", r.get("genre")),
                   "found_at": found_at} for r in rows],
             )

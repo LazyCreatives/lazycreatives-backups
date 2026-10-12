@@ -253,6 +253,7 @@ def _resolve_parsed(project_path: Path, raw_refs: list[FileRef], locate,
         tempo=plausible_bpm(meta.get("tempo")),
         track_count=meta.get("tracks"),
         plugins=meta.get("plugins") or [],
+        music_key=(meta.get("key") or None) if isinstance(meta.get("key"), str) else None,
     )
 
 

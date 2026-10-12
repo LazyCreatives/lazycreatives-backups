@@ -834,6 +834,7 @@ def scan_summary(sources: list[Path], progress: ProgressCb = None,
             "bpm": p.tempo,
             "tracks": p.track_count,
             "plugins": p.plugins,
+            "music_key": p.music_key,
         })
     return out
 

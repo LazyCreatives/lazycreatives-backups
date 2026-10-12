@@ -134,7 +134,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
     app: "LazyCreatives Backups",
     project: {
       name: item.name, catalog: cat, crate, created: created ? new Date(created).toISOString() : null,
-      daw: dawLabel(item.daw), bpm: item.bpm ?? null, tracks: item.tracks ?? null,
+      daw: dawLabel(item.daw), bpm: item.bpm ?? null, key: item.music_key ?? null, tracks: item.tracks ?? null,
       plugins: item.plugins ?? [], size_bytes: item.size, path: item.path,
       backups: item.snapshot_count,
       last_verified: lastVerifiedSnap ? new Date(parseStamp(lastVerifiedSnap.timestamp)).toISOString() : null,
@@ -155,7 +155,8 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
     L.push(`${item.name}  ·  ${cat}  ·  ${crate}`);
     L.push("");
     L.push(`first backed   ${first ? fmtDT(parseStamp(first.timestamp)) : "not yet"}  (${dawLabel(item.daw)})`);
-    if (item.bpm) L.push(`bpm            ${Math.round(item.bpm)}${item.tracks ? ` · ${item.tracks} tracks` : ""}`);
+    if (item.bpm) L.push(`bpm            ${Math.round(item.bpm)}${item.music_key ? ` · ${item.music_key}` : ""}${item.tracks ? ` · ${item.tracks} tracks` : ""}`);
+    else if (item.music_key) L.push(`key            ${item.music_key}${item.tracks ? ` · ${item.tracks} tracks` : ""}`);
     L.push(`size on disk   ${fmtSize(item.size)}${item.plugins?.length ? ` · plugins: ${item.plugins.join(", ")}` : ""}`);
     L.push(`backups        ${item.snapshot_count}${lastVerifiedSnap ? ` · last verified ${fmtDT(parseStamp(lastVerifiedSnap.timestamp))}` : ""}`);
     L.push(`missing        ${warn ? `${warn} sample${warn === 1 ? "" : "s"}` : "none — everything opens"}`);
@@ -195,7 +196,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
     ) },
   ];
   const active = allTabs.find((t) => t.key === tab) ?? allTabs[0];
-  const meta = [crate !== "Untagged" ? crate : "", item.bpm ? `${Math.round(item.bpm)} BPM` : "",
+  const meta = [crate !== "Untagged" ? crate : "", item.bpm ? `${Math.round(item.bpm)} BPM` : "", item.music_key || "",
     item.tracks ? `${item.tracks} tracks` : "", dawLabel(item.daw)].filter(Boolean).join(" · ");
   // The facts column holds only what the head doesn't already show: the head has the
   // tempo, tracks, backups, the music program, the status and the genre.
@@ -240,11 +241,11 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
     </div>
   );
   const tint = coverColor(item.genre, item.name);
-  const statusText = warn > 0 ? <span className="warn-text">{warn} sample{warn === 1 ? "" : "s"} missing</span>
+  const statusText = warn > 0 ? <span className="warn-text">{fmtCount(warn)} sample{warn === 1 ? "" : "s"} missing</span>
     : item.changed ? <span className="muted-dot"><span className="dot dot--accent" /> changed since its last backup</span>
     : item.backed_up ? <span className="ok-text"><span className="dot dot--ok" /> safe, opens</span>
     : <span className="faint">not backed up yet</span>;
-  const statusChip = warn > 0 ? <span className="fact-chip fact-chip--warn">{warn} sample{warn === 1 ? "" : "s"} missing</span>
+  const statusChip = warn > 0 ? <span className="fact-chip fact-chip--warn">{fmtCount(warn)} sample{warn === 1 ? "" : "s"} missing</span>
     : item.changed ? <span className="fact-chip fact-chip--changed" title="Saved since its last backup; back it up to keep this version"><span className="dot dot--accent" />Changed since last backup</span>
     : item.backed_up ? <span className="fact-chip fact-chip--ok"><span className="dot dot--ok" />Safe, opens</span>
     : <span className="fact-chip">Not backed up yet</span>;
@@ -260,10 +261,11 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
             <span className="worn"><Cover name={item.name} genre={item.genre} className="proj-hero__cover" label={false} /><SleeveWear name={item.name} /></span>
           </div>
           <div className="proj-hero__text">
-            <h1 className="proj-hero__name" title={item.name}>{item.name}</h1>
+            <h1 className={`proj-hero__name${Array.from(item.name).length > 28 ? " proj-hero__name--long" : ""}`} title={item.name}>{item.name}</h1>
             {/* the numbers first, printed big like the back of a 12-inch */}
-            <dl className="proj-spec">
+            <dl className={`proj-spec${item.music_key ? " proj-spec--key" : ""}`}>
               {item.bpm ? <div><dt>BPM</dt><dd>{Math.round(item.bpm)}</dd></div> : null}
+              {item.music_key ? <div><dt>Key</dt><dd className="proj-spec__word">{item.music_key}</dd></div> : null}
               {item.tracks ? <div><dt>Tracks</dt><dd>{item.tracks}</dd></div> : null}
               <div><dt>{item.snapshot_count === 1 ? "Backup" : "Backups"}</dt><dd>{fmtCount(item.snapshot_count)}</dd></div>
               <div><dt>Made in</dt><dd className="proj-spec__word">{dawLabel(item.daw)}</dd></div>
@@ -291,9 +293,10 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
             <span className="worn"><Cover name={item.name} genre={item.genre} size={124} label={false} /><SleeveWear name={item.name} /></span>
             <div style={{ minWidth: 0 }}>
               <h1 className="col-trunc" title={item.name}>{item.name}</h1>
-              {/* like the screen on a deck: tempo, tracks, size, backups */}
+              {/* like the screen on a deck: tempo, key (when the project keeps it), tracks, size, backups */}
               <div className="deckread">
                 <span className="deckread__cell"><small>BPM</small><b>{item.bpm ? Math.round(item.bpm) : "–"}</b></span>
+                {item.music_key && <span className="deckread__cell"><small>Key</small><b>{item.music_key}</b></span>}
                 <span className="deckread__cell"><small>Tracks</small><b>{item.tracks || "–"}</b></span>
                 <span className="deckread__cell"><small>Size</small><b>{fmtSize(item.size)}</b></span>
                 <span className="deckread__cell"><small>Backups</small><b>{fmtCount(item.snapshot_count)}</b></span>
@@ -361,8 +364,8 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
           {!!item.plugins?.length && (
             <div>
               <div className="faint" style={{ fontSize: 12, marginBottom: 7 }}>Plugins</div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {item.plugins.map((pl) => <span key={pl} className="tag">{pl}</span>)}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", contain: "inline-size" }}>
+                {item.plugins.map((pl) => <span key={pl} className="tag" title={pl}><span className="col-trunc">{pl}</span></span>)}
               </div>
             </div>
           )}

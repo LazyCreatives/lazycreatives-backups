@@ -4,11 +4,12 @@ import { LookPicker } from "./LookPicker";
 
 // The first-run card: brand, "Step N of 3" with a bar, a heading, the step itself and
 // Back / Next at the bottom. Same file in Backups and Uploader, so both welcomes match.
+// It is the page's <main> (the first run has no side bar or app shell around it).
 export function WelcomeCard({ app, step, title, sub, foot, children }: {
   app: string; step: 1 | 2 | 3; title: string; sub?: ReactNode; foot: ReactNode; children?: ReactNode;
 }) {
   return (
-    <div className="splash welcome-splash">
+    <main className="splash welcome-splash">
       <div className="welcome">
         <div className="welcome__head">
           <LcBrand app={app} tag="Lazy Creatives" />
@@ -24,7 +25,7 @@ export function WelcomeCard({ app, step, title, sub, foot, children }: {
         </div>
         <div className="welcome__foot">{foot}</div>
       </div>
-    </div>
+    </main>
   );
 }
 

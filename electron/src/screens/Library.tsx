@@ -34,7 +34,6 @@ import { TidyNames } from "./TidyNames";
 import type { TidyBatch, TidyDone } from "../types";
 import { EmptyState } from "../components/SlothSpot";
 import { ScanSloth } from "../components/ScanSloth";
-import { rowKey } from "../components/a11y";
 import { backupAndWait, type RunResult } from "../runBackup";
 import { SONGS_LINKED, SongDropTarget, useSongDrop, useSongDragActive } from "../songDrop";
 import "../library.css";
@@ -331,7 +330,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
       const found = item.missing_count - now.missing_count;
       toast(found > 0
         ? `Found ${found} of ${item.missing_count} in ${item.name}. ${now.missing_count} still missing.`
-        : `None of ${item.name}'s ${item.missing_count} missing sample${item.missing_count === 1 ? "" : "s"} turned up in your folders.`,
+        : `None of ${item.name}'s ${fmtCount(item.missing_count)} missing sample${item.missing_count === 1 ? "" : "s"} turned up in your folders.`,
         { label: "Point me to them", onClick: () => onOpen(item.project_id) });
     } else if (now) {
       toast(`Found every missing sample in ${item.name} and backed it up.`);
@@ -390,8 +389,8 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
       const after = r.projects.reduce((n, t) => n + t.missing_count, 0);
       const found = before - after;
       setNotice(found > 0
-        ? `Found ${found} of ${before} missing sample${before === 1 ? "" : "s"}.${after > 0 ? ` ${after} still missing — open a project and point me to them.` : ""}`
-        : `None of the ${before} missing sample${before === 1 ? "" : "s"} turned up in your folders — open a project and point me to them.`);
+        ? `Found ${fmtCount(found)} of ${fmtCount(before)} missing sample${before === 1 ? "" : "s"}.${after > 0 ? ` ${fmtCount(after)} still missing — open a project and point me to them.` : ""}`
+        : `None of the ${fmtCount(before)} missing sample${before === 1 ? "" : "s"} turned up in your folders — open a project and point me to them.`);
     } catch { setErr("Couldn't read your library after the search. Restart the app; your projects are untouched."); }
     finally { setFixingAll(false); }
   }
@@ -881,8 +880,8 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                     const done = !working && !failed && st.tone === "ok" && justDone.has(it.project_id);
                     return (
                       <SongDropTarget as={AuditionDiv} project={it} key={it.project_id} song={it.latest_export?.path} meta={meta} data-pid={it.project_id} data-nav-key={it.project_id}
-                        className={`sleeve${picking ? " sleeve--picking" : ""}${picked.has(it.project_id) ? " sleeve--selected" : ""}${isPin ? " sleeve--pinned" : ""}`} role="button" tabIndex={0}
-                        onClick={openIt} onContextMenu={onContextMenu} onKeyDown={rowKey(openIt)}>
+                        className={`sleeve${picking ? " sleeve--picking" : ""}${picked.has(it.project_id) ? " sleeve--selected" : ""}${isPin ? " sleeve--pinned" : ""}`}
+                        onClick={openIt} onContextMenu={onContextMenu}>
                         <div className="sleeve__art">
                           <Cover name={it.name} genre={it.genre} />
                           <span className="sleeve__tick">{tick}</span>
@@ -901,7 +900,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                         </div>
                         <div className="sleeve__meta" style={{ gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center" }}>
                           <div style={{ minWidth: 0 }}>
-                            <div className="sleeve__name" title={it.name}>{it.name}</div>
+                            <button type="button" className="rowopen"><span className="sleeve__name" title={it.name}>{it.name}</span></button>
                             <div className="sleeve__sub" title={plugTitle(it)}><GenreSub item={it} rest={[it.bpm ? `${Math.round(it.bpm)} BPM` : "", dawLabel(it.daw)]} /></div>
                             <Rating id={it.project_id} name={it.name} size={12} />
                             {failed && !working && <div className="lib-failed" role="status">{failed}</div>}
@@ -941,8 +940,8 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                     const done = !working && !failed && st.tone === "ok" && justDone.has(it.project_id);
                     return (
                       <SongDropTarget as={AuditionDiv} project={it} key={it.project_id} song={it.latest_export?.path} meta={meta} data-pid={it.project_id} data-nav-key={it.project_id}
-                        className={`row cols lib-row ${colsClass}${picked.has(it.project_id) ? " lib-row--picked" : ""}${isPin ? " lib-row--pinned" : ""}`} role="button" tabIndex={0}
-                        onClick={openIt} onContextMenu={onContextMenu} onKeyDown={rowKey(openIt)}>
+                        className={`row cols lib-row ${colsClass}${picked.has(it.project_id) ? " lib-row--picked" : ""}${isPin ? " lib-row--pinned" : ""}`}
+                        onClick={openIt} onContextMenu={onContextMenu}>
                         <span className="stripe" style={{ background: genreColor(it.genre) }} />
                         <span className="lib-tickcell">{tick}</span>
                         {it.latest_export && meta
@@ -951,7 +950,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                         <Cover name={it.name} genre={it.genre} size={36} />
                         <span className="lib-pincell">{star}</span>
                         <div style={{ minWidth: 0 }}>
-                          <div className="lib-namerow"><span className="lib-name" title={it.name}>{it.name}</span></div>
+                          <div className="lib-namerow"><button type="button" className="rowopen"><span className="lib-name" title={it.name}>{it.name}</span></button></div>
                           <div className="lib-sub" title={plugTitle(it)}><GenreSub item={it} rest={[dawLabel(it.daw), st.size]} /></div>
                         </div>
                         <Rating id={it.project_id} name={it.name} />

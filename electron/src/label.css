@@ -17,7 +17,8 @@
 .lvinyl .vlabel-disc {
   position: absolute; inset: 42px; border-radius: 50%;
   background: var(--accent);
-  color: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  /* printed in black ink in both modes: the record looks the same in light mode, so its label must too */
+  color: #0E1115; display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-align: center; padding: 18px; gap: 1px;
 }
 .lvinyl .vl-top, .lvinyl .vl-bottom {
@@ -28,7 +29,7 @@
 .lvinyl .lc { font-size: 6.5px; font-weight: 500; letter-spacing: 0.12em; white-space: nowrap; opacity: 0.75; margin-bottom: 2px; }
 .lvinyl h2.vl-name {
   /* override the page's small grey uppercase h2: full-strength dark ink on the label */
-  color: var(--bg); text-transform: none; letter-spacing: -0.01em;
+  color: #0E1115; text-transform: none; letter-spacing: -0.01em;
   font-size: 12px; font-weight: 700; line-height: 1.15; margin: 0; max-width: 100%;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
 }
@@ -86,7 +87,7 @@
 .deck-head .page-head__actions:has(.btn--primary)::before { content: ""; order: -1; flex-basis: 100%; height: 0; margin-top: -10px; }
 .deck-head .cover { border-radius: 6px; box-shadow: 0 8px 24px rgb(var(--shade-rgb) / calc(0.35 * var(--shade-k))); }
 .deck-head__eyebrow { font-size: 12px; font-weight: 600; filter: brightness(1.35); }
-.deck-head h1 { font-size: 30px; margin: 4px 0 10px; }
+.deck-head h1 { font-size: 30px; margin: 4px 0 10px; contain: inline-size; } /* a long name is cut with … instead of widening the header */
 .deck-head .page-head__actions { align-self: center; }
 .fact-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 /* Crate: tempo, tracks, size and backups in an inset readout, like the screen on a deck */
@@ -111,9 +112,10 @@
   display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 18px; align-items: center;
   padding: 16px 20px; margin-bottom: 22px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface);
 }
-.deck__title { display: flex; align-items: baseline; gap: 10px; font-size: 13px; margin-bottom: 6px; min-width: 0; }
-.deck__title b { font-weight: 600; min-width: 0; }
-.deck__title .faint { flex: none; font-size: 12px; }
+.deck__title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 13px; margin-bottom: 6px; min-width: 0; }
+/* the song's name keeps its room; the date moves under it when they don't both fit */
+.deck__title b { font-weight: 600; min-width: 0; max-width: 100%; }
+.deck__title .faint { flex: 0 1 auto; min-width: 0; font-size: 12px; }
 .deck__empty-icon { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; border: 1px dashed var(--border-strong); color: var(--text-faint); }
 /* One blue per screen: the big play button is ink until it plays (Back up now keeps the blue) */
 .playbtn.playbtn--big { background: var(--text); border-color: var(--text); color: var(--bg); }
@@ -139,12 +141,17 @@
 .proj-hero__spinename { min-height: 0; overflow: hidden; text-overflow: ellipsis; }
 .proj-hero__text { min-width: 0; display: grid; gap: 14px; align-content: start; padding-top: 4px; }
 .proj-hero__name { font: 400 clamp(56px, 6vw, 88px)/0.95 var(--display); letter-spacing: 0.02em; margin: 0; overflow-wrap: anywhere; }
+/* a long name is printed smaller and stops at three lines (the full name is its tooltip), so the numbers stay in view */
+.proj-hero__name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.proj-hero__name--long { font-size: clamp(40px, 4vw, 56px); }
 .proj-spec { display: flex; flex-wrap: wrap; gap: 6px 0; margin: 0; }
 .proj-spec > div { padding: 0 22px; border-left: 1px solid color-mix(in srgb, var(--text) 18%, transparent); }
 .proj-spec > div:first-child { padding-left: 0; border-left: 0; }
 .proj-spec dt { font-size: 12px; color: var(--text-dim); }
 .proj-spec dd { margin: 0; font: 600 44px/1.05 var(--font); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .proj-spec dd.proj-spec__word { font-size: 26px; line-height: 1.75; letter-spacing: -0.01em; }
+/* with a key there is one figure more than fits: the music program gets a line of its own */
+.proj-spec--key > div:last-child { flex-basis: 100%; padding-left: 0; border-left: 0; }
 .proj-hero__meta { color: var(--text-dim); font-size: 13px; }
 .proj-hero__genre { margin-top: -4px; }
 .proj-hero__song {
@@ -152,9 +159,9 @@
   padding: 14px 18px 14px 14px; border-radius: 14px; background: color-mix(in srgb, var(--bg) 55%, transparent);
   border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
 }
-.proj-hero__songname { display: flex; align-items: baseline; gap: 10px; font-size: 13px; min-width: 0; }
-.proj-hero__songname b { font-weight: 600; min-width: 0; }
-.proj-hero__songname .faint { flex: none; font-size: 12px; }
+.proj-hero__songname { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 13px; min-width: 0; }
+.proj-hero__songname b { font-weight: 600; min-width: 0; max-width: 100%; }
+.proj-hero__songname .faint { flex: 0 1 auto; min-width: 0; font-size: 12px; }
 .proj-hero__actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .proj-hero__actions .btn--primary { order: -1; }
 .proj-hero .playbtn--big { background: var(--text); border-color: var(--text); color: var(--bg); }

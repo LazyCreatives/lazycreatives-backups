@@ -55,6 +55,7 @@ class ProjectScan:
     tempo: float | None = None        # project BPM; feeds genre-guessing
     track_count: int | None = None    # content track/lane count (None if the format hides it)
     plugins: list[str] = field(default_factory=list)  # third-party plugin/instrument names used
+    music_key: str | None = None      # the song's key ("C minor") where the format keeps it
 
     @property
     def als_path(self) -> Path:

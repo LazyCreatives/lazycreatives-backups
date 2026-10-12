@@ -37,6 +37,12 @@ function duotone(dark: string, light: string) {
   }).join(" ") + " 0 0 0 1 0";
 }
 
+// A name printed small along the bottom of a cover: cut with … where it would run off the edge.
+function capped(s: string, n: number): string {
+  const ch = Array.from(s);
+  return ch.length > n ? `${ch.slice(0, n - 1).join("").trimEnd()}…` : s;
+}
+
 export function Cover({ name, genre, size, className = "", label = true, colour, art }: {
   name: string; genre?: string | null; size?: number; className?: string; label?: boolean;
   colour?: string;  // draw in this colour instead of the genre's (a crate colour being tried)
@@ -62,15 +68,16 @@ export function Cover({ name, genre, size, className = "", label = true, colour,
     return <svg {...svg}><image href={a.src} {...place(a, 100, 100)} preserveAspectRatio="none" /></svg>;
 
   // your picture untouched above a strip in the genre's colour with the name and genre
+  // (cover--strip: a card's play button sits above the strip, not on its words)
   if (a && a.style === "strip") {
     const ink = paper ? "#111" : "#fff";
     return (
-      <svg {...svg}>
+      <svg {...svg} className={`${svg.className} cover--strip`}>
         <defs><clipPath id={`k${id}`}><rect width="100" height="74" /></clipPath></defs>
         <image href={a.src} {...place(a, 100, 74)} preserveAspectRatio="none" clipPath={`url(#k${id})`} />
         <rect y="74" width="100" height="26" fill={bg} />
         <rect y="74" width="100" height="1.6" fill={c} />
-        <text x="6" y="86.5" fontFamily={FONT} fontWeight={700} fontSize="8" fill={ink}>{name.toUpperCase().slice(0, 20)}</text>
+        <text x="6" y="86.5" fontFamily={FONT} fontWeight={700} fontSize="8" fill={ink}>{capped(name.toUpperCase(), 15)}</text>
         {(size == null || size >= 80) && <>
           <text x="6" y="95" fontFamily={FONT} fontWeight={600} fontSize="5.5" letterSpacing="0.4"
             fill={paper ? shade(c, -0.55) : c}>{(genre || "").toUpperCase().slice(0, 22)}</text>
@@ -87,13 +94,14 @@ export function Cover({ name, genre, size, className = "", label = true, colour,
     // the name, set big like a gig poster: each word as large as fits across the sleeve,
     // so short words shout and long ones still read whole
     const words = name.toUpperCase().split(/\s+/).filter(Boolean).slice(0, 3);
-    const sizes = words.map((w) => Math.max(12, Math.min(34, (94 / w.length + 1.4) / 0.8)));
+    const sizes = words.map((w) => Math.max(8, Math.min(34, (94 / w.length + 1.4) / 0.8)));
     let y = Math.max(4, (100 - sizes.reduce((t, fs) => t + fs * 0.86 + 2, 0)) / 2);  // the stack sits in the middle
     words.forEach((w, i) => {
       const fs = sizes[i];
       y += fs * 0.86;
       shapes.push(<text key={i} x={3} y={y} fontFamily={FONT} fontWeight={700} fontSize={fs}
-        letterSpacing={fs * -0.045} fill={i === 0 ? c : shade(c, 0.55)}>{w}</text>);
+        // a word too long for the sleeve even at the smallest size ends in … instead of running off the edge
+        letterSpacing={fs * -0.045} fill={i === 0 ? c : shade(c, 0.55)}>{capped(w, Math.floor(94 / (fs * 0.62)))}</text>);
       y += 2;
     });
   } else if (kind === 1) {
@@ -116,7 +124,7 @@ export function Cover({ name, genre, size, className = "", label = true, colour,
     }
     shapes.push(<rect key="rule" x={6} y={82} width={88} height={0.8} fill={shade(c, 0.2)} opacity={0.7} />);
     shapes.push(<text key="t" x={6} y={92} fontFamily={FONT} fontWeight={600} fontSize={6.5} letterSpacing={0.6}
-      fill={shade(c, 0.5)}>{name.toUpperCase().slice(0, 18)}</text>);
+      fill={shade(c, 0.5)}>{capped(name.toUpperCase(), 16)}</text>);
   } else {
     // a plain print: one big shape (a sun, a half moon or a block) and two bars
     const form = Math.floor(r() * 3), cx = 34 + r() * 30, cy = 36 + r() * 14, rad = 24 + r() * 8;

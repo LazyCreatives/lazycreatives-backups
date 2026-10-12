@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fmtInterval, fmtNext } from "./format";
+import { fmtDay, fmtInterval, fmtNext } from "./format";
 
 describe("how often automatic backups run", () => {
   it("reads like a person would say it", () => {
@@ -20,5 +20,13 @@ describe("when the next backup runs", () => {
     expect(fmtNext(new Date(2026, 9, 10, 8, 40).toISOString(), now)).toMatch(/^tomorrow /);
     expect(fmtNext(new Date(2026, 9, 14, 8, 40).toISOString(), now)).not.toMatch(/^(today|tomorrow)/);
     expect(fmtNext(null, now)).toBe("—");
+  });
+});
+
+describe("fmtDay year auto", () => {
+  it("leaves this year's dates short and dates other years in full", () => {
+    const now = new Date();
+    expect(fmtDay(new Date(now.getFullYear(), 2, 5), { year: "auto" })).not.toMatch(String(now.getFullYear()));
+    expect(fmtDay(new Date(now.getFullYear() - 1, 2, 5), { year: "auto" })).toMatch(String(now.getFullYear() - 1));
   });
 });
