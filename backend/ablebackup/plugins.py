@@ -12,6 +12,7 @@ plug-in names projects keep (see ``used_in``).
 """
 from __future__ import annotations
 
+import mmap
 import os
 import platform
 import plistlib
@@ -30,11 +31,18 @@ FORMAT_ORDER = ["VST3", "AU", "CLAP", "VST2", "AAX", "LV2"]
 _MAX_ENTRIES = 200_000   # folder entries looked at, in all, before stopping
 _MAX_DEPTH = 6           # folders deep under each plug-in folder
 _DEADLINE = 25.0         # seconds
+_FILE_DEADLINE = 20.0    # seconds spent reading plug-in files for their type, per look
+SCAN_VERSION = 2         # a kept look from before this is looked at again
+
+# Audio Unit types (the "type" in a bundle's Info.plist) -> instrument or effect.
+_AU_KIND = {"aumu": "Instrument", "augn": "Instrument", "aufx": "Effect", "aumf": "Effect",
+            "aumi": "Effect", "aufc": "Effect", "aupn": "Effect", "auol": "Effect", "aumx": "Effect"}
 
 # Folder names that say nothing about who made the plug-in inside.
 _NOT_A_MAKER = {"vst", "vst2", "vst3", "vstplugins", "plugins", "plug-ins", "plugin", "clap", "lv2",
                 "components", "x64", "x86", "64bit", "64-bit", "32bit", "32-bit", "win64", "win32",
-                "common files", "contents", "effects", "instruments", "fx", "synths", "other"}
+                "common files", "contents", "effects", "instruments", "fx", "synths", "other",
+                "au", "aax", "audio units", "audiounits", "audio unit", "vst3 plugins", "vst plugins", "clap plugins"}
 
 
 def standard_folders(system: str | None = None, env: dict | None = None,
@@ -103,16 +111,19 @@ def _read_bundle(bundle: Path, fmt: str) -> dict:
         except Exception:
             info = {}
         comps = info.get("AudioComponents") if isinstance(info, dict) else None
-        if isinstance(comps, list) and comps and isinstance(comps[0], dict):
+        comps = [c for c in comps if isinstance(c, dict)] if isinstance(comps, list) else []
+        if comps:
             full = str(comps[0].get("name") or "")
             if ":" in full:
                 maker, name = full.split(":", 1)
                 out["maker"], out["name"], out["rank"] = maker.strip(), name.strip(), 3
-            kind = str(comps[0].get("type") or "")
-            if kind in ("aumu", "aumi"):
-                out["kind"] = "Instrument"
-            elif kind in ("aufx", "aumf"):
-                out["kind"] = "Effect"
+            # A bundle can hold more than one (an instrument and its effect version):
+            # the first one with a type Backups knows says what it is.
+            for c in comps:
+                kind = _AU_KIND.get(str(c.get("type") or "").strip().lower())
+                if kind:
+                    out["kind"], out["kind_rank"] = kind, 3
+                    break
         if isinstance(info, dict) and not out.get("maker"):
             maker = _maker_from_copyright(str(info.get("NSHumanReadableCopyright") or info.get("CFBundleGetInfoString") or ""))
             if maker:
@@ -129,10 +140,171 @@ def _read_bundle(bundle: Path, fmt: str) -> dict:
                 out["maker"] = m.group(1).strip()
             if "kind" not in out:
                 if re.search(r'"Sub Categories"\s*:\s*\[[^\]]*"Instrument', text):
-                    out["kind"] = "Instrument"
+                    out["kind"], out["kind_rank"] = "Instrument", 3
                 elif re.search(r'"Sub Categories"\s*:\s*\[[^\]]*"Fx', text):
-                    out["kind"] = "Effect"
+                    out["kind"], out["kind_rank"] = "Effect", 3
     return out
+
+
+# A VST3's own type ("Instrument|Synth", "Fx|EQ") and a CLAP's ("instrument",
+# "audio-effect") are written inside the plug-in file as plain text, even when the
+# bundle has no description file (most VST3s and every CLAP). Backups reads the file
+# for that text; nothing in it is run.
+_VST3_SUB = re.compile(rb"(Instrument|Fx)(\|[A-Za-z0-9 ]{1,24}){0,4}")
+_MAX_FILE = 400 * 1024 * 1024
+
+
+def _plugin_file(place: str) -> Path | None:
+    """The file with the plug-in's code in it: the place itself, or for a bundle the
+    first file in Contents/MacOS, Contents/x86_64-win, Contents/x86_64-linux and so on."""
+    p = Path(place)
+    try:
+        if p.is_file():
+            return p
+        subs = sorted(d for d in (p / "Contents").iterdir() if d.is_dir() and d.name not in ("Resources", "_CodeSignature", "Frameworks", "PlugIns"))
+    except OSError:
+        return None
+    for d in subs:
+        try:
+            files = sorted(f for f in d.iterdir() if f.is_file() and f.suffix.lower() in ("", ".vst3", ".clap", ".so", ".dll"))
+        except OSError:
+            continue
+        if files:
+            return files[0]
+    return None
+
+
+def _all_at(mm, word: bytes):
+    """Each place ``word`` starts a piece of text in the file (a 0 byte just before)."""
+    i = mm.find(b"\0" + word)
+    while i >= 0:
+        yield i + 1
+        i = mm.find(b"\0" + word, i + 1)
+
+
+def kind_from_file(path: Path, fmt: str) -> str:
+    """'Instrument', 'Effect' or '' from the text inside a VST3 or CLAP plug-in file."""
+    try:
+        size = path.stat().st_size
+        if not 0 < size <= _MAX_FILE:
+            return ""
+        with path.open("rb") as fh, mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+            if fmt == "CLAP":
+                inst = mm.find(b"\0instrument\0") >= 0
+                fx = mm.find(b"\0audio-effect\0") >= 0 or mm.find(b"\0note-effect\0") >= 0
+                return "Instrument" if inst and not fx else "Effect" if fx and not inst else ""
+            found = {"Instrument": [], "Fx": []}
+            for word in found:
+                for i, start in enumerate(_all_at(mm, word.encode())):
+                    if i > 2000:
+                        break
+                    end = mm.find(b"\0", start, start + 120)
+                    m = _VST3_SUB.fullmatch(mm[start:end]) if end > 0 else None
+                    if m:
+                        found[word].append(m.group(0))
+            piped = lambda w: any(b"|" in t for t in found[w])
+            # "Instrument|Synth" says it plainly. A plain "Fx" is in lots of plug-ins'
+            # own words, so an effect needs "Fx|Something", or a plain "Fx" with no
+            # "Instrument" anywhere.
+            if piped("Instrument"):
+                return "Instrument"
+            if piped("Fx"):
+                return "Effect"
+            if found["Instrument"]:
+                return "Instrument"
+            return "Effect" if found["Fx"] else ""
+    except (OSError, ValueError):
+        return ""
+
+
+def _documents(env: dict, home: Path) -> list[Path]:
+    out = [home / "Documents"]
+    for k in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial"):
+        if env.get(k):
+            out.append(Path(env[k]) / "Documents")
+    if env.get("USERPROFILE"):
+        out.append(Path(env["USERPROFILE"]) / "OneDrive" / "Documents")
+    return out
+
+
+def daw_lists(system: str | None = None, env: dict | None = None, home: Path | None = None) -> dict:
+    """What the music programs on this computer already worked out about each plug-in:
+    FL Studio's plug-in database files sit in an Effects or a Generators folder, and
+    Reaper marks instruments in its plug-in lists ("!!!VSTi", "<inst>"). Read only.
+    Returns ``{"paths": {path: kind}, "names": {key: kind}}``."""
+    system = system or platform.system()
+    env = os.environ if env is None else env
+    home = home or Path.home()
+    paths: dict[str, str] = {}
+    names: dict[str, str] = {}
+
+    def add_name(n: str, kind: str) -> None:
+        k = key(n)
+        if k:
+            names.setdefault(k, kind)
+
+    # FL Studio: Documents/Image-Line/FL Studio/Presets/Plugin database/Installed/{Effects,Generators}
+    left = 20_000
+    for docs in _documents(env, home):
+        inst = docs / "Image-Line" / "FL Studio" / "Presets" / "Plugin database" / "Installed"
+        for folder, kind in (("Generators", "Instrument"), ("Effects", "Effect")):
+            base = inst / folder
+            if not base.is_dir():
+                continue
+            for dirpath, _dirs, files in os.walk(base):
+                for f in files:
+                    left -= 1
+                    if left < 0:
+                        break
+                    stem, ext = os.path.splitext(f)
+                    if ext.lower() not in (".nfo", ".fst"):
+                        continue
+                    add_name(stem, kind)
+                    if ext.lower() == ".nfo":
+                        try:
+                            text = Path(dirpath, f).read_text(errors="ignore")[:20_000]
+                        except OSError:
+                            continue
+                        for m in re.finditer(r"(?m)^ps_file_filename_\d+=(.+?)\s*$", text):
+                            paths.setdefault(os.path.normcase(m.group(1)), kind)
+    # Reaper's plug-in lists
+    if system == "Windows":
+        rdirs = [Path(env.get("APPDATA") or home / "AppData" / "Roaming") / "REAPER"]
+    elif system == "Darwin":
+        rdirs = [home / "Library" / "Application Support" / "REAPER"]
+    else:
+        rdirs = [Path(env.get("XDG_CONFIG_HOME") or home / ".config") / "REAPER"]
+    for rdir in rdirs:
+        try:
+            inis = sorted(rdir.glob("reaper-vstplugins*.ini")) + sorted(rdir.glob("reaper-auplugins*.ini"))
+        except OSError:
+            continue
+        for ini in inis:
+            try:
+                lines = ini.read_text(errors="ignore").splitlines()[:50_000]
+            except OSError:
+                continue
+            au = "auplugins" in ini.name
+            for line in lines:
+                if "=" not in line or line.startswith("["):
+                    continue
+                left_s, val = line.split("=", 1)
+                if au:
+                    v = val.strip().lower()
+                    kind = "Instrument" if v == "<inst>" else "Effect" if v == "<!inst>" else ""
+                    if kind:
+                        add_name(left_s.split(":", 1)[-1], kind)
+                        add_name(left_s, kind)
+                    continue
+                parts = val.split(",", 2)
+                if len(parts) < 3 or not parts[2].strip() or "<SHELL>" in parts[2]:
+                    continue
+                name = parts[2].strip()
+                kind = "Instrument" if name.endswith("!!!VSTi") else "Effect"
+                add_name(name.replace("!!!VSTi", ""), kind)
+                if "<" not in left_s:
+                    add_name(_clean_name(os.path.splitext(left_s)[0]), kind)
+    return {"paths": paths, "names": names}
 
 
 def _maker_from_folder(path: Path, root: Path) -> str:
@@ -170,7 +342,7 @@ def _walk(root: Path, budget: dict, found: list[dict], deadline: float) -> int:
                     continue
                 p = Path(e.path)
                 item = {"name": _clean_name(os.path.splitext(e.name)[0]), "format": fmt, "path": str(p),
-                        "maker": "", "kind": "", "rank": 0}
+                        "maker": "", "kind": "", "kind_rank": 0, "rank": 0}
                 if is_dir:
                     item.update({k: v for k, v in _read_bundle(p, fmt).items() if v})
                     if item["maker"] and not item["rank"]:
@@ -186,12 +358,16 @@ def _walk(root: Path, budget: dict, found: list[dict], deadline: float) -> int:
 
 
 def scan(extra: list[str] | None = None, folders: list[Path] | None = None,
-         deadline_s: float = _DEADLINE) -> dict:
+         deadline_s: float = _DEADLINE, kind_cache: list[dict] | None = None,
+         daws: dict | None = None, file_deadline_s: float = _FILE_DEADLINE) -> dict:
     """Look in the plug-in folders and list what is installed.
 
     Returns ``{"plugins": [...], "folders": [...], "scanned_at": ..., "complete": bool}``.
     Each plug-in is one row however many formats it comes in: ``formats`` lists them
-    and ``places`` says where each one is."""
+    and ``places`` says where each one is. ``kind`` (Instrument / Effect / '') comes
+    from the plug-in's own description, else from what FL Studio or Reaper on this
+    computer say, else from the text in its file; ``kind_cache`` is the last look's,
+    so files that haven't changed aren't read again."""
     deadline = time.monotonic() + deadline_s
     budget = {"left": _MAX_ENTRIES}
     std = folders if folders is not None else standard_folders()
@@ -218,7 +394,7 @@ def scan(extra: list[str] | None = None, folders: list[Path] | None = None,
         k = key(f["name"])
         row = rows.get(k)
         if row is None:
-            row = rows[k] = {"id": k, "name": f["name"], "maker": "", "kind": "", "formats": [], "places": [], "_rank": 0}
+            row = rows[k] = {"id": k, "name": f["name"], "maker": "", "kind": "", "formats": [], "places": [], "_rank": 0, "_kind_rank": 0}
         row["places"].append({"format": f["format"], "path": f["path"]})
         if f["format"] not in row["formats"]:
             row["formats"].append(f["format"])
@@ -227,8 +403,8 @@ def scan(extra: list[str] | None = None, folders: list[Path] | None = None,
             row["maker"], row["_rank"] = f["maker"], f["rank"]
             if f["rank"] == 3:
                 row["name"] = f["name"]
-        if f["kind"] and not row["kind"]:
-            row["kind"] = f["kind"]
+        if f["kind"] and f["kind_rank"] > row["_kind_rank"]:
+            row["kind"], row["_kind_rank"] = f["kind"], f["kind_rank"]
     # "Pro-Q 3.component" by FabFilter and "FabFilter Pro-Q 3.vst3" are one plug-in too.
     for k in list(rows):
         row = rows.get(k)
@@ -239,17 +415,59 @@ def scan(extra: list[str] | None = None, folders: list[Path] | None = None,
                 row["places"].append(p)
                 if p["format"] not in row["formats"]:
                     row["formats"].append(p["format"])
-            row["kind"] = row["kind"] or other["kind"]
+            if other["_kind_rank"] > row["_kind_rank"]:
+                row["kind"], row["_kind_rank"] = other["kind"], other["_kind_rank"]
             del rows[mk + k]
+    # No type yet: what the music programs here say, then the text in the file itself.
+    lists = daw_lists() if daws is None else daws
+    old = {c["path"]: c for c in (kind_cache or []) if isinstance(c, dict) and c.get("path")}
+    cache: list[dict] = []
+    file_deadline = time.monotonic() + file_deadline_s
+    for row in rows.values():
+        if row["_kind_rank"] < 2:
+            kind = next((lists["paths"][os.path.normcase(p["path"])] for p in row["places"]
+                         if os.path.normcase(p["path"]) in lists["paths"]), "")
+            if not kind:
+                k, mk = row["id"], key(row["maker"])
+                ks = [k, mk + k if mk else "", k[len(mk):] if mk and k.startswith(mk) and len(k) > len(mk) + 1 else ""]
+                kind = next((lists["names"][x] for x in ks if x and x in lists["names"]), "")
+            if kind:
+                row["kind"], row["_kind_rank"] = kind, 2
+                continue
+        if row["_kind_rank"]:
+            continue
+        for p in row["places"]:
+            if p["format"] not in ("VST3", "CLAP"):
+                continue
+            f = _plugin_file(p["path"])
+            if f is None:
+                continue
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            c = old.get(str(f))
+            if c and c.get("size") == st.st_size and c.get("mtime") == st.st_mtime:
+                kind = c.get("kind") or ""
+            elif time.monotonic() > file_deadline:
+                continue
+            else:
+                kind = kind_from_file(f, p["format"])
+            cache.append({"path": str(f), "size": st.st_size, "mtime": st.st_mtime, "kind": kind})
+            if kind:
+                row["kind"], row["_kind_rank"] = kind, 1
+                break
     out = []
     for row in rows.values():
         row.pop("_rank", None)
+        row.pop("_kind_rank", None)
         row["formats"].sort(key=FORMAT_ORDER.index)
         row["places"].sort(key=lambda p: (FORMAT_ORDER.index(p["format"]), p["path"].lower()))
         out.append(row)
     out.sort(key=lambda r: (r["name"].lower(), r["id"]))
     return {"plugins": out, "folders": folder_rows, "scanned_at": time.time(),
-            "complete": time.monotonic() <= deadline and budget["left"] > 0}
+            "complete": time.monotonic() <= deadline and budget["left"] > 0,
+            "version": SCAN_VERSION, "kind_cache": cache}
 
 
 def used_in(plugins: list[dict], projects: list[dict]) -> None:

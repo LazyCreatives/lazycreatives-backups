@@ -13,6 +13,14 @@ How to keep this up to date:
   The checks on pull requests fail if the app's version has no section here.
 -->
 
+## 0.2.13 (14 October 2026)
+
+### Better
+- **Plugins page shows one big card per maker.** Each card shows how many plugins that maker has, how many are instruments and effects, and how many your projects use. Most used first, or A to Z. Click a card to see its plugins, then click a plugin to see where it lives and which projects use it. Search, the Instruments / Effects filter and "Show" (used, never used, missing) work across every maker. Built for big collections of hundreds of plugins.
+
+### Fixed
+- **Plugins know if they're an instrument or an effect.** Many plugins, on Mac, Windows and Linux, used to land under "Type not known". Backups now reads the type from inside the plugin itself, and from FL Studio's and Reaper's own plugin lists when they're on your computer. Nothing is changed or run. Folders named after a format (like "AU") are no longer shown as a plugin's maker.
+
 ## 0.2.12 (12 October 2026)
 
 ### New

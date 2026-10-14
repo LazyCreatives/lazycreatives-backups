@@ -120,3 +120,105 @@ def test_missing_lists_plugins_not_on_this_computer():
     rows = plugins.missing(have, projects)
     assert [(r["name"], r["used_in"], r["used_by"]) for r in rows] == [
         ("Diva", 2, ["Day", "Night"]), ("Kickstart 2", 1, ["Day"]), ("Valhalla Room", 1, ["Dusk"])]
+
+
+def _bundle_with_code(root: Path, file: str, sub: str, text: bytes) -> Path:
+    """A plug-in bundle whose code file has ``text`` in it (no description file)."""
+    b = root / file
+    (b / "Contents" / sub).mkdir(parents=True)
+    (b / "Contents" / sub / Path(file).stem).write_bytes(b"\0junk\0Fx\0" + text + b"\0more\0")
+    return b
+
+
+def test_type_comes_from_the_text_inside_vst3_and_clap_files(tmp_path):
+    no_daws = {"paths": {}, "names": {}}
+    _bundle_with_code(tmp_path, "Diva.vst3", "MacOS", b"Instrument|Synth")
+    _bundle_with_code(tmp_path, "Valhalla Room.vst3", "x86_64-win", b"Fx|Reverb")
+    _bundle_with_code(tmp_path, "Plain.vst3", "x86_64-linux", b"nothing")  # only "Fx", no "Instrument": an effect
+    _bundle_with_code(tmp_path, "Pigments.clap", "MacOS", b"instrument\0synthesizer")
+    (tmp_path / "Surge XT Effects.clap").write_bytes(b"\0audio-effect\0delay\0")   # Windows / Linux: one file
+    (tmp_path / "Mystery.clap").write_bytes(b"\0nothing here\0")
+    found = plugins.scan(folders=[tmp_path], daws=no_daws)
+    kinds = {r["name"]: r["kind"] for r in found["plugins"]}
+    assert kinds == {"Diva": "Instrument", "Valhalla Room": "Effect", "Plain": "Effect",
+                     "Pigments": "Instrument", "Surge XT Effects": "Effect", "Mystery": ""}
+    # the next look doesn't read files that haven't changed
+    seen = []
+    real = plugins.kind_from_file
+    try:
+        plugins.kind_from_file = lambda f, fmt: seen.append(f) or real(f, fmt)
+        again = plugins.scan(folders=[tmp_path], daws=no_daws, kind_cache=found["kind_cache"])
+    finally:
+        plugins.kind_from_file = real
+    assert seen == [] and {r["name"]: r["kind"] for r in again["plugins"]} == kinds
+
+
+def test_a_plugins_own_description_beats_the_text_in_its_file(tmp_path):
+    vst3, comps = tmp_path / "VST3", tmp_path / "Components"
+    comps.mkdir()
+    _bundle_with_code(vst3, "Vocoder.vst3", "MacOS", b"Instrument|Synth")
+    _au(comps, "Vocoder", "Maker: Vocoder", "aufx")
+    found = plugins.scan(folders=[vst3, comps], daws={"paths": {}, "names": {}})
+    assert [(r["name"], r["kind"]) for r in found["plugins"]] == [("Vocoder", "Effect")]
+
+
+def test_audio_unit_types_and_bundles_holding_more_than_one(tmp_path):
+    b = tmp_path / "Kontakt.component" / "Contents"
+    b.mkdir(parents=True)
+    with (b / "Info.plist").open("wb") as fh:
+        plistlib.dump({"AudioComponents": [{"name": "NI: Kontakt", "type": "????"},
+                                           {"name": "NI: Kontakt", "type": "aumu"}]}, fh)
+    _au(tmp_path, "Arp", "Maker: Arp", "aumi")
+    _au(tmp_path, "Tone", "Maker: Tone", "augn")
+    found = plugins.scan(folders=[tmp_path], daws={"paths": {}, "names": {}})
+    assert {r["name"]: r["kind"] for r in found["plugins"]} == {"Kontakt": "Instrument", "Arp": "Effect", "Tone": "Instrument"}
+
+
+def test_what_fl_studio_and_reaper_say(tmp_path):
+    home = tmp_path / "home"
+    db = home / "Documents" / "Image-Line" / "FL Studio" / "Presets" / "Plugin database" / "Installed"
+    (db / "Generators" / "VST").mkdir(parents=True)
+    (db / "Effects" / "VST3").mkdir(parents=True)
+    (db / "Generators" / "VST" / "Sylenth1.nfo").write_text("ps_file_filename_0=C:\\VST\\Sylenth1.dll\n")
+    (db / "Effects" / "VST3" / "OTT.fst").write_bytes(b"x")
+    rp = home / "Library" / "Application Support" / "REAPER"
+    rp.mkdir(parents=True)
+    (rp / "reaper-vstplugins_arm64.ini").write_text(
+        "[vstcache]\nSerum.vst3=00,{AB},Serum (Xfer Records)!!!VSTi\nFabFilter_Pro-Q_3.vst3=00,{CD},Pro-Q 3 (FabFilter)\n"
+        "WaveShell1-VST3.vst3=00,{EF},<SHELL>\n")
+    (rp / "reaper-auplugins_arm64.ini").write_text("[auplugins]\nArturia: Pigments=<inst>\nValhalla DSP: Supermassive=<!inst>\n")
+    lists = plugins.daw_lists("Darwin", {}, home)
+    assert lists["names"]["sylenth1"] == "Instrument" and lists["names"]["ott"] == "Effect"
+    assert lists["paths"][__import__("os").path.normcase("C:\\VST\\Sylenth1.dll")] == "Instrument"
+    assert lists["names"]["serum"] == "Instrument" and lists["names"]["fabfilterproq3"] == "Effect"
+    assert lists["names"]["proq3"] == "Effect" and "waveshell1vst3" not in lists["names"]
+    assert lists["names"]["pigments"] == "Instrument" and lists["names"]["supermassive"] == "Effect"
+
+    plug = tmp_path / "plug"
+    plug.mkdir()
+    for n in ("Serum.vst", "Sylenth1.dll", "OTT.dll"):
+        (plug / n).write_bytes(b"x")
+    found = plugins.scan(folders=[plug], daws=lists)
+    assert {r["name"]: r["kind"] for r in found["plugins"]} == {"Serum": "Instrument", "Sylenth1": "Instrument", "OTT": "Effect"}
+
+
+def test_a_look_kept_from_an_older_version_is_looked_at_again(tmp_path, monkeypatch):
+    plug = tmp_path / "plug"
+    _bundle_with_code(plug, "Diva.vst3", "MacOS", b"Instrument|Synth")
+    monkeypatch.setattr(plugins, "standard_folders", lambda: [plug])
+    monkeypatch.setattr(plugins, "daw_lists", lambda: {"paths": {}, "names": {}})
+    app = create_app(token="", db_path=tmp_path / "c.db")
+    app.state.catalog.set_setting("plugin_scan", {"plugins": [{"id": "diva", "name": "Diva", "maker": "", "kind": "",
+                                                               "formats": ["VST3"], "places": []}],
+                                                  "folders": [], "scanned_at": 1, "complete": True})
+    body = TestClient(app).get("/api/plugins").json()
+    assert [(p["name"], p["kind"]) for p in body["plugins"]] == [("Diva", "Instrument")]
+    assert "kind_cache" not in body
+
+
+def test_format_folders_are_not_makers(tmp_path):
+    for folder in ("AU", "AAX", "VST3 Plugins"):
+        (tmp_path / folder).mkdir()
+        (tmp_path / folder / f"Thing{folder[:2]}.vst3").mkdir()
+    found = plugins.scan(folders=[tmp_path], daws={"paths": {}, "names": {}})
+    assert [r["maker"] for r in found["plugins"]] == ["", "", ""]

@@ -1,8 +1,9 @@
 // Plugins: every plug-in installed on this computer, the formats it comes in, where
-// it lives and how many of your projects use it. Read-only: nothing is loaded,
+// it lives and how many of your projects use it, laid out as one big card per
+// maker; open a card for that maker's plug-ins. Read-only: nothing is loaded,
 // moved or removed. Backups looks in the usual plug-in folders for Windows, Mac and
 // Linux, plus any folders you add at the bottom of the page.
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { makeApi } from "../api";
 import type { MissingPlugin, PluginFormat, PluginList, PluginRow } from "../types";
 import { PageHeader } from "../components/PageHeader";
@@ -24,37 +25,44 @@ const FORMAT_HELP: Record<PluginFormat, string> = {
   AAX: "AAX: Pro Tools only",
   LV2: "LV2: mostly on Linux",
 };
-// "missing": plug-ins your projects use that aren't on this computer (a flat list: their maker isn't known)
+const NO_MAKER = "Maker not known";
+// What "Show" picks: every plugin, the ones your projects use or
+// don't, or the plug-ins your projects use that aren't on this computer (a flat list:
+// their maker isn't known).
 type Use = "any" | "used" | "unused" | "missing";
+type Kind = "all" | PluginRow["kind"];
 type SortKey = "name" | "used";
 type PlugSort = { key: SortKey; dir: 1 | -1 };
-// Inside each folder: name A to Z unless you click "Used in"; kept between launches.
+// Name A to Z unless you click "Used in"; kept between launches.
 const SORT_KEY = "lc-plugins-sort";
+const ORDER_KEY = "lc-plugins-cards";
 const DEFAULT_SORT: PlugSort = { key: "name", dir: 1 };
 const isSort = (v: any) => !!v && ["name", "used"].includes(v.key) && (v.dir === 1 || v.dir === -1);
-// The folders: one per maker (A to Z, unknown last), and inside it one per type
-// (instruments, effects, then unknown), like folders in a file browser.
-const KINDS: [PluginRow["kind"], string][] = [["Instrument", "Instruments"], ["Effect", "Effects"], ["", "Type not known"]];
-const OPEN_KEY = "lc-plugins-open";
+const KIND_WORD: Record<PluginRow["kind"], string> = { Instrument: "Instrument", Effect: "Effect", "": "Type not known" };
 // A to Z ignoring case, "Plugin 2" before "Plugin 10".
 const text = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
 export function sortPlugins(rows: PluginRow[], { key, dir }: PlugSort): PluginRow[] {
   return [...rows].sort((a, b) => (key === "used" ? (a.used_in - b.used_in) * dir : text(a.name, b.name) * dir) || text(a.name, b.name));
 }
-export type PluginTree = { maker: string; kinds: { kind: PluginRow["kind"]; label: string; rows: PluginRow[] }[]; count: number }[];
-export function pluginTree(rows: PluginRow[]): PluginTree {
-  const m = new Map<string, PluginRow[]>();
-  for (const p of rows) { const k = p.maker || NO_MAKER; m.set(k, [...(m.get(k) ?? []), p]); }
-  return [...m.entries()]
-    .sort(([a], [b]) => (a === NO_MAKER ? 1 : b === NO_MAKER ? -1 : text(a, b)))
-    .map(([maker, list]) => ({
-      maker, count: list.length,
-      kinds: KINDS.map(([kind, label]) => ({ kind, label, rows: list.filter((p) => (KINDS.some(([k]) => k === p.kind) ? p.kind : "") === kind) }))
-        .filter((k) => k.rows.length),
-    }));
+// One card per maker: how many plugins, how many are instruments and effects, and how
+// many your projects use. Most used first (then most plugins, then A to Z), or A to Z;
+// "Maker not known" always last.
+export type MakerCard = { maker: string; count: number; instruments: number; effects: number; used: number };
+export function makerCards(rows: PluginRow[], order: "used" | "name" = "used"): MakerCard[] {
+  const m = new Map<string, MakerCard>();
+  for (const p of rows) {
+    const k = p.maker || NO_MAKER;
+    const c = m.get(k) ?? { maker: k, count: 0, instruments: 0, effects: 0, used: 0 };
+    c.count++;
+    if (p.kind === "Instrument") c.instruments++;
+    if (p.kind === "Effect") c.effects++;
+    if (p.used_in > 0) c.used++;
+    m.set(k, c);
+  }
+  return [...m.values()].sort((a, b) => (a.maker === NO_MAKER ? 1 : 0) - (b.maker === NO_MAKER ? 1 : 0)
+    || (order === "used" ? b.used - a.used || b.count - a.count : 0) || text(a.maker, b.maker));
 }
 
-const NO_MAKER = "Maker not known";
 const plural = (n: number, w: string) => `${fmtCount(n)} ${w}${n === 1 ? "" : "s"}`;
 const reveal = (p: string) => (window as any).ablebackup?.revealPath?.(p);
 // "Pro-Q 3" -> "PQ", "Serum" -> "SE": the letters on a plug-in's tile in the Sleeve look.
@@ -71,12 +79,15 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
   const [format, setFormat] = useState<PluginFormat | "all">("all");
+  const [kind, setKind] = useState<Kind>("all");
   const [use, setUse] = useState<Use>("any");
   const [sort, setSortState] = useState<PlugSort>(() => recall<PlugSort>(SORT_KEY, DEFAULT_SORT, isSort));
   const [open, setOpen] = useState<string | null>(null);
-  // Which maker and type folders are open (all closed at first), kept between launches.
-  const [folders, setFoldersState] = useState<string[]>(() => recall<string[]>(OPEN_KEY, [], Array.isArray));
-  const setFolders = (f: string[]) => { keep(OPEN_KEY, f); setFoldersState(f); };
+  // The maker card opened ("" = the cards), and how the cards are ordered (kept between launches).
+  const [maker, setMakerState] = useState("");
+  const [order, setOrderState] = useState<"used" | "name">(() => recall<"used" | "name">(ORDER_KEY, "used", (v) => v === "used" || v === "name"));
+  const setOrder = (o: "used" | "name") => { keep(ORDER_KEY, o); setOrderState(o); };
+  const chooseMaker = (m: string) => { setMakerState(m); setOpen(null); window.scrollTo?.({ top: 0 }); };
 
   async function load(refresh = false) {
     setBusy(true); setErr(null);
@@ -100,35 +111,40 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
 
   const list = data?.plugins ?? [];
   const formats = ALL_FORMATS.filter((f) => list.some((p) => p.formats.includes(f)));
-  const countBy = (f: PluginFormat | "all") => (f === "all" ? list.length : list.filter((p) => p.formats.includes(f)).length);
-  const shown = useMemo(() => {
-    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    const rows = list.filter((p) =>
-      (format === "all" || p.formats.includes(format))
-      && (use === "any" || (use === "used" ? p.used_in > 0 : p.used_in === 0))
-      && words.every((w) => `${p.name} ${p.maker} ${p.kind}`.toLowerCase().includes(w)));
-    return sortPlugins(rows, sort);
-  }, [list, q, format, use, sort]);
+  const kinds = (["Instrument", "Effect", ""] as PluginRow["kind"][]).filter((k) => k || list.some((p) => !p.kind));
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const searching = words.length > 0;
+  // Everything but the maker: the cards are made from this.
+  const matching = useMemo(() => list.filter((p) =>
+    (format === "all" || p.formats.includes(format))
+    && (kind === "all" || p.kind === kind)
+    && (use === "any" || use === "missing" || (use === "used" ? p.used_in > 0 : p.used_in === 0))
+    && words.every((w) => `${p.name} ${p.maker} ${p.kind}`.toLowerCase().includes(w))), [list, format, kind, use, q]);
+  const cards = useMemo(() => makerCards(matching, order), [matching, order]);
+  const pickedMaker = maker;
+  // A search looks through every maker.
+  const oneMaker = pickedMaker && !searching ? pickedMaker : "";
+  const shown = useMemo(() => sortPlugins(oneMaker ? matching.filter((p) => (p.maker || NO_MAKER) === oneMaker) : matching, sort),
+    [matching, oneMaker, sort]);
   const missing = data?.missing ?? [];
   const missingShown = useMemo(() => {
-    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const rows = missing.filter((p) => words.every((w) => p.name.toLowerCase().includes(w)));
     return [...rows].sort((a, b) => (sort.key === "used" ? (a.used_in - b.used_in) * sort.dir : text(a.name, b.name) * sort.dir) || text(a.name, b.name));
   }, [missing, q, sort]);
   const showMissing = use === "missing";
-  const filtered = !!q.trim() || format !== "all" || use !== "any";
+  const filtered = searching || format !== "all" || kind !== "all";
   const sortBy = (key: SortKey) => setSortState((s) => {
     const n: PlugSort = s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "used" ? -1 : 1 };
     keep(SORT_KEY, n); return n;
   });
   const noProjects = !!data && data.projects_scanned === 0;
-  const fmtVar = { "--fmts": Math.max(1, formats.length) } as CSSProperties;
-  const tree = useMemo(() => pluginTree(shown), [shown]);
-  // While searching or filtering, every folder with a match is open.
-  const isOpen = (key: string) => filtered || folders.includes(key);
-  const toggleFolder = (key: string) => setFolders(folders.includes(key) ? folders.filter((k) => k !== key) : [...folders, key]);
-  const allKeys = tree.flatMap((t) => [t.maker, ...t.kinds.map((k) => `${t.maker}/${k.kind}`)]);
-  const allOpen = allKeys.every((k) => folders.includes(k));
+  const usedCount = list.filter((p) => p.used_in > 0).length;
+  const SHOW: [Use, string, number][] = [
+    ["any", "All plugins", list.length],
+    ...(noProjects ? [] : [["used", "Used in your projects", usedCount], ["unused", "Never used", list.length - usedCount],
+      ["missing", "Missing from this computer", missing.length]] as [Use, string, number][]),
+  ];
+  const pickUse = (u: Use) => { setUse(u); setOpen(null); };
 
   const header = (
     <PageHeader title="Plugins"
@@ -152,27 +168,34 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
     );
   }
 
+  const usedCell = (p: PluginRow) => (
+    <span className={`col-num${p.used_in ? "" : " faint"}`} title={p.used_by.length ? `Used in ${p.used_by.join(", ")}${p.used_in > p.used_by.length ? "…" : ""}` : undefined}>
+      {noProjects ? "—" : p.used_in ? plural(p.used_in, "project") : "Not used"}
+    </span>
+  );
   const row = (p: PluginRow) => {
     const isOpen = open === p.id;
     const toggle = () => setOpen(isOpen ? null : p.id);
+    // under the name: who makes it (when more than one maker is on show) and what it is
+    const sub = [oneMaker ? "" : p.maker || NO_MAKER, KIND_WORD[p.kind]].filter(Boolean).join(" · ");
     return (
       <div key={p.id} className={`plug-item${isOpen ? " plug-item--open" : ""}`}>
         <div className="row cols plug-row plug-cols" role="button" tabIndex={0}
-          aria-expanded={isOpen} onClick={toggle}
+          aria-expanded={isOpen} aria-label={`${p.name}, ${sub}`} onClick={toggle}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}>
           {look === "crate"
-            ? <span className="stripe plug-stripe" data-kind={p.kind} title={p.kind || undefined} />
+            ? <span className="stripe plug-stripe" data-kind={p.kind} />
             : <span className="plug-tile" data-kind={p.kind} aria-hidden>{initials(p.name)}</span>}
-          <div className="lib-name col-trunc" title={p.name}>{p.name}</div>
+          <div className="plug-name">
+            <div className="lib-name col-trunc" title={p.name}>{p.name}</div>
+            <div className="plug-sub col-trunc" title={sub}>
+              <span className="plug-dot" data-kind={p.kind} aria-hidden />{sub}
+            </div>
+          </div>
           <span className="plug-formats">
-            {formats.map((f) => p.formats.includes(f)
-              ? <span key={f} className="tag plug-fmt" data-format={f} title={FORMAT_HELP[f]}>{f}</span>
-              : <span key={f} className="plug-fmt plug-fmt--none" aria-hidden />)}
+            {p.formats.map((f) => <span key={f} className="tag plug-fmt" data-format={f} title={FORMAT_HELP[f]}>{f}</span>)}
           </span>
-          <span className={`col-num${p.used_in ? "" : " faint"}`} title={p.used_by.length ? `Used in ${p.used_by.join(", ")}${p.used_in > p.used_by.length ? "…" : ""}` : undefined}>
-            {noProjects ? "—" : p.used_in ? plural(p.used_in, "project") : "Not used"}
-          </span>
-          <span className="col-trunc faint plug-where" title={p.places[0]?.path}>{shortPath(p.places[0]?.path ?? "", 3)}</span>
+          {usedCell(p)}
           <Icon name="chevronDown" size={14} className="plug-chev" />
         </div>
         {isOpen && (
@@ -246,33 +269,29 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
       </button>
     );
   };
-  const head = (
-    <div className="row cols cols-head plug-cols">
-      <span />
-      {sortButton("name", "Plugin")}
-      <span>Formats</span>
-      {sortButton("used", "Used in", " col-num")}
-      <span>Where</span>
-      <span />
-    </div>
-  );
-  const folderRow = (key: string, level: 1 | 2, name: string, count: number, faint: boolean) => {
-    const on = isOpen(key);
-    const toggle = () => { if (!filtered) toggleFolder(key); };
+  // A maker's card: the name, how many plugins, a bar of instruments (blue) and effects
+  // (green), and how many your projects use. Click it to see that maker's plugins.
+  const card = (c: MakerCard) => {
+    const pct = (n: number) => `${(n / Math.max(1, c.count)) * 100}%`;
+    const kinds = [c.instruments ? plural(c.instruments, "instrument") : "", c.effects ? plural(c.effects, "effect") : ""].filter(Boolean).join(" · ") || "Type not known";
     return (
-      <div className={`row plug-dir plug-dir--${level}${on ? " plug-dir--open" : ""}`} role="button" tabIndex={0} aria-expanded={on}
-        onClick={toggle}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}>
-        <Icon name="chevronRight" size={14} className="plug-dir__chev" />
-        <Icon name="folder" size={level === 1 ? 17 : 15} className="plug-dir__icon" />
-        <span className={`plug-dir__name col-trunc${faint ? " faint" : ""}`} title={name}>{name}</span>
-        <span className="sr-only">, </span>
-        <span className="plug-dir__n faint">{plural(count, "plugin")}</span>
-      </div>
+      <button key={c.maker} className={`plug-card${c.maker === NO_MAKER ? " plug-card--none" : ""}`} onClick={() => chooseMaker(c.maker)}
+        aria-label={`${c.maker}: ${plural(c.count, "plugin")}, ${kinds}${noProjects ? "" : `, ${fmtCount(c.used)} used in your projects`}`}>
+        <span className="plug-card__name col-trunc" title={c.maker}>{c.maker}</span>
+        <span className="plug-card__n">{plural(c.count, "plugin")}</span>
+        <span className="plug-card__bar" aria-hidden>
+          <i data-kind="Instrument" style={{ width: pct(c.instruments) }} /><i data-kind="Effect" style={{ width: pct(c.effects) }} />
+        </span>
+        <span className="plug-card__kinds col-trunc">{kinds}</span>
+        {!noProjects && <span className={`plug-card__used${c.used ? "" : " faint"}`}>{c.used ? `${fmtCount(c.used)} used in your projects` : "None used in your projects"}</span>}
+      </button>
     );
   };
-
-
+  const listView = showMissing || searching || !!pickedMaker;
+  const title = showMissing ? "Missing from this computer" : searching ? "Search results" : pickedMaker || "Makers";
+  const count = showMissing ? <>{plural(missing.length, "plugin")} your projects use that {missing.length === 1 ? "isn't" : "aren't"} here</>
+    : listView ? plural(shown.length, "plugin")
+    : <>{plural(cards.length, "maker")} · {plural(matching.length, "plugin")}</>;
 
   return (
     <div className="plugins">
@@ -289,47 +308,58 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
             <div className="lib-find__top">
               <label className="lib-search">
                 <Icon name="search" size={15} />
-                <input type="search" placeholder="Search plugins or makers…" value={q} aria-label="Search plugins" spellCheck={false} data-find
+                <input type="search" placeholder={`Search ${plural(list.length, "plugin")} or makers…`} value={q} aria-label="Search plugins" spellCheck={false} data-find
                   onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setQ(""); }} />
                 {q && <button className="lib-search__x" aria-label="Clear search" onClick={() => setQ("")}><Icon name="close" size={13} /></button>}
               </label>
-              {!showMissing && <div className="seg" role="group" aria-label="Format">
-                {(["all", ...formats] as (PluginFormat | "all")[]).map((f) => (
-                  <button key={f} className={`seg__opt${format === f ? " seg__opt--on" : ""}`} onClick={() => setFormat(f)}
-                    title={f === "all" ? undefined : FORMAT_HELP[f]}>
-                    {f === "all" ? "All" : f} <span className="lib-find__n">{fmtCount(countBy(f))}</span>
+              {!showMissing && <div className="seg" role="group" aria-label="Type">
+                {(["all", ...kinds] as Kind[]).map((k) => (
+                  <button key={k || "none"} className={`seg__opt${kind === k ? " seg__opt--on" : ""}`} aria-pressed={kind === k} onClick={() => setKind(k)}>
+                    {k === "all" ? "All" : k === "Instrument" ? "Instruments" : k === "Effect" ? "Effects" : "Not known"}
                   </button>
                 ))}
               </div>}
             </div>
             <div className="lib-find__row">
               {!noProjects && (
-                <select className={use !== "any" ? "lib-pick lib-pick--on" : "lib-pick"} value={use} aria-label="Used in your projects"
-                  onChange={(e) => setUse(e.target.value as Use)}>
-                  <option value="any">Used or not</option>
-                  <option value="used">Used in your projects</option>
-                  <option value="unused">Not used in any project</option>
-                  <option value="missing">Missing from this computer ({fmtCount(missing.length)})</option>
+                <select className={use !== "any" ? "lib-pick lib-pick--on" : "lib-pick"} value={use} aria-label="Show" onChange={(e) => pickUse(e.target.value as Use)}>
+                  {SHOW.map(([u, label, n]) => <option key={u} value={u}>{label} ({fmtCount(n)})</option>)}
                 </select>
               )}
-              <span className={`lib-find__count${showMissing ? " plug-count--wrap" : ""}`}>
-                {showMissing ? <>{q.trim() ? <>Showing <b>{fmtCount(missingShown.length)}</b> of </> : null}{plural(missing.length, "plugin")} your projects use that {missing.length === 1 ? "isn't" : "aren't"} here</>
-                  : filtered ? <>Showing <b>{fmtCount(shown.length)}</b> of {plural(list.length, "plugin")}</> : plural(list.length, "plugin")}
-                {" · "}looked {fmtDay(data.scanned_at * 1000, { time: true })}
-              </span>
-              {filtered && (
-                <button className="lib-find__clear" onClick={() => { setQ(""); setFormat("all"); setUse("any"); }}>
+              {!showMissing && (
+                <select className={format !== "all" ? "lib-pick lib-pick--on" : "lib-pick"} value={format} aria-label="Format" onChange={(e) => setFormat(e.target.value as PluginFormat | "all")}>
+                  <option value="all">Every format</option>
+                  {formats.map((f) => <option key={f} value={f}>{FORMAT_HELP[f]}</option>)}
+                </select>
+              )}
+              {!listView && (
+                <div className="seg seg--sm" role="group" aria-label="Order of the makers">
+                  <button className={`seg__opt${order === "used" ? " seg__opt--on" : ""}`} aria-pressed={order === "used"} onClick={() => setOrder("used")}>Most used first</button>
+                  <button className={`seg__opt${order === "name" ? " seg__opt--on" : ""}`} aria-pressed={order === "name"} onClick={() => setOrder("name")}>A to Z</button>
+                </div>
+              )}
+              {(filtered || use !== "any") && (
+                <button className="lib-find__clear" onClick={() => { setQ(""); setFormat("all"); setKind("all"); setUse("any"); }}>
                   <Icon name="close" size={12} />Clear all
                 </button>
               )}
             </div>
           </div>
 
+          <div className="plug-main__head">
+            {pickedMaker && !searching && !showMissing && (
+              <button className="btn btn--ghost btn--sm plug-back" onClick={() => chooseMaker("")}>
+                <Icon name="chevronLeft" size={14} />All makers
+              </button>
+            )}
+            <h2 className="plug-main__title col-trunc" title={title}>{title}</h2>
+            <span className="plug-main__count">{count} · looked {fmtDay(data.scanned_at * 1000, { time: true })}</span>
+          </div>
           {showMissing ? (
             !missing.length ? (
               <EmptyState pose="thumbs-up" title="Nothing missing">Every plugin your projects use is on this computer.</EmptyState>
             ) : !missingShown.length ? (
-              <EmptyState pose="searching" title="No plugins match">Try fewer words, or clear the filters.</EmptyState>
+              <EmptyState pose="searching" title="No plugins match">Try fewer words, or clear the search.</EmptyState>
             ) : (
               <>
                 <div className={`table plug-table plug-missing${look === "crate" ? " table--crate" : ""}`}>
@@ -344,35 +374,21 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
                 {!data.complete && <p className="faint plug-note">Backups couldn't look through every plugin folder, so some of these may be on this computer after all.</p>}
               </>
             )
-          ) : !shown.length ? (
+          ) : !(listView ? shown.length : cards.length) ? (
             <EmptyState pose="searching" title="No plugins match">Try fewer words, or clear the filters.</EmptyState>
+          ) : !listView ? (
+            <div className="plug-cards">{cards.map(card)}</div>
           ) : (
-            <>
-              {!filtered && (
-                <div className="plug-tree-bar">
-                  <button className="btn btn--ghost btn--sm" onClick={() => setFolders(allOpen ? [] : allKeys)}>
-                    <Icon name={allOpen ? "chevronUp" : "chevronDown"} size={13} />{allOpen ? "Close all folders" : "Open all folders"}
-                  </button>
-                </div>
-              )}
-              <div className={`table plug-table plug-tree${look === "crate" ? " table--crate" : ""}`} style={fmtVar}>
-                {head}
-                {tree.map((t) => (
-                  <div key={t.maker} className="plug-group">
-                    {folderRow(t.maker, 1, t.maker, t.count, t.maker === NO_MAKER)}
-                    {isOpen(t.maker) && t.kinds.map((k) => {
-                      const key = `${t.maker}/${k.kind}`;
-                      return (
-                        <div key={key} className="plug-group plug-group--kind" data-kind={k.kind}>
-                          {folderRow(key, 2, k.label, k.rows.length, !k.kind)}
-                          {isOpen(key) && k.rows.map(row)}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
+            <div className={`table plug-table${look === "crate" ? " table--crate" : ""}`}>
+              <div className="row cols cols-head plug-cols">
+                <span />
+                {sortButton("name", "Plugin")}
+                <span>Formats</span>
+                {sortButton("used", "Used in", " col-num")}
+                <span />
               </div>
-            </>
+              {shown.map(row)}
+            </div>
           )}
         </>
       )}

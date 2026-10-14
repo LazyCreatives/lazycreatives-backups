@@ -476,10 +476,14 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     def _plugins(refresh: bool) -> dict:
         cat = app.state.catalog
         with plugin_lock:
-            found = None if refresh else cat.get_setting("plugin_scan")
-            if not found:
-                found = plugins.scan(cat.get_setting("plugin_folders") or [])
+            last = cat.get_setting("plugin_scan")
+            found = None if refresh else last
+            # a look kept from before types were read properly is looked at again
+            if not found or found.get("version", 1) < plugins.SCAN_VERSION:
+                found = plugins.scan(cat.get_setting("plugin_folders") or [],
+                                     kind_cache=(last or {}).get("kind_cache"))
                 cat.set_setting("plugin_scan", found)
+        found = {k: v for k, v in found.items() if k != "kind_cache"}
         rows = [dict(r) for r in found["plugins"]]
         projects = cat.library()
         plugins.used_in(rows, projects)

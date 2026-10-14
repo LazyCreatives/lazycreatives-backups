@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pluginTree, sortPlugins } from "./Plugins";
+import { makerCards, sortPlugins } from "./Plugins";
 import type { PluginRow } from "../types";
 
 const p = (name: string, maker: string, kind: PluginRow["kind"], used_in = 0) =>
@@ -11,13 +11,12 @@ const rows = [
 ];
 const names = (r: PluginRow[]) => r.map((x) => x.name);
 
-describe("pluginTree", () => {
-  it("makes one folder per maker A to Z, unknown maker last, then one per type", () => {
-    const t = pluginTree(sortPlugins(rows, { key: "name", dir: 1 }));
-    expect(t.map((m) => m.maker)).toEqual(["Arturia", "FabFilter", "Xfer Records", "Maker not known"]);
-    expect(t[0].kinds.map((k) => k.label)).toEqual(["Instruments", "Type not known"]);
-    expect(t[2].kinds.map((k) => [k.label, names(k.rows)])).toEqual([["Instruments", ["Serum"]], ["Effects", ["LFOTool", "OTT"]]]);
-    expect(t[2].count).toBe(3);
+describe("makerCards", () => {
+  it("counts each maker's plugins, types and used ones; most used first, unknown maker last", () => {
+    const c = makerCards(rows);
+    expect(c.map((m) => m.maker)).toEqual(["Xfer Records", "Arturia", "FabFilter", "Maker not known"]);
+    expect(c[0]).toEqual({ maker: "Xfer Records", count: 3, instruments: 1, effects: 2, used: 2 });
+    expect(makerCards(rows, "name").map((m) => m.maker)).toEqual(["Arturia", "FabFilter", "Xfer Records", "Maker not known"]);
   });
 });
 
