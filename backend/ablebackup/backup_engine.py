@@ -95,9 +95,21 @@ def _claimed_folder(parent: Path, name: str, project_id: str) -> Path:
     return folder
 
 
+# Songs exported from the project sit in their own folder at the top of the backup,
+# stems one level down, so a restored project comes back with its finished songs.
+EXPORTS_DIR = "Exported songs"
+STEMS_DIR = f"{EXPORTS_DIR}/Stems"
+
+
 def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
-                   portable: bool = False, layout: str = "project_date") -> BackupResult:
-    """Write one project to dest_root as a deduplicated dated snapshot."""
+                   portable: bool = False, layout: str = "project_date",
+                   exports: list[dict] | None = None) -> BackupResult:
+    """Write one project to dest_root as a deduplicated dated snapshot.
+
+    ``exports`` are the songs (and stems) exported from this project, as rows with
+    ``path`` and ``kind``; each is copied in under "Exported songs". The originals
+    are only read. One that has gone or can't be read is left out, never failing
+    the backup."""
     pool = dest_root / "_pool"
     use_hardlinks = supports_hardlinks(dest_root)
     if layout == "date_project":
@@ -116,11 +128,14 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
     placed: dict[str, str] = {}  # logical path -> file digest, to handle collisions
     files: list[dict] = []       # per-file manifest entries, for later verification
 
-    def record(logical, digest, size, source, inside, relinked):
-        files.append({
+    def record(logical, digest, size, source, inside, relinked, export=None):
+        entry = {
             "logical_path": logical, "digest": digest, "size": size,
             "source_path": source, "inside_project": inside, "relinked": relinked,
-        })
+        }
+        if export:
+            entry["export"] = export  # "song" or "stem"
+        files.append(entry)
 
     # Place every resolved reference FIRST, recording the exact on-disk logical
     # path per source. The portable rewrite then points each .als ref at the REAL
@@ -143,6 +158,27 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
         total_size += sz
         placed[logical] = digest
         record(logical, digest, sz, str(ref.resolved_path), ref.inside_project, ref.relinked)
+
+    seen_exports: set[str] = set()
+    for e in exports or []:
+        src = Path(e["path"])
+        if str(src) in seen_exports or not src.is_file():
+            continue
+        seen_exports.add(str(src))
+        kind = "stem" if e.get("kind") == "stem" else "song"
+        logical = f"{STEMS_DIR if kind == 'stem' else EXPORTS_DIR}/{src.name}"
+        try:
+            digest = hash_file(src)
+            if placed.get(logical) not in (None, digest):
+                logical = _disambiguate(logical, digest)
+            if placed.get(logical) == digest:
+                continue
+            sz = _place(pool, src, temp_dir / logical, use_hardlinks, digest)
+        except OSError:
+            continue  # moved, locked or changing right now: the next backup gets it
+        total_size += sz
+        placed[logical] = digest
+        record(logical, digest, sz, str(src), False, False, export=kind)
 
     # The project file itself (.als, .flp, …). In portable mode the adapter rewrites
     # it so external samples resolve from inside the snapshot, using `placement`.

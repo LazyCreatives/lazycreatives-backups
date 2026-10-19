@@ -37,7 +37,8 @@ def default_timestamp() -> str:
     return datetime.now().strftime("%Y-%m-%d_%H%M")
 
 
-def project_signature(scan: ProjectScan, portable: bool = False, layout: str = "project_date") -> str:
+def project_signature(scan: ProjectScan, portable: bool = False, layout: str = "project_date",
+                      exports: Optional[list[dict]] = None) -> str:
     """A content fingerprint of a project. Ableton rewrites the .als on every save,
     so we hash its actual content (robust to a same-size/same-second edit) plus each
     present sample's size + mtime. The run's portable/layout choice is folded in so
@@ -54,7 +55,25 @@ def project_signature(scan: ProjectScan, portable: bool = False, layout: str = "
         (str(r.resolved_path), r.size, int(r.mtime)) for r in scan.refs if r.exists
     ):
         h.update(f"|{path}:{size}:{mtime}".encode())
+    # Exported songs count too, so a new or re-exported song makes a new backup. A
+    # project with none keeps the signature it always had (no surprise re-backups).
+    for path, kind in sorted((str(e["path"]), e.get("kind") or "song") for e in exports or []):
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        h.update(f"|export:{kind}:{path}:{st.st_size}:{int(st.st_mtime)}".encode())
     return h.hexdigest()
+
+
+def exports_to_back_up(catalog: Catalog, project_id: str) -> list[dict]:
+    """The songs exported from a project that go into its backup: every version,
+    and its stems unless Settings says to leave them out."""
+    cfg = catalog.get_setting("config") or {}
+    with_stems = cfg.get("backup_stems", True) is not False
+    return [{"path": e["path"], "kind": e.get("kind") or "song"}
+            for e in catalog.exports_for(project_id)
+            if with_stems or e.get("kind") != "stem"]
 
 
 def _is_rclone_remote(dest: str) -> bool:
@@ -994,7 +1013,8 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
             break
         _emit(progress, {"type": "project_start", "index": i,
                          "project_name": p.name, "total": len(projects)})
-        signature = project_signature(p, portable, layout)
+        exports = exports_to_back_up(catalog, p.project_id)
+        signature = project_signature(p, portable, layout, exports)
         if last_sigs.get(p.project_id) == signature:
             # Identical to the last successful backup — don't make a redundant snapshot.
             skipped_count += 1
@@ -1005,7 +1025,8 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
         adapter = adapter_for_id(p.daw_id)
         dest_root = base / (adapter.backup_root if adapter else "AbletonBackups")
         try:
-            result = backup_project(p, dest_root, timestamp, portable=portable, layout=layout)
+            result = backup_project(p, dest_root, timestamp, portable=portable, layout=layout,
+                                    exports=exports)
         except Exception as e:  # isolate one project's failure from the rest
             if not base.is_dir():  # the drive was unplugged part way through
                 e = BackupDriveMissing()

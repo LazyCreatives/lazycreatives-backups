@@ -15,6 +15,7 @@ import { FirstBackupModal } from "./components/FirstBackupModal";
 import { WhatsNewHost, openWhatsNew } from "./components/WhatsNew";
 import { ConfirmHost, ContextMenuHost, DropZone, Exit, ShortcutsPanel, ToastHost, toast, toastWarn } from "./components/Desktop";
 import { GenrePickHost } from "./components/GenrePick";
+import { FolderPickHost } from "./components/ProjectFolders";
 import { CoverPickHost } from "./components/CoverPick";
 import { setCoverSource } from "./coverArt";
 import { baseName, folderOf, isInside, keep, pageNumber, recall, useDesktopCommands, useEscapeToClose, useFileDrop, useIconProgress, type Dropped } from "./desktop";
@@ -344,6 +345,7 @@ export default function App() {
       <ToastHost />
       <ConfirmHost />
       <GenrePickHost />
+      <FolderPickHost />
       <CoverPickHost />
       <LivePalette items={paletteItems} />
       <DropZone show={dragging && !(songDrag && tab === "library")}

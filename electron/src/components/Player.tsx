@@ -362,7 +362,7 @@ export function close() {
   set({ path: null, playing: false, meta: null, time: 0, duration: 0, error: null, auditioning: false });
 }
 
-function usePlayerState() {
+export function usePlayerState() {
   const [s, setS] = useState<State>(state);
   useEffect(() => { subs.add(setS); return () => { subs.delete(setS); }; }, []);
   return s;

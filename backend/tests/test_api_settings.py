@@ -11,13 +11,13 @@ def test_settings_default_is_empty_config(tmp_path):
     c = _client(tmp_path)
     r = c.get("/api/settings")
     assert r.status_code == 200
-    assert r.json() == {"sources": [], "dest": "", "interval_minutes": 0, "libraries": [], "mirrors": []}
+    assert r.json() == {"sources": [], "dest": "", "interval_minutes": 0, "libraries": [], "mirrors": [], "backup_stems": True}
 
 
 def test_put_settings_persists(tmp_path):
     c = _client(tmp_path)
     c.post("/api/entitlement/activate", json={"key": "LC-PRO-DEMO-2026"})  # scheduling is Pro
-    payload = {"sources": ["C:/Music"], "dest": "Z:/", "interval_minutes": 30, "libraries": [], "mirrors": []}
+    payload = {"sources": ["C:/Music"], "dest": "Z:/", "interval_minutes": 30, "libraries": [], "mirrors": [], "backup_stems": True}
     r = c.put("/api/settings", json=payload)
     assert r.status_code == 200
     assert c.get("/api/settings").json() == payload

@@ -156,6 +156,28 @@
 .stems-toggle > :last-child { grid-column: 2 / -1; }
 .stems-toggle__icon { display: flex; justify-content: center; color: var(--text-faint); }
 .stems-toggle:hover { color: var(--text); }
+/* a stem set: play all together, does it line up, make a stem pack; then its parts */
+.stemset-head { align-items: start; padding-top: 10px; padding-bottom: 10px; }
+.stemset-head > .playbtn { align-self: start; margin-top: 2px; }
+.stemset-head > .col-num, .stemset-head > .song-actions { align-self: start; padding-top: 4px; }
+.stemset-title { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; text-align: left; }
+.stemset-title svg { color: var(--text-faint); flex: none; }
+.stemset-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 6px; font-size: 12px; }
+.stemset-clock { font-size: 12px; }
+.stemset-seek { width: 100%; max-width: 360px; margin: 8px 0 0; accent-color: var(--accent); }
+.stemset-problems { margin: 6px 0 0; padding-left: 16px; font-size: 12px; line-height: 1.45; color: var(--warn); }
+.stemset-wait { min-height: 40px; font-size: 12px; }
+.stempart > :nth-child(2) { padding-left: 20px; }
+.stempart--off > :not(.song-actions) { opacity: 0.4; }
+.msbtn {
+  width: 26px; height: 26px; border-radius: var(--radius); border: 1px solid var(--border-strong);
+  background: transparent; color: var(--text-dim); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer;
+}
+.msbtn:hover:not(:disabled) { color: var(--text); border-color: var(--text-faint); }
+.msbtn:disabled { opacity: 0.35; cursor: default; }
+.msbtn--on { background: var(--warn); border-color: var(--warn); color: var(--accent-ink); }
+.msbtn--solo.msbtn--on { background: var(--accent); border-color: var(--accent); }
+
 /* a short export brought back with "Show N short files": faded and marked Short */
 .song-row--short > :not(.song-actions) { opacity: 0.6; }
 .song-short { margin-left: 8px; vertical-align: 1px; font-size: 11px; }
@@ -372,3 +394,106 @@
 
 /* Settings, Phone: the line shown when the phone settings couldn't be read */
 .phone-failed { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; color: var(--text-dim); }
+
+/* ── Stems: group colours (summary chips on the Songs tab and the desk) ── */
+.stem-g--drums  { --g: #E38B5A; }
+.stem-g--bass   { --g: #A98BDB; }
+.stem-g--vocals { --g: #E07FA6; }
+.stem-g--music  { --g: #86B3D3; }
+.stem-g--fx     { --g: #5FC4B8; }
+.stem-g--other  { --g: #8D99A6; }
+html[data-theme="light"] .stem-g--drums  { --g: #B9592A; }
+html[data-theme="light"] .stem-g--bass   { --g: #7254AE; }
+html[data-theme="light"] .stem-g--vocals { --g: #B04676; }
+html[data-theme="light"] .stem-g--music  { --g: #3D79A3; }
+html[data-theme="light"] .stem-g--fx     { --g: #1F877C; }
+html[data-theme="light"] .stem-g--other  { --g: #66717D; }
+.stemset-groups { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; font-size: 12px; }
+.stemset-group { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.stemset-group::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--g); flex: none; }
+
+/* ── Stems page: a mixing desk, one narrow strip per stem, scrolling sideways ── */
+.stemdesk { display: flex; flex-direction: column; min-width: 0; }
+.desk-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 10px 20px; margin: 4px 0 12px; }
+.desk-title { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.desk-facts { margin: 2px 0 0; }
+.desk-sets { display: flex; flex-wrap: wrap; gap: 6px; }
+.desk-set {
+  min-height: 30px; padding: 0 10px; border-radius: var(--radius); border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text-dim); font: inherit; font-size: 12px; cursor: pointer;
+}
+.desk-set[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.desk-transport {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface);
+}
+.desk-play { width: 40px; height: 40px; flex: none; }
+.desk-clock { font-size: 13px; min-width: 7.5em; color: var(--text-dim); }
+.desk-seek { flex: 1 1 200px; min-width: 140px; accent-color: var(--accent); }
+.desk-hint { margin: 10px 0 8px; font-size: 12px; }
+
+.desk {
+  display: flex; align-items: stretch; gap: 10px; overflow-x: auto; overflow-y: hidden;
+  padding: 0 0 10px; scroll-snap-type: x proximity; scrollbar-gutter: stable;
+}
+.desk:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.desk-group {
+  flex: none; display: flex; flex-direction: column; scroll-snap-align: start;
+  border: 1px solid var(--border); border-top: 3px solid var(--g); border-radius: var(--radius-lg);
+  background: var(--surface); transition: background var(--dur-quick), border-color var(--dur-quick);
+}
+.desk--dragging .desk-group { border-style: dashed; border-top-style: solid; }
+.desk-group--over { background: color-mix(in srgb, var(--g) 14%, var(--surface)); border-color: var(--g); }
+.desk-group__name {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 7px 10px 6px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text);
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.desk-group__name .mono { color: var(--text-faint); font-weight: 500; letter-spacing: 0; }
+.desk-strips { display: flex; flex: 1; }
+.desk-drop {
+  display: grid; place-items: center; width: 7em; min-height: 120px; margin: 8px; font-size: 12px;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius);
+}
+
+.strip {
+  flex: none; width: 4.75em; display: grid; grid-template-rows: auto 3.9em 1fr auto auto; justify-items: center;
+  gap: 6px; padding: 8px 4px 10px; font-size: 12px; border-right: 1px solid var(--border); cursor: grab;
+}
+.strip:last-child { border-right: 0; }
+.strip:active { cursor: grabbing; }
+.strip--bus { background: var(--surface-2); cursor: default; width: 5.25em; }
+.strip--off > :not(.strip__ms) { opacity: 0.38; }
+.strip__cap { width: 100%; height: 4px; border-radius: 2px; background: var(--g); }
+.strip--bus .strip__cap { background: repeating-linear-gradient(90deg, var(--g) 0 6px, transparent 6px 9px); }
+.strip__name {
+  width: 100%; text-align: center; line-height: 1.3; color: var(--text); overflow-wrap: break-word; hyphens: auto;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.strip--bus .strip__name { font-weight: 700; }
+.strip__body { display: flex; align-items: stretch; justify-content: center; gap: 5px; height: 190px; min-height: 0; }
+.strip__meter {
+  position: relative; width: 6px; border-radius: 3px; overflow: hidden; background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.strip__meter i {
+  position: absolute; inset: 0; transform: scaleY(0); transform-origin: bottom;
+  background: linear-gradient(to top, var(--accent-2) 0 70%, var(--warn) 86%, var(--danger) 100%);
+  background-size: 100% 190px; background-position: bottom;
+}
+.strip__meter i.meter--hot { box-shadow: inset 0 2px 0 var(--danger); }
+.strip__fader {
+  writing-mode: vertical-lr; direction: rtl; width: 22px; height: 100%; margin: 0;
+  accent-color: var(--g); cursor: ns-resize;
+}
+.strip__fader:disabled { cursor: default; opacity: 0.55; }
+.strip__db { font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.strip__ms { display: flex; gap: 4px; }
+.strip__ms .msbtn { width: 1.9em; height: 1.9em; min-width: 22px; min-height: 22px; }
+.stemset-info { grid-column: 2 / -2; min-width: 0; }
+.stemset-head > .song-actions { grid-column: -2 / -1; }
+.stemset-when { margin: 0 0 0 10px; font-size: 12px; }
+/* the group's name stays in view while its strips scroll past */
+.desk-group__name > span:first-child { position: sticky; left: 10px; }
+html[data-reading] .strip { width: 7em; }
+html[data-reading] .strip--bus { width: 6em; }

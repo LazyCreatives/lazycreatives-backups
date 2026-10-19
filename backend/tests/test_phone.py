@@ -102,3 +102,12 @@ def test_remove_and_switch_off_cut_the_phone_off(tmp_path, monkeypatch):
     assert desk.delete(f"/api/phone/devices/{got['device_id']}").status_code == 200
     assert phone.get("/phone/hello", headers=auth).status_code == 401
     assert desk.delete(f"/api/phone/devices/{got['device_id']}").status_code == 404
+
+
+def test_phone_sees_your_folders(tmp_path, monkeypatch):
+    app, desk, phone, *_ = _setup(tmp_path, monkeypatch)
+    desk.put("/api/phone", json={"enabled": True})
+    auth = {"Authorization": f"Bearer {_pair(desk, phone)['key']}"}
+    desk.post("/api/folders", json={"name": "Club", "project_ids": ["p1", "gone"]})
+    got = phone.get("/phone/projects", headers=auth).json()
+    assert [(f["name"], f["project_ids"]) for f in got["folders"]] == [("Club", ["p1"])]

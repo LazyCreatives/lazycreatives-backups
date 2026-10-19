@@ -16,6 +16,7 @@ export interface Config {
   interval_minutes: number;
   libraries: string[];
   mirrors?: string[];  // offsite/cloud destinations (Studio)
+  backup_stems?: boolean;  // stems go into backups with the exported songs (default on)
 }
 // A usual project folder found on this computer (first-run setup).
 export interface SuggestedFolder { path: string; label: string; count: number; }
@@ -51,6 +52,7 @@ export interface SnapshotFile {
   inside_project: boolean;
   relinked: boolean;
   source_path: string;
+  export?: "song" | "stem";  // an exported song or stem kept with the project
 }
 export interface SnapshotFilesResult {
   files: SnapshotFile[];
@@ -262,4 +264,19 @@ export interface PluginList {
   complete: boolean;
   projects_scanned: number;
   missing?: MissingPlugin[];     // used by your projects, not on this computer
+}
+
+// A project's stems exported together, checked to line up (GET /api/stems/{id}).
+export interface StemPart {
+  path: string; name: string; part: string; size: number | null;
+  group: string; auto_group: string;  // Drums, Bass…: sorted by name, or where you dragged it
+  seconds: number | null; rate: number | null; bits: number | null; channels: number | null;
+}
+export interface StemGroup { id: string; name: string }
+export interface StemSet {
+  id: string; when: number; folder: string; size: number;
+  parts: StemPart[];
+  check: { ok: boolean; problems: string[]; unread: number; seconds: number | null; rate: number | null; bits: number | null };
+  master: { path: string; name: string } | null;
+  instrumental: { path: string; name: string } | null;
 }

@@ -13,6 +13,17 @@ How to keep this up to date:
   The checks on pull requests fail if the app's version has no section here.
 -->
 
+## 0.2.14 (19 October 2026)
+
+### New
+- **Your finished songs are backed up too.** Every song you exported from a project now goes into its backup, every version, so a lost drive never takes your mixes with it. Stems are kept too; Settings, Backups can leave them out to save room. Restore brings them back in an "Exported songs" folder. Your own files are only read.
+- **A mixing desk for your stems.** Open stems from a project's Songs tab and every stem gets its own narrow strip with a level meter, a fader, M (mute) and S (solo), side by side and scrolling sideways, so a song with 100+ stems stays easy to handle. Stems are sorted by name into Drums, Bass, Vocals, Keys and synths, FX and Other, and each group has its own fader, M and S. Drag a stem onto another group (or right-click it) to move it; Backups remembers. Your files stay as they are.
+- **Stem packs.** Each set of stems says whether its parts line up (same length and quality). "Make stem pack" zips the stems (a folder per group), the full song, the instrumental and a sheet with the BPM and key into a new file in a folder you pick, ready for a label, a mix engineer or a remix contest.
+- **Folders for your projects.** Make your own folders at the top of the Library and sort projects into them: drag a project (or every ticked one) onto a folder, right-click and pick "Add to folder…", or tick several and use the bar at the bottom. A project can be in as many folders as you like. Click a folder to see only its projects; search and filters work inside it. Your folders also show as crates in Dig, in Uploader and on your phone. Folders belong to the app: your files never move.
+
+### Fixed
+- **A backup's details no longer squash its date and file counts** into a thin column next to the buttons in a smaller window.
+
 ## 0.2.13 (14 October 2026)
 
 ### Better

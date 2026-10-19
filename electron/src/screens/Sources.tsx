@@ -324,6 +324,15 @@ export function Sources() {
         )}
       </SetRow>
 
+      <SetRow title="Keep stems in backups"
+        help="Every song you exported from a project goes into its backup, every version, so a lost drive never takes your finished mixes with it. Stems are the separate parts (kick, vocals and so on) and can take a lot of room.">
+        <OnOff label="Keep stems in backups" on={cfg.backup_stems !== false} disabled={!loaded}
+          onChange={(on) => setCfg({ ...cfg, backup_stems: on })} />
+        <p className="set-note">{cfg.backup_stems !== false
+          ? "Songs and stems are kept. Restore brings them back in an Exported songs folder."
+          : "Only the songs are kept. Restore brings them back in an Exported songs folder."}</p>
+      </SetRow>
+
       <SetRow title={<>Automatic backup{!canSchedule && <ProBadge />}</>}
         help={`Leave the app running (it lives in your ${words.tray}) and it backs up on its own.`}>
         <Choice label="Automatic backup" value={cfg.interval_minutes} options={PRESETS} disabled={!loaded || !canSchedule}

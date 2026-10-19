@@ -10,6 +10,7 @@ import { SONGS_LINKED } from "../songDrop";
 import { osWords } from "../platform";
 import { fmtSize, fmtDay } from "../format";
 import { isShortExport, shortExportSeconds } from "../exportFolders";
+import { StemSets } from "./StemSets";
 
 const api = makeApi();
 const bridge = () => (window as any).ablebackup;
@@ -29,7 +30,9 @@ const folderName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 // "Songs from this project": every export (bounce/render) linked to the project,
 // newest first, with a play button, its SoundCloud link when Uploader has posted it,
 // and the controls to fix a wrong or missed match.
-export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChanged?: () => void }) {
+export function ProjectExports({ item, onChanged, onOpenStems }: {
+  item: LibraryItem; onChanged?: () => void; onOpenStems?: (setId: string) => void;
+}) {
   const songMeta = (title: string) => ({ title, project: item.name, projectId: item.project_id, genre: item.genre });
   const [data, setData] = useState<Data | null>(null);
   const [folders, setFolders] = useState<{ folders: string[]; found_folders?: string[]; ignored?: string[]; uploader_folders: string[] } | null>(null);
@@ -207,7 +210,7 @@ export function ProjectExports({ item, onChanged }: { item: LibraryItem; onChang
           <span>Stems <span className="faint">({stems.length}) · the separate parts: kick, vocals and so on</span></span>
         </button>
       )}
-      {showStems && stems.map((e) => songRow(e))}
+      {showStems && <StemSets projectId={item.project_id} rows={stems} cols={cols} onOpen={onOpenStems} />}
 
       {(data?.uploads_elsewhere ?? []).map((u) => (
         <div key={u.url ?? u.title} className={cols}>

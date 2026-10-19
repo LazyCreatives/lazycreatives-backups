@@ -6,6 +6,7 @@ import { toProjectFromLibrary, SLOTH_BLUE } from "./types";
 import type { LibraryItem } from "../../types";
 import { NO_FILTERS, applyFilters, type LibFilters } from "../../libraryFilter";
 import { useSmartCrates } from "../../smart";
+import { inFolder, useFolders } from "../../projectFolders";
 import { genreColor, genreColorsVersion } from "../../look";
 import { ratingOf, useRatings } from "../../marks";
 import { makeApi } from "../../api";
@@ -75,6 +76,16 @@ export function CrateView({ openKey, onOpenKey, onCloseKey, onOpenProject }: {
     });
   }, [saved, items, search, rated, colours]);
 
+  // Your folders (the app's own, made in the Library): one crate each
+  const folders = useFolders();
+  const folderCrates: CrateGroup[] = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return folders.map((f) => {
+      const list = inFolder(items, f).map(toProjectFromLibrary).filter((p) => !q || p.name.toLowerCase().includes(q));
+      return { key: `folder:${f.id}`, label: f.name, accent: SLOTH_BLUE, projects: list, count: list.length };
+    }).filter((c) => c.count > 0);  // an empty folder has nothing to dig through
+  }, [folders, items, search]);
+
   const [active, setActive] = useKept("active");
   const [digSort, setDigSort] = useKept("digSort");
   const [verifiedOnly, setVerifiedOnly] = useKept("verifiedOnly");
@@ -83,7 +94,8 @@ export function CrateView({ openKey, onOpenKey, onCloseKey, onOpenProject }: {
   const openGroup: CrateGroup | null =
     openKey === "__all__"
       ? { key: "__all__", label: "All records", accent: SLOTH_BLUE, projects, count: projects.length }
-      : crates.find((c) => c.key === openKey) ?? smart.find((c) => c.key === openKey) ?? null;
+      : crates.find((c) => c.key === openKey) ?? smart.find((c) => c.key === openKey)
+        ?? folderCrates.find((c) => c.key === openKey) ?? null;
   const level: "shelf" | "dig" = openGroup ? "dig" : "shelf";
 
   function open(key: string) {
@@ -116,9 +128,15 @@ export function CrateView({ openKey, onOpenKey, onCloseKey, onOpenProject }: {
                 ? <EmptyCrate searching title="No projects match your search">Try fewer letters, or clear the search box.</EmptyCrate>
                 : <EmptyCrate title="Nothing to dig through yet">Scan your project folders in the Library and your projects land here in crates.</EmptyCrate>)
               : <>
+                  {folderCrates.length > 0 && <>
+                    <div className="crate-section"><h2>Your folders</h2><span>Made in the Library. Your files stay where they are.</span></div>
+                    <CrateShelf groups={folderCrates} onOpen={open} reduce={reduce} label="Your folders" />
+                  </>}
                   {smart.length > 0 && <>
                     <div className="crate-section"><h2>Smart crates</h2><span>Saved from the Library's filters. They fill themselves.</span></div>
                     <CrateShelf groups={smart} onOpen={open} reduce={reduce} label="Smart crates" />
+                  </>}
+                  {(smart.length > 0 || folderCrates.length > 0) && <>
                     <div className="crate-section"><h2>{groupBy === "genre" ? "By genre" : groupBy === "daw" ? "By music app" : groupBy === "tempo" ? "By tempo" : "By recency"}</h2></div>
                   </>}
                   <CrateShelf groups={crates} onOpen={open} reduce={reduce} />

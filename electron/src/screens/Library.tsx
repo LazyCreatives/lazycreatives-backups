@@ -22,6 +22,7 @@ import { ratingOf, renameRatings, useDensity, useRatings } from "../marks";
 import { pickGenre, pickCrateColor } from "../components/GenrePick";
 import { PageHeader } from "../components/PageHeader";
 import { UnmatchedSongs } from "./UnmatchedSongs";
+import { StemDesk } from "./StemDesk";
 import { SmartBar } from "../components/SmartBar";
 import { ColumnBrowse, NO_GENRE, facets, openFromRow } from "../components/Browse";
 import { BPM_BANDS, FIRST_DIR, NO_FILTERS, applyFilters, describeFilters, yearOf, rememberSort, rememberedSort, sortItems, type LibSort, type SortKey, extraFilterCount, isFiltered, countStatuses, statusSummary, rememberFilters, rememberedFilters, type LibFilters, type LibraryView, type StatusFilter, viewFor } from "../libraryFilter";
@@ -36,6 +37,8 @@ import { EmptyState } from "../components/SlothSpot";
 import { ScanSloth } from "../components/ScanSloth";
 import { backupAndWait, type RunResult } from "../runBackup";
 import { SONGS_LINKED, SongDropTarget, useSongDrop, useSongDragActive } from "../songDrop";
+import { FolderShelf, pickFolders } from "../components/ProjectFolders";
+import { addToFolder, inFolder, startProjectDrag, takeOutOfFolder, useFolders } from "../projectFolders";
 import "../library.css";
 
 const api = makeApi();
@@ -126,6 +129,8 @@ let savedScopeTouched = false;
 // Library finds the row you came from.
 const PAGE = 120;
 let rememberedLimit = PAGE;
+// The folder shown (null = every project), kept for the next time the app opens.
+let rememberedFolder: string | null = recall<string | null>("lc-library-folder", null, (v) => v === null || typeof v === "string");
 
 // openProject: the project shown as its own page (its id, or its name when another
 // screen opened it), or null for the list. Opening and closing go through the app's
@@ -142,6 +147,9 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   // songs in exports folders no project matched, and whether that list is open
   const [unmatched, setUnmatched] = useState(0);
   const [showUnmatched, setShowUnmatched] = useState(false);
+  // the Stems page (a mixing desk) of the open project: which project and stem set
+  const [desk, setDesk] = useState<{ projectId: string; setId: string } | null>(null);
+  useEffect(() => { setDesk(null); }, [openProject]);
   const [loading, setLoading] = useState(true);
   const [scope, setScopeState] = useState(rememberedScope);
   const setScope = (v: string) => { rememberedScope = v; savedScopeTouched = true; keep("lc-library-scope", v); setScopeState(v); };
@@ -180,6 +188,16 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   };
   const [look] = useLook();
   const [rows, setRows] = useDensity("library");
+  // Folders: the app's own way to sort projects (see projectFolders.ts). One open at a time.
+  const folders = useFolders();
+  const [folderId, setFolderState] = useState<string | null>(rememberedFolder);
+  const setFolder = (id: string | null) => {
+    rememberedFolder = id; keep("lc-library-folder", id); setFolderState(id);
+    document.querySelector(".main")?.scrollTo({ top: 0 });
+  };
+  const folder = folders.find((f) => f.id === folderId) ?? null;
+  // only the projects in the open folder; the search and filters work inside it
+  const pool = useMemo(() => inFolder(items, folder), [items, folder]);
   // Crate: the usual list, or Genre > Year > Project columns
   const [view, setViewState] = useState<"list" | "columns">(() => recall("lc-library-view", "list", (v) => v === "list" || v === "columns"));
   const setView = (v: "list" | "columns") => { keep("lc-library-view", v); setViewState(v); };
@@ -225,6 +243,21 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
     if (savedScope) return;
     api.getSettings().then((c) => { if (!c.sources?.length && !savedScopeTouched) { rememberedScope = "home"; setScopeState("home"); } }).catch(() => {});
   }, []);
+
+  // Take projects out of the open folder (only the folder changes, never a file).
+  async function takeOut(list: LibraryItem[]) {
+    const f = folder;
+    if (!f) return;
+    const ids = list.map((i) => i.project_id).filter((id) => f.project_ids.includes(id));
+    if (!ids.length) return;
+    try {
+      await takeOutOfFolder(f.id, ids);
+      const what = ids.length === 1 ? list.find((i) => i.project_id === ids[0])!.name : `${ids.length} projects`;
+      toast(`${what} taken out of ${f.name}.`, { label: "Undo", onClick: () => { void addToFolder(f.id, ids); } });
+    } catch {
+      toastWarn("Couldn't change that folder. Try again.");
+    }
+  }
 
   // Correct the genre of one project (or every ticked one). Covers, stripes and Dig
   // crates follow it, and so does Uploader, which reads the same record.
@@ -402,7 +435,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   // The list follows the search a beat behind the box: typing stays instant and the
   // rows catch up between keys (React drops a half-drawn list when another key lands).
   const dFilters = useDeferredValue(filters);
-  const shown = useMemo(() => pinnedFirst(sortItems(applyFilters(items, dFilters), sort), pins), [items, dFilters, sort, pins, rated]);
+  const shown = useMemo(() => pinnedFirst(sortItems(applyFilters(pool, dFilters), sort), pins), [pool, dFilters, sort, pins, rated]);
   // The columns view draws COLUMN_PAGE projects and more on asking, so a big library stays quick.
   const [columnShown, setColumnShown] = useState(COLUMN_PAGE);
   useEffect(() => { setColumnShown(COLUMN_PAGE); }, [shown]);
@@ -413,27 +446,33 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   const picking = picked.size > 0;
   // the status buttons count what the other filters leave, so the numbers add up
   const statusCounts = useMemo(() => {
-    return countStatuses(applyFilters(items, dFilters, true));
-  }, [items, dFilters]);
+    return countStatuses(applyFilters(pool, dFilters, true));
+  }, [pool, dFilters]);
   const allCounts = useMemo(() => countStatuses(items), [items]);
   const dawOptions = useMemo(() => [...new Set(items.map((i) => i.daw || "").filter(Boolean))].sort(), [items]);
   const anyRated = rated.replace(/[0,]/g, "") !== "";
   // Genre and Year to browse by, counted over what the other filters leave
   const browse = useMemo(() => {
-    const pool = applyFilters(items, { ...dFilters, genre: "", year: "" });
-    const inGenre = dFilters.genre ? applyFilters(pool, { ...NO_FILTERS, genre: dFilters.genre }).length : pool.length;
-    return { ...facets(pool, (i) => i.genre, yearOf, dFilters.genre), total: pool.length, inGenre };
-  }, [items, dFilters, rated, pins]);
+    const left = applyFilters(pool, { ...dFilters, genre: "", year: "" });
+    const inGenre = dFilters.genre ? applyFilters(left, { ...NO_FILTERS, genre: dFilters.genre }).length : left.length;
+    return { ...facets(left, (i) => i.genre, yearOf, dFilters.genre), total: left.length, inGenre };
+  }, [pool, dFilters, rated, pins]);
   const columns = look === "crate" && view === "columns";
   // Favourites over the genres: how many of what the other filters leave are pinned or rated.
   const marks = useMemo(() => {
-    const pool = applyFilters(items, { ...dFilters, pinned: false, rated: 0 });
+    const left = applyFilters(pool, { ...dFilters, pinned: false, rated: 0 });
     return {
-      pinned: pool.filter((i) => pins.includes(i.project_id)).length,
-      rated: pool.filter((i) => ratingOf(i.project_id) >= Math.max(1, dFilters.rated)).length,
+      pinned: left.filter((i) => pins.includes(i.project_id)).length,
+      rated: left.filter((i) => ratingOf(i.project_id) >= Math.max(1, dFilters.rated)).length,
     };
-  }, [items, dFilters, rated, pins]);
+  }, [pool, dFilters, rated, pins]);
   const { glyph } = useRatings();
+  const shelfProjects = useMemo(() => items.map((i) => ({ id: i.project_id, name: i.name, genre: i.genre })), [items]);
+  // Drag a row onto a folder tile: that project, or every ticked one when it's ticked.
+  const dragRow = (it: LibraryItem) => (e: React.DragEvent) => {
+    const ids = picked.has(it.project_id) ? [...picked] : [it.project_id];
+    startProjectDrag(e, ids, it.name);
+  };
   // the filters tucked behind "More filters" that are on now
   const moreOn = [filters.daw, filters.bpm, filters.song !== "any", filters.rated > 0, filters.pinned].filter(Boolean).length;
   const filtered = isFiltered(filters);
@@ -484,6 +523,9 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   // drop a song anywhere on an open project's page to link it to that project
   const pageDrop = useSongDrop(openItem);
   if (openProject && loading) return <div className="empty">Loading your library…</div>;
+  if (openItem && desk?.projectId === openItem.project_id) {
+    return <StemDesk projectId={openItem.project_id} projectName={openItem.name} setId={desk.setId} onBack={() => setDesk(null)} />;
+  }
   if (openItem) {
     const it = openItem;
     return (
@@ -510,7 +552,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
             // missing samples first: it's the thing that needs a decision
             ...(it.missing_count > 0 ? [{ key: "missing", label: "Missing samples", count: it.missing_count,
               content: <MissingSamples item={it} onChanged={load} /> }] : []),
-            { key: "songs", label: "Songs", content: <ProjectExports item={it} onChanged={load} /> },
+            { key: "songs", label: "Songs", content: <ProjectExports item={it} onChanged={load} onOpenStems={(setId) => setDesk({ projectId: it.project_id, setId })} /> },
             { key: "backups", label: "Backups", count: it.snapshot_count, content: it.backed_up
               ? <ProjectBackups projectName={it.name} projectPath={it.path} onFixed={load} />
               : <EmptyState pose="napping" title="No backups of this project yet" say="Nothing to guard yet.">Press Back up now at the top and the first one shows here.</EmptyState> },
@@ -603,6 +645,10 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
       </div>
 
       {!loading && items.length > 0 && (
+        <FolderShelf open={folder?.id ?? null} onOpen={setFolder} projects={shelfProjects} />
+      )}
+
+      {!loading && items.length > 0 && (
         <div className="lib-find">
           <div className="lib-find__top">
             <label className="lib-search">
@@ -683,7 +729,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
             </MoreFilters>
             {filtered && (
               <>
-                <span className="lib-find__count lib-find__showing">Showing <b>{fmtCount(shown.length)}</b> of {fmtCount(items.length)}</span>
+                <span className="lib-find__count lib-find__showing">Showing <b>{fmtCount(shown.length)}</b> of {fmtCount(pool.length)}</span>
                 <button className="lib-find__clear" onClick={() => setFilters(null)}>
                   <Icon name="close" size={12} />Clear all
                 </button>
@@ -751,7 +797,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
               const isPin = pins.includes(it.project_id);
               const openIt = () => onOpen(it.project_id);
               return (
-                <SongDropTarget as="div" project={it} key={it.project_id} className={`browse__item${isPin ? " browse__item--pinned" : ""}`} data-nav-key={it.project_id}
+                <SongDropTarget as="div" project={it} key={it.project_id} draggable onDragStart={dragRow(it)} className={`browse__item${isPin ? " browse__item--pinned" : ""}`} data-nav-key={it.project_id}
                   onClick={openFromRow(openIt)}
                   onContextMenu={(e: React.MouseEvent) => openMenu(e, [
                     { label: "Show backups & details", onClick: openIt },
@@ -759,6 +805,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                     { label: isPin ? "Unpin" : "Pin to the top", onClick: () => togglePin(it.project_id) },
                     "-", ...ratingMenu([it.project_id], ratingOf(it.project_id)), "-",
                     { label: it.genre ? "Change genre…" : "Set genre…", onClick: () => changeGenre([it]) },
+                    { label: "Add to folder…", onClick: () => { void pickFolders(it.name, [it.project_id]); } },
                     { label: "Change cover…", onClick: () => { pickCover({ title: it.name, name: it.name, genre: it.genre }); } },
                   ])}>
                   <span className="stripe" style={{ background: genreColor(it.genre) }} />
@@ -788,6 +835,11 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
               </button>
             )}</>}
         </ColumnBrowse>
+      ) : folder && pool.length === 0 ? (
+        <EmptyState pose="napping" title={`Nothing in ${folder.name} yet`} say="An empty folder. Very tidy."
+          action={<Button variant="ghost" size="sm" onClick={() => setFolder(null)}>Show all projects</Button>}>
+          Drag projects onto the folder above, or right-click a project and pick Add to folder. Your files stay where they are.
+        </EmptyState>
       ) : shown.length === 0 ? (
         onlyMissing
           ? <EmptyState pose="thumbs-up" title="Nothing missing" say="All there. Back to my nap.">Every project's samples are where they should be.</EmptyState>
@@ -825,6 +877,8 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
               { label: it.backed_up ? "Back up again" : "Back up", onClick: () => backupOne(it), disabled: working },
               { label: pins.includes(it.project_id) ? "Unpin" : "Pin to the top", onClick: () => togglePin(it.project_id) },
               { label: it.genre ? "Change genre…" : "Set genre…", onClick: () => changeGenre([it]) },
+              { label: "Add to folder…", onClick: () => { void pickFolders(it.name, [it.project_id]); } },
+              ...(folder ? [{ label: `Take out of ${folder.name}`, onClick: () => takeOut([it]) }] : []),
               ...(it.missing_count > 0 ? [
                 { label: "Find missing samples", onClick: () => { findSamples(it); }, disabled: working },
                 { label: "Look for samples in a folder…", onClick: () => lookInFolder(it), disabled: working },
@@ -880,6 +934,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                     const done = !working && !failed && st.tone === "ok" && justDone.has(it.project_id);
                     return (
                       <SongDropTarget as={AuditionDiv} project={it} key={it.project_id} song={it.latest_export?.path} meta={meta} data-pid={it.project_id} data-nav-key={it.project_id}
+                        draggable onDragStart={dragRow(it)}
                         className={`sleeve${picking ? " sleeve--picking" : ""}${picked.has(it.project_id) ? " sleeve--selected" : ""}${isPin ? " sleeve--pinned" : ""}`}
                         onClick={openIt} onContextMenu={onContextMenu}>
                         <div className="sleeve__art">
@@ -940,6 +995,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                     const done = !working && !failed && st.tone === "ok" && justDone.has(it.project_id);
                     return (
                       <SongDropTarget as={AuditionDiv} project={it} key={it.project_id} song={it.latest_export?.path} meta={meta} data-pid={it.project_id} data-nav-key={it.project_id}
+                        draggable onDragStart={dragRow(it)}
                         className={`row cols lib-row ${colsClass}${picked.has(it.project_id) ? " lib-row--picked" : ""}${isPin ? " lib-row--pinned" : ""}`}
                         onClick={openIt} onContextMenu={onContextMenu}>
                         <span className="stripe" style={{ background: genreColor(it.genre) }} />
@@ -1015,6 +1071,12 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
             <Button size="sm" variant="ghost" onClick={() => setPins(pickedItems.map((i) => i.project_id), !allPinned)}>
               <Icon name={allPinned ? "star" : "starFilled"} size={13} /> {allPinned ? "Unpin" : "Pin to the top"}
             </Button>
+            <Button size="sm" variant="ghost" onClick={() => { void pickFolders(pickedItems.length === 1 ? pickedItems[0].name : `${pickedItems.length} projects`, pickedItems.map((i) => i.project_id)); }}>
+              <Icon name="folder" size={13} /> Add to folder…
+            </Button>
+            {folder && pickedItems.some((i) => folder.project_ids.includes(i.project_id)) && (
+              <Button size="sm" variant="ghost" onClick={() => { takeOut(pickedItems); setPicked(new Set()); }}>Take out of {folder.name}</Button>
+            )}
             <Button size="sm" variant="ghost" onClick={() => changeGenre(pickedItems)}>Set genre…</Button>
             <Button size="sm" variant="ghost" onClick={(e) => openMenu(e, ratingMenu([...picked], 0))}>Rate…</Button>
             <button type="button" className="linkbtn pickbar__clear" onClick={() => setPicked(new Set())}>Clear</button>

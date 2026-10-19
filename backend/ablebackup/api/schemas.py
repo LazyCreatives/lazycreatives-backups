@@ -11,11 +11,23 @@ class Config(BaseModel):
     interval_minutes: int = Field(0, ge=0, le=44640)  # 0 = off … max 31 days
     libraries: list[str] = Field(default_factory=list, max_length=_LIST)
     mirrors: list[str] = Field(default_factory=list, max_length=100)  # offsite/cloud dests
+    backup_stems: bool = True  # stems go into backups with the exported songs
 
 
 class RestoreRequest(BaseModel):
     snapshot_id: int = Field(..., ge=0)
     target: str = Field(..., max_length=_PATH)  # folder to restore/share into
+
+
+class StemGroupRequest(BaseModel):
+    paths: list[str] = Field(..., min_length=1, max_length=2000)
+    group: str | None = Field(None, max_length=32)  # None = back to the automatic group
+
+
+class StemPackRequest(BaseModel):
+    project_id: str = Field(..., min_length=1, max_length=128)
+    set_id: str = Field(..., min_length=1, max_length=64)
+    target: str = Field(..., max_length=_PATH)  # folder the new zip goes in
 
 
 class ActivateRequest(BaseModel):

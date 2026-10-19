@@ -11,17 +11,21 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from ablebackup import audiolen, covers, entitlement, exports, markers, phone, playback, plugins, tidy, waveform
+from ablebackup import (audiolen, covers, entitlement, exports, markers, phone, playback, plugins,
+                        stempacks, tidy, waveform)
 from ablebackup.albums import LOSSLESS, Albums
 from ablebackup.samples import album_skip as album_song_skip, seconds_cached as song_seconds
 from ablebackup.albums_api import make_router as albums_router
+from ablebackup.folders import Folders
+from ablebackup.folders_api import make_router as folders_router
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
 from ablebackup.api.schemas import (
     ActivateRequest, BackupRequest, CloudConnectRequest, CloudDisconnectRequest,
     Config, ExportFoldersRequest, ExportDropRequest, ExportIgnoreRequest, ExportLinkRequest,
     ExportUndoRequest, GenreRequest,
-    PhoneSwitch, PluginFoldersRequest, RestoreRequest, ScanRequest, TidyRequest, TidyUndoRequest,
+    PhoneSwitch, PluginFoldersRequest, RestoreRequest, ScanRequest, StemGroupRequest, StemPackRequest, TidyRequest,
+    TidyUndoRequest,
 )
 from ablebackup.catalog import Catalog
 from ablebackup.scheduler import BackupScheduler
@@ -408,9 +412,11 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         if _backup_running():
             raise HTTPException(status_code=409, detail="A backup is running. Rename once it has finished.")
         try:
-            return tidy.apply(app.state.catalog, req.project_ids, **_tidy_opts(req))
+            done = tidy.apply(app.state.catalog, req.project_ids, **_tidy_opts(req))
         except tidy.TidyError as e:
             raise HTTPException(status_code=409, detail=str(e))
+        folders.rename_projects(done.get("id_map") or {})  # renamed projects stay in their folders
+        return done
 
     @app.get("/api/tidy/last", dependencies=[Depends(require_token)])
     def tidy_last(project_id: str):
@@ -421,9 +427,11 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         if _backup_running():
             raise HTTPException(status_code=409, detail="A backup is running. Undo once it has finished.")
         try:
-            return tidy.undo(app.state.catalog, req.batch_id)
+            done = tidy.undo(app.state.catalog, req.batch_id)
         except tidy.TidyError as e:
             raise HTTPException(status_code=409, detail=str(e))
+        folders.rename_projects(done.get("id_map") or {})
+        return done
 
     # ---- song exports linked to projects (and their SoundCloud uploads) --------
     @app.get("/api/exports", dependencies=[Depends(require_token)])
@@ -438,6 +446,57 @@ def create_app(token: str, db_path: Path) -> FastAPI:
                                            follow_id=tidy.id_follower(app.state.catalog))
         return {"project_id": project_id, "exports": rows, "uploads_elsewhere": elsewhere,
                 "uploader_installed": exports.find_uploader_db() is not None}
+
+    def _stem_sets(project_id: str) -> tuple[dict, list[dict]]:
+        cat = app.state.catalog
+        project = cat.discovered_one(project_id) or {"name": ""}
+        moved = cat.get_setting("stem_groups") or {}
+        return project, stempacks.stem_sets(cat.exports_for(project_id), project.get("name") or "", moved)
+
+    @app.get("/api/stems/{project_id}", dependencies=[Depends(require_token)])
+    def stem_sets(project_id: str):
+        """A project's stems in sets (exported together), each checked to line up."""
+        _, sets = _stem_sets(project_id)
+        return {"project_id": project_id, "sets": sets,
+                "groups": [{"id": g, "name": stempacks.GROUP_NAMES[g]} for g in stempacks.GROUP_IDS]}
+
+    @app.put("/api/stems/group", dependencies=[Depends(require_token)])
+    def stem_group(req: StemGroupRequest):
+        """Move stems to another group (kept for good); group None puts them back
+        where they were sorted automatically."""
+        if req.group is not None and req.group not in stempacks.GROUP_IDS:
+            raise HTTPException(status_code=400, detail="unknown group")
+        cat = app.state.catalog
+        moved = dict(cat.get_setting("stem_groups") or {})
+        for p in req.paths:
+            if req.group is None:
+                moved.pop(p, None)
+            else:
+                moved[p] = req.group
+        cat.set_setting("stem_groups", moved)
+        return {"ok": True, "moved": len(req.paths)}
+
+    @app.post("/api/stems/pack", dependencies=[Depends(require_token)])
+    async def stem_pack(req: StemPackRequest):
+        """Zip one stem set with its song, instrumental and a BPM/key sheet into a new
+        file in the chosen folder. Nothing of the producer's is changed."""
+        target = _validate_target(req.target)
+        project, sets = _stem_sets(req.project_id)
+        chosen = next((s for s in sets if s["id"] == req.set_id), None)
+        if chosen is None:
+            raise HTTPException(status_code=404, detail="Those stems have changed. Look again.")
+        job_id = uuid.uuid4().hex
+        _new_job(job_id)
+
+        async def _run_pack():
+            try:
+                path = await asyncio.to_thread(stempacks.make_pack, project, chosen, target)
+                app.state.jobs[job_id] = {"state": "done", "result": {"path": path}}
+            except Exception:
+                app.state.jobs[job_id] = {"state": "error", "error": "couldn't make the stem pack"}
+
+        asyncio.create_task(_run_pack())
+        return {"job_id": job_id, "state": "running"}
 
     @app.get("/api/exports/folders", dependencies=[Depends(require_token)])
     def exports_folders():
@@ -644,9 +703,13 @@ def create_app(token: str, db_path: Path) -> FastAPI:
 
     app.include_router(albums_router(require_token, lambda: Path(db_path), _album_candidates, albums))
 
+    # ---- folders you sort projects into: one list shared with Uploader (see folders.py) ----
+    folders = Folders()
+    app.include_router(folders_router(require_token, folders))
+
     # ---- your phone: browse and fetch songs over home Wi-Fi (see phone.py) ----
     app.state.phone = phone.from_env(catalog)
-    phone.make_phone_app(app.state.phone, catalog, albums, _known_song)
+    phone.make_phone_app(app.state.phone, catalog, albums, _known_song, folders)
 
     @app.get("/api/phone", dependencies=[Depends(require_token)])
     def phone_status():

@@ -185,7 +185,8 @@ class PairRequest(BaseModel):
     name: str = Field("", max_length=60)
 
 
-def make_phone_app(link: PhoneLink, catalog, albums, known_song: Callable[[str], bool]) -> FastAPI:
+def make_phone_app(link: PhoneLink, catalog, albums, known_song: Callable[[str], bool],
+                   folders=None) -> FastAPI:
     """The small server phones talk to. Every route but pairing needs a paired
     phone's key, sent as `Authorization: Bearer <key>` (or `?k=` for the player)."""
     app = FastAPI(title="ablebackup-phone", docs_url=None, redoc_url=None, openapi_url=None)
@@ -233,7 +234,11 @@ def make_phone_app(link: PhoneLink, catalog, albums, known_song: Callable[[str],
                         "saved": r.get("mtime") or 0, "backed_up": bool(r.get("backed_up")),
                         "changed": bool(r.get("changed")), "songs": ex["count"] if ex else 0})
         out.sort(key=lambda p: -(p["saved"] or 0))
-        return {"projects": out}
+        # your folders (the app's own, see folders.py), only naming projects there are
+        have = {p["id"] for p in out}
+        shelf = [{"id": f["id"], "name": f["name"], "project_ids": [i for i in f["project_ids"] if i in have]}
+                 for f in (folders.all() if folders else [])]
+        return {"projects": out, "folders": shelf}
 
     @app.get("/phone/projects/{project_id}")
     def project(project_id: str, _: dict = Depends(phone)):

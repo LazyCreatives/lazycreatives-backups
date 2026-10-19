@@ -1573,3 +1573,94 @@ button.wave__mark { cursor: pointer; }
 .set-panel > .set-group:first-child, .set-panel > .sr-only:first-child + .set-group { margin-top: 22px; }
 .set-intro { margin: 18px 0 0; max-width: 72ch; font-size: 13px; line-height: 1.55; color: var(--text-dim); }
 .set-intro + .set-row { border-top: 0; }
+
+/* Folders you sort projects into (components/ProjectFolders.tsx): a row of tiles above a list, one per folder, plus
+   "All" and "New folder". Crate: flat squared tiles with a folder mark. Sleeve: bigger
+   cards with the first four covers in the folder. A tile lights up while projects are
+   dragged over it. The "Add to folder" box (.fpick) ticks the folders a project is in. */
+.fshelf {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 8px;
+  margin: 0 0 16px;
+}
+.ftile {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  min-height: 52px; padding: 6px 12px 6px 6px; text-align: left; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+  color: var(--text); font: inherit; min-width: 0;
+  transition: border-color .15s, background .15s, transform .15s var(--ease-glide, ease);
+}
+.ftile:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.ftile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ftile--on { border-color: var(--accent); background: var(--accent-soft); }
+.ftile--over { border-color: var(--accent); background: var(--accent-soft); border-style: dashed; transform: scale(1.02); }
+.ftile__art {
+  width: 40px; height: 40px; display: grid; place-items: center; overflow: hidden; flex-shrink: 0;
+  border-radius: calc(var(--radius) - 2px); background: var(--surface-2); color: var(--text-dim);
+}
+.ftile__art--2, .ftile__art--3, .ftile__art--4 { grid-template-columns: 20px 20px; grid-template-rows: 20px 20px; place-items: stretch; }
+.ftile__art--3 > :first-child { grid-row: span 2; width: 20px; height: 40px; }
+.ftile__art .cover { border-radius: 0; box-shadow: none; }
+.ftile--on .ftile__art { color: var(--accent); }
+.ftile__text { min-width: 0; display: grid; gap: 1px; grid-column: 2 / 4; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; column-gap: 8px; }
+.ftile__name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ftile__n { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ftile--all .ftile__art, .ftile--new .ftile__art { background: transparent; border: 1px dashed var(--border-strong); }
+.ftile--all .ftile__art { border-style: solid; }
+.ftile--new { color: var(--text-dim); border-style: dashed; background: transparent; }
+.ftile--new:hover { color: var(--text); }
+.ftile--more { grid-template-columns: minmax(0, 1fr) auto; padding-left: 14px; color: var(--text-dim); background: transparent; }
+.ftile--more .ftile__text { grid-column: 1; }
+.ftile--naming { cursor: text; border-color: var(--accent); grid-template-columns: 40px minmax(0, 1fr); padding-right: 6px; }
+.ftile__input {
+  width: 100%; min-width: 0; height: 34px; padding: 0 8px; font: 600 13px var(--font); color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: calc(var(--radius) - 2px);
+}
+.ftile__input:focus { outline: none; border-color: var(--accent); }
+[data-look="crate"] .ftile, [data-look="crate"] .ftile__art, [data-look="crate"] .ftile__input { border-radius: 2px; }
+[data-look="sleeve"] .fshelf { grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 12px; }
+[data-look="sleeve"] .ftile { min-height: 72px; grid-template-columns: 56px minmax(0, 1fr) auto; padding: 8px 14px 8px 8px; border-radius: 14px; }
+[data-look="sleeve"] .ftile--naming { grid-template-columns: 56px minmax(0, 1fr); }
+[data-look="sleeve"] .ftile__art { width: 56px; height: 56px; border-radius: 9px; }
+[data-look="sleeve"] .ftile__art--2, [data-look="sleeve"] .ftile__art--3, [data-look="sleeve"] .ftile__art--4 { grid-template-columns: 28px 28px; grid-template-rows: 28px 28px; }
+[data-look="sleeve"] .ftile__art--3 > :first-child { width: 28px; height: 56px; }
+[data-look="sleeve"] .ftile__text { grid-template-columns: minmax(0, 1fr); }
+[data-look="sleeve"] .ftile__name { font-size: 14px; }
+@media (prefers-reduced-motion: reduce) { .ftile { transition: none; } .ftile--over { transform: none; } }
+/* Easier reading: wider tiles, and a long name takes two lines before it ends in "…" */
+html[data-reading] .fshelf { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+html[data-reading] .ftile__text { grid-template-columns: minmax(0, 1fr); }
+html[data-reading] .ftile__name { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+
+/* the small label that follows the pointer while dragging projects */
+.folderdrag {
+  position: fixed; top: -100px; left: 0; padding: 6px 12px; font: 600 13px var(--font); color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--accent); border-radius: 999px; white-space: nowrap;
+}
+
+.fpick { width: min(440px, 100%); }
+.fpick__head { padding: 20px 20px 8px; display: grid; gap: 6px; }
+.fpick__head .eyebrow { margin: 0; }
+.fpick__head h2 { margin: 0; font-size: 18px; line-height: 1.25; }
+.fpick__now { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 1.5; }
+.fpick__find, .fpick__new {
+  display: flex; align-items: center; gap: 8px; margin: 6px 20px 0; padding: 0 10px; height: 36px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface-2); color: var(--text-dim);
+}
+.fpick__find input, .fpick__new input { flex: 1; min-width: 0; border: none; background: none; font: 13px var(--font); color: var(--text); outline: none; }
+.fpick__find:focus-within, .fpick__new:focus-within { border-color: var(--accent); }
+.fpick__new { margin-top: 10px; border-style: dashed; }
+.fpick__list { margin: 8px 20px 0; max-height: min(320px, 46vh); overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.fpick__row {
+  display: grid; grid-template-columns: 18px 16px minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  min-height: 40px; padding: 0 12px; cursor: pointer; border-bottom: 1px solid var(--border); color: var(--text-dim);
+}
+.fpick__row:last-child { border-bottom: none; }
+.fpick__row:hover { background: var(--surface-2); }
+.fpick__row input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.fpick__name { color: var(--text); font-size: 13px; }
+.fpick__n { font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fpick__empty { margin: 0; padding: 12px; color: var(--text-dim); font-size: 13px; }
+[data-look="crate"] .fpick__list, [data-look="crate"] .fpick__find, [data-look="crate"] .fpick__new { border-radius: 2px; }
+[data-look="crate"] .fpick__row:nth-child(even) { background: var(--zebra); }
+[data-look="sleeve"] .fpick { border-radius: 14px; }
+[data-look="sleeve"] .fpick__list { border-radius: 10px; }

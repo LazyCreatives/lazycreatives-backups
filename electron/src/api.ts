@@ -1,7 +1,8 @@
-import type { CloudFolder, Config, SuggestedFolder, ProjectExports, Entitlement, JobStatus, LibraryItem, Overview, PluginList, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, TidyBatch, TidyDone, TidyOptions, TidyPlan, UnmatchedSong, VerifyResult } from "./types";
+import type { CloudFolder, Config, SuggestedFolder, ProjectExports, Entitlement, JobStatus, LibraryItem, Overview, PluginList, ProjectRow, ProjectSummary, Snapshot, SnapshotDiff, SnapshotFilesResult, StemGroup, StemSet, TidyBatch, TidyDone, TidyOptions, TidyPlan, UnmatchedSong, VerifyResult } from "./types";
 import type { CoverSource } from "./coverArt";
 import type { Album, AlbumCandidate, AlbumSongChange, SongCheck } from "./albums";
 import type { DropSong } from "./songDrop";
+import type { Folder } from "./projectFolders";
 import { plainProblem } from "./plainProblem";
 
 function base() {
@@ -33,6 +34,21 @@ async function req(method: string, path: string, body?: unknown) {
 
 export function makeApi() {
   return {
+    // Folders you sort projects into: one list shared by Backups and Uploader (see projectFolders.ts).
+    async listFolders(): Promise<{ rev: number; folders: Folder[] }> { return req("GET", "/api/folders"); },
+    async foldersRev(): Promise<{ rev: number }> { return req("GET", "/api/folders/rev"); },
+    async createFolder(name: string, projectIds: string[] = []): Promise<Folder> {
+      return req("POST", "/api/folders", { name, project_ids: projectIds });
+    },
+    async renameFolder(id: string, name: string): Promise<Folder> { return req("PUT", `/api/folders/${id}`, { name }); },
+    async deleteFolder(id: string): Promise<{ ok: boolean }> { return req("DELETE", `/api/folders/${id}`); },
+    async addToFolder(id: string, projectIds: string[]): Promise<Folder> {
+      return req("POST", `/api/folders/${id}/projects`, { project_ids: projectIds });
+    },
+    async removeFromFolder(id: string, projectIds: string[]): Promise<Folder> {
+      return req("POST", `/api/folders/${id}/remove`, { project_ids: projectIds });
+    },
+    async orderFolders(ids: string[]): Promise<{ folders: Folder[] }> { return req("PUT", "/api/folders/order", { folder_ids: ids }); },
     // Albums: one list shared by Backups and Uploader (see albums.ts).
     async listAlbums(): Promise<{ rev: number; albums: Album[] }> { return req("GET", "/api/albums"); },
     async albumsRev(): Promise<{ rev: number }> { return req("GET", "/api/albums/rev"); },
@@ -146,6 +162,17 @@ export function makeApi() {
     // Song exports linked to a project, with their SoundCloud uploads (from Uploader).
     async projectExports(projectId: string): Promise<ProjectExports> {
       return req("GET", `/api/exports?project_id=${encodeURIComponent(projectId)}`);
+    },
+    // Stems in sets (exported together), and zipping one set into a stem pack.
+    async stemSets(projectId: string): Promise<{ project_id: string; sets: StemSet[]; groups: StemGroup[] }> {
+      return req("GET", `/api/stems/${encodeURIComponent(projectId)}`);
+    },
+    // Move stems to another group for good (null: back to where they were sorted).
+    async moveStems(paths: string[], group: string | null): Promise<{ ok: boolean }> {
+      return req("PUT", "/api/stems/group", { paths, group });
+    },
+    async stemPack(projectId: string, setId: string, target: string): Promise<{ job_id: string }> {
+      return req("POST", "/api/stems/pack", { project_id: projectId, set_id: setId, target });
     },
     async exportFolders(): Promise<{ folders: string[]; found_folders?: string[]; ignored?: string[]; uploader_folders: string[] }> {
       return req("GET", "/api/exports/folders");

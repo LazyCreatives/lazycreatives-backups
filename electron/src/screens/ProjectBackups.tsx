@@ -56,7 +56,7 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [diff, setDiff] = useState<SnapshotDiff | null>(null);
   const [showDiff, setShowDiff] = useState(false);
-  const [open, setOpen] = useState<Record<string, boolean>>({ project: true, gathered: true, internal: false });
+  const [open, setOpen] = useState<Record<string, boolean>>({ project: true, songs: true, stems: false, gathered: true, internal: false });
   const [results, setResults] = useState<Record<number, VerifyResult>>({});
   const [verifying, setVerifying] = useState<Set<number>>(new Set());
   const [restoring, setRestoring] = useState<Set<number>>(new Set());
@@ -121,10 +121,13 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
 
   const groups = useMemo(() => {
     const fs = files?.files ?? [];
+    const own = fs.filter((f) => !f.export);
     return {
-      project: fs.filter((f) => f.inside_project && !f.logical_path.includes("/")),
-      internal: fs.filter((f) => f.inside_project && f.logical_path.includes("/")),
-      gathered: fs.filter((f) => !f.inside_project),
+      project: own.filter((f) => f.inside_project && !f.logical_path.includes("/")),
+      internal: own.filter((f) => f.inside_project && f.logical_path.includes("/")),
+      gathered: own.filter((f) => !f.inside_project),
+      songs: fs.filter((f) => f.export === "song"),
+      stems: fs.filter((f) => f.export === "stem"),
     };
   }, [files]);
   const locations = useMemo(
@@ -218,8 +221,8 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
 
       {sel && (
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
-            <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+            <div style={{ minWidth: 0, flex: "1 1 220px" }}>
               <h2 style={{ margin: 0 }}>{fmtDate(sel.timestamp)}{sel.label ? ` · ${sel.label}` : ""}</h2>
               <div className="sub" style={{ margin: "5px 0 0", fontSize: 12 }}>
                 {fmtCount(sel.file_count)} file{sel.file_count === 1 ? "" : "s"} · {fmtSize(sel.total_size)}
@@ -318,6 +321,10 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
             <div className="filebrowser">
               <FileGroup label="Project" files={groups.project} snapDir={sel.dir}
                 open={open.project} toggle={() => setOpen((g) => ({ ...g, project: !g.project }))} />
+              <FileGroup label="Exported songs" files={groups.songs} snapDir={sel.dir} showSource
+                open={open.songs} toggle={() => setOpen((g) => ({ ...g, songs: !g.songs }))} />
+              <FileGroup label="Stems" files={groups.stems} snapDir={sel.dir} showSource
+                open={open.stems} toggle={() => setOpen((g) => ({ ...g, stems: !g.stems }))} />
               <FileGroup label="Gathered samples" files={groups.gathered} snapDir={sel.dir} showSource
                 open={open.gathered} toggle={() => setOpen((g) => ({ ...g, gathered: !g.gathered }))} />
               <FileGroup label="In-project samples" files={groups.internal} snapDir={sel.dir}

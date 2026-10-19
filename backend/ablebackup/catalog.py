@@ -630,6 +630,13 @@ class Catalog:
             ).fetchone()[0]
         return n
 
+    def discovered_one(self, project_id: str) -> dict | None:
+        """One found project (name, BPM, key, genre…), or None."""
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT * FROM discovered WHERE project_id = ?", (project_id,)).fetchone()
+        return dict(row) if row else None
+
     def exports_for(self, project_id: str) -> list[dict]:
         """Visible exports of one project, newest first."""
         with self._lock:
