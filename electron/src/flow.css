@@ -117,6 +117,19 @@
 .run-tile--error .run-tile__mark { background: var(--danger); }
 .run-tile--skipped .run-tile__mark { background: rgba(10, 11, 13, 0.75); color: var(--accent-2); }
 .run-tile--working .cover { outline: 2px solid var(--accent); outline-offset: 2px; animation: runPulse 1s ease-in-out infinite alternate; }
+/* As each project becomes safe during a run, its mark presses onto the cover and the tick
+   draws (the same calm stamp as a Library row's seal). Only "done" does this; "already
+   safe" and "failed" just appear, so a fast run of unchanged projects doesn't flicker.
+   In Crate the row's dot is the small seal itself (DoneSeal); once the run is over, nothing replays. */
+.run--live .run-tile--done .run-tile__mark { animation: doneStamp var(--dur-slow) var(--ease-glide) both; }
+.run--live .run-tile--done .run-tile__mark path { stroke-dasharray: 22; stroke-dashoffset: 22; animation: sealDraw var(--dur-slow) var(--dur-base) var(--ease-lazy) forwards; }
+.run-state .doneseal { margin: 0 -2px 0 -3px; }
+.table:not(.run--live) .run-state .doneseal__disc { animation: none; }
+.table:not(.run--live) .run-state .doneseal__tick { animation: none; stroke-dashoffset: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .run--live .run-tile--done .run-tile__mark { animation: none; }
+  .run--live .run-tile--done .run-tile__mark path { animation: none; stroke-dashoffset: 0; }
+}
 
 .run-log { margin-top: 18px; color: var(--text-faint); font-size: 13px; }
 .run-log summary { cursor: pointer; }

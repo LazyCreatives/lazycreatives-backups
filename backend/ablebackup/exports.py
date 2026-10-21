@@ -19,8 +19,11 @@ called, most confident first:
 The Uploader catalog is opened **read-only** and never written; if Uploader isn't
 installed everything here quietly returns nothing.
 """
+import bisect
+import hashlib
 import json
 import os
+import queue
 import re
 import sqlite3
 import threading
@@ -28,6 +31,7 @@ import time
 from pathlib import Path
 
 from . import audiotags
+from .daws.stemfolder import full_mix, stem_files
 from .samples import sample_reason
 from .songmatch import (GENERIC, close_spelling, shared_words, is_stem, minutes_text, name_variants,
                         nearest, reaper_render, snapshot_time, squash, stem_folder_name)
@@ -225,27 +229,48 @@ def _mount_key(p: str) -> str:
 
 class _Reach:
     """Answers "is this folder there?" without ever hanging: a disconnected network
-    share can make a plain folder check wait for minutes. Each check runs in a
-    helper thread and counts as "not there" if it takes longer than a few seconds;
-    the answer is remembered per drive."""
+    share can make a plain folder check wait for minutes. Checks run on one helper
+    thread (reused, so thousands of checks don't each start a thread of their own)
+    and count as "not there" if one takes longer than a few seconds; the answer is
+    remembered per drive, and a stuck helper is left behind for a fresh one. Helpers
+    are daemon threads, so quitting the app never waits for a stuck one."""
 
     def __init__(self, timeout: float = _REACH_TIMEOUT):
         self.timeout = timeout
         self.dead: set[str] = set()
+        self._jobs: queue.SimpleQueue | None = None
+
+    @staticmethod
+    def _helper(jobs: queue.SimpleQueue) -> None:
+        while True:
+            job = jobs.get()
+            if job is None:
+                return
+            path, box, done = job
+            box.append(os.path.isdir(path))
+            done.set()
 
     def ok(self, path) -> bool:
         p = str(path)
         key = _mount_key(p)
         if key in self.dead:
             return False
+        if self._jobs is None:
+            self._jobs = queue.SimpleQueue()
+            threading.Thread(target=self._helper, args=(self._jobs,), daemon=True,
+                             name="exports-reach").start()
         box: list[bool] = []
-        t = threading.Thread(target=lambda: box.append(os.path.isdir(p)), daemon=True)
-        t.start()
-        t.join(self.timeout)
-        if not box:  # didn't answer in time: treat the whole drive as away for this run
+        done = threading.Event()
+        self._jobs.put((p, box, done))
+        if not done.wait(self.timeout):  # didn't answer in time: treat the whole drive as away for this run
             self.dead.add(key)
+            self._jobs = None  # the stuck helper finishes (or not) on its own
             return False
         return box[0]
+
+    def __del__(self):
+        if self._jobs is not None:
+            self._jobs.put(None)
 
 
 def _resolve(p: Path) -> str:
@@ -275,6 +300,21 @@ def _project_names(p: dict) -> list[tuple[str, str]]:
 # Which kind of name wins when two projects share a key: one you taught it by hand,
 # then a project's real name, then a name it had before being renamed.
 _SOURCE_RANK = {"learned": 0, "render": 1, "name": 1, "folder": 1, "old": 2}
+
+
+def _fuzzy_keys(w: str) -> set[tuple[str, str]]:
+    """Lookup keys two spellings of a word share when they are the same word give or
+    take a typo, a plural or a cut-short ending (songmatch._same_word, close_spelling):
+    the word itself, the word with any one letter left out (one slip of the keyboard
+    always leaves a version both share; two for words of 8+ letters, which may have
+    two slips), and its first and last three letters (a cut-short word). Lets a song be compared with only
+    the names that could match instead of every project."""
+    keys = {("d", w), ("s", w[:3]), ("e", w[-3:])}  # "d": the word, and letters left out
+    ones = {w[:i] + w[i + 1:] for i in range(len(w))}
+    keys.update(("d", x) for x in ones)
+    if len(w) >= 8:  # long words may have two slips: two letters left out
+        keys.update(("d", x[:i] + x[i + 1:]) for x in ones for i in range(len(x)))
+    return keys
 
 
 class _NameIndex:
@@ -358,7 +398,7 @@ class _NameIndex:
         return {"project_id": p["project_id"], "why": why, "sure": sure}
 
     def _lookup(self, text: str, f_mtime: float | None, plain: bool) -> dict | None:
-        for fn, by_key, keys in self.tiers:
+        for fn, by_key, _keys in self.tiers:
             k = fn(text)
             if not k:
                 continue
@@ -367,8 +407,10 @@ class _NameIndex:
                 if c:
                     return self._hit(c, True, plain)
                 continue  # this name is shared and can't be told apart: try the looser key
-            for key in keys:  # longest first
-                if k.startswith(key + " "):
+            words = k.split(" ")
+            for j in range(len(words) - 1, 0, -1):  # the longest name the song's starts with
+                key = " ".join(words[:j])
+                if key in by_key:
                     c = self._pick(by_key[key], f_mtime)
                     if c:
                         # "Night Drive master 2": a number after the name, but the
@@ -412,12 +454,17 @@ class _NameIndex:
         """The song's name has a project's whole name in it, anywhere ("BREAKS 140
         WOBS" -> "140 Wobs"), or a project's name starts with the song's whole name
         ("Aby Doors" -> "Aby Doors Bass Arrangement"). The longest such name wins."""
-        for fn, by_key, keys in self.tiers:
+        for t, (fn, by_key, keys) in enumerate(self.tiers):
             k = fn(stem)
             if not k:
                 continue
             padded = f" {k} "
-            for key in keys:  # longest first
+            ix = self._word_lookup(t)
+            song_words = set(k.split())
+            # only names whose first word is in the song can be in it: the longest first
+            maybe = sorted({key for w in song_words for key in ix["first"].get(w, ())},
+                           key=ix["rank"].__getitem__)
+            for key in maybe:
                 if len(key) > len(k) or not self._telling(key) or f" {key} " not in padded:
                     continue
                 c = self._pick(by_key[key], f_mtime)
@@ -425,8 +472,7 @@ class _NameIndex:
                     return {"project_id": c[0]["project_id"], "sure": False,
                             "why": f"the name has this project's name, “{c[2]}”, in it"}
                 break
-            song_words = set(k.split())
-            for key in keys:  # every word of a project's name, in any order ("Wobs 140")
+            for key in maybe:  # every word of a project's name, in any order ("Wobs 140")
                 kw = key.split()
                 if len(kw) >= 2 and len(key) <= len(k) and self._telling(key) and set(kw) <= song_words:
                     c = self._pick(by_key[key], f_mtime)
@@ -435,7 +481,8 @@ class _NameIndex:
                                 "why": f"the name has every word of this project's name, “{c[2]}”, in it"}
                     break
             if self._telling(k) and len(k.split()) >= 2:
-                longer = [key for key in by_key if key.startswith(k + " ")]
+                longer = sorted((key for key in ix["first"].get(k.split()[0], ())
+                                 if key.startswith(k + " ")), key=ix["order"].__getitem__)
                 cands = [c for key in longer for c in by_key[key]]
                 if cands:
                     c = self._pick(cands, f_mtime)
@@ -443,6 +490,23 @@ class _NameIndex:
                         return {"project_id": c[0]["project_id"], "sure": False,
                                 "why": "this project's name starts with the song's name"}
         return None
+
+    def _word_lookup(self, t: int) -> dict:
+        """For tier ``t``: each name's place in the longest-first list ("rank") and in
+        the list as made ("order"), and the names by their first word ("first"), so a
+        song is only compared with names that could be in it. Comparing every song
+        with every name took minutes with a big library."""
+        if not hasattr(self, "_word_ix"):
+            self._word_ix: dict[int, dict] = {}
+        if t not in self._word_ix:
+            _fn, by_key, keys = self.tiers[t]
+            first: dict[str, list[str]] = {}
+            for key in by_key:
+                first.setdefault(key.split()[0], []).append(key)
+            self._word_ix[t] = {"rank": {key: i for i, key in enumerate(keys)},
+                                "order": {key: i for i, key in enumerate(by_key)},
+                                "first": first}
+        return self._word_ix[t]
 
     def guesses(self, stem: str, f_mtime: float | None, exclude: set[str] = frozenset(),
                 limit: int = 5) -> list[dict]:
@@ -454,12 +518,12 @@ class _NameIndex:
         variants = {k} | {normalize_keep_numbers(v) for v in name_variants(stem)}
         variants.discard("")
         out = []
-        for p in self.projects:
+        for i in self._guess_candidates(variants, f_mtime):
+            p = self.projects[i]
             if p["project_id"] in exclude:
                 continue
             best, words, pk_best = 0.0, [], ""
-            for n, _src in _project_names(p) + list(self.aliases.get(p["project_id"], [])):
-                pk = normalize_keep_numbers(n)
+            for pk in self._guess_keys[i]:
                 for v in variants:
                     sc, w = shared_words(v, pk)
                     if close_spelling(v, pk):
@@ -482,12 +546,56 @@ class _NameIndex:
         out.sort(key=lambda g: -g["score"])
         return out[:limit]
 
+    def _guess_candidates(self, variants: set[str], f_mtime: float | None) -> list[int]:
+        """The projects worth scoring for :meth:`guesses`, in list order: those with a
+        word that could be the same as one of the song's words (see _fuzzy_keys: typos,
+        plurals and cut-short words still meet), and those saved within six hours of
+        the export. Scoring every project for every song took minutes with a
+        big library and a folder of songs that match none."""
+        self._build_lookups()
+        found: set[int] = set()
+        for v in variants:
+            for w in v.split():
+                for fk in _fuzzy_keys(w):
+                    found |= self._by_word.get(fk, set())
+        if f_mtime is not None:
+            found.update(self._saved_near(f_mtime, 6 * 3600))
+        return sorted(found)
+
+    def _build_lookups(self) -> None:
+        """Made the first time a song needs them: each project's names ready to
+        compare, which projects have which words (by _fuzzy_keys), and every save
+        time in order."""
+        if not hasattr(self, "_guess_keys"):
+            self._guess_keys: list[list[str]] = []
+            self._by_word: dict[tuple[str, str], set[int]] = {}
+            self._by_time: list[tuple[float, int]] = []
+            for i, p in enumerate(self.projects):
+                keys = list(dict.fromkeys(
+                    normalize_keep_numbers(n)
+                    for n, _src in _project_names(p) + list(self.aliases.get(p["project_id"], []))))
+                self._guess_keys.append(keys)
+                for key in keys:
+                    for w in key.split():
+                        for fk in _fuzzy_keys(w):
+                            self._by_word.setdefault(fk, set()).add(i)
+                self._by_time.extend((t, i) for t in self.save_times(p))
+            self._by_time.sort()
+
+    def _saved_near(self, f_mtime: float, window: float) -> set[int]:
+        """The projects with a save time within ``window`` seconds of ``f_mtime``."""
+        self._build_lookups()
+        lo = bisect.bisect_left(self._by_time, (f_mtime - window, -1))
+        hi = bisect.bisect_right(self._by_time, (f_mtime + window, len(self.projects)))
+        return {i for _t, i in self._by_time[lo:hi]}
+
     def close(self, stem: str) -> list[dict]:
         """Projects whose name is spelled almost like the render's ("Nite Drive")."""
         k = normalize(stem)
         words = k.split()
         out: dict[str, dict] = {}
-        for key, cands in self.tiers[1][1].items():
+        for key in self._close_candidates(words):
+            cands = self.tiers[1][1][key]
             n = len(key.split())
             for cand in {k, " ".join(words[:n])}:
                 if close_spelling(cand, key):
@@ -495,13 +603,30 @@ class _NameIndex:
                         out[p["project_id"]] = p
         return list(out.values())
 
+    def _close_candidates(self, words: list[str]) -> list[str]:
+        """The loose names that could be spelled almost like the song's name or its
+        first few words (see _fuzzy_keys, on the names with their spaces left out),
+        in list order. See :meth:`close`."""
+        if not hasattr(self, "_by_spelling"):
+            self._by_spelling: dict[tuple[str, str], set[str]] = {}
+            self._spelling_order = {key: i for i, key in enumerate(self.tiers[1][1])}
+            for key in self.tiers[1][1]:
+                for fk in _fuzzy_keys(squash(key)):
+                    self._by_spelling.setdefault(fk, set()).add(key)
+        found: set[str] = set()
+        for n in range(1, len(words) + 1):
+            for fk in _fuzzy_keys(squash(" ".join(words[:n]))):
+                found |= self._by_spelling.get(fk, set())
+        return sorted(found, key=self._spelling_order.__getitem__)
+
     def by_time(self, f_mtime: float | None, window: float,
                 exclude: set[str] = frozenset()) -> tuple[dict, float] | None:
         """The one project saved closest to when the render was made, if it was
         within ``window`` and clearly closer than any other."""
         if f_mtime is None:
             return None
-        timed = sorted(((nearest(self.save_times(p), f_mtime), p) for p in self.projects
+        near = [self.projects[i] for i in sorted(self._saved_near(f_mtime, window))]
+        timed = sorted(((nearest(self.save_times(p), f_mtime), p) for p in near
                         if p["project_id"] not in exclude), key=lambda x: x[0] or float("inf"))
         timed = [(d, p) for d, p in timed if d is not None and d <= window]
         if not timed:
@@ -527,7 +652,8 @@ def _when_text(p: dict, f_mtime: float, saves: list[float]) -> str:
 
 def match_exports(projects: list[dict], extra_dirs: list[Path] | None = None,
                   deadline: float | None = None, reach: "_Reach | None" = None,
-                  hints: dict | None = None, unmatched: list | None = None) -> list[dict]:
+                  hints: dict | None = None, unmatched: list | None = None,
+                  earlier: dict | None = None) -> list[dict]:
     """Find audio exports for the given projects (rows with project_id/name/dir).
 
     Returns one row per (path, project_id): path, project_id, name, size, mtime,
@@ -541,14 +667,23 @@ def match_exports(projects: list[dict], extra_dirs: list[Path] | None = None,
     ``aliases`` {project_id: [(name, "old" | "learned")]}, ``saves`` {project_id:
     [save times]} and ``blocked`` {(normalized song name, project_id)} for songs the
     user said aren't from a project. Songs in exports folders that match no project
-    are appended to ``unmatched`` with a suggested project when one is likely."""
+    are appended to ``unmatched`` with a suggested project when one is likely.
+    ``earlier`` ({path: row}) holds the last re-check's unmatched rows when nothing
+    about the projects has changed since: a song with the same size and save time
+    keeps its row instead of being weighed against every project again."""
     reach = reach or _Reach()
     hints = hints or {}
     aliases, saves = hints.get("aliases") or {}, hints.get("saves") or {}
     blocked = hints.get("blocked") or set()
     projects = [dict(p) for p in projects if p.get("project_id") and p.get("dir")]
+    # Stems-only folders (no project file): every sound in one is that song's, so no
+    # other project or exports folder may claim them.
+    stem_folders = {_resolve(Path(p["dir"])): p for p in projects
+                    if p.get("daw") == "stems" and reach.ok(p["dir"])}
     dir_projects: dict[str, list[dict]] = {}
     for p in projects:
+        if p.get("daw") == "stems":
+            continue
         if not reach.ok(p["dir"]):
             continue  # drive or share isn't there right now; its songs keep their old links
         dir_projects.setdefault(_resolve(Path(p["dir"])), []).append(p)
@@ -560,11 +695,16 @@ def match_exports(projects: list[dict], extra_dirs: list[Path] | None = None,
     names = {p["project_id"]: p.get("name") or "" for p in projects}
 
     extra = [d for d in (extra_dirs or []) if reach.ok(d)]
-    _progress.update(folders_total=len(dir_projects) + len(extra), folders_done=0)
+    _progress.update(folders_total=len(dir_projects) + len(stem_folders) + len(extra), folders_done=0)
 
     found: dict[tuple[str, str], dict] = {}
 
-    def add(f: Path, root: Path, pid: str, how: str, why: str, sure: bool):
+    def in_stem_folder(f: Path) -> bool:
+        return bool(stem_folders) and any(str(a) in stem_folders for a in f.parents)
+
+    def add(f: Path, root: Path, pid: str, how: str, why: str, sure: bool, kind: str | None = None):
+        if kind is None and in_stem_folder(f):
+            return  # one of a stems-only folder's own sounds
         key = (str(f), pid)  # f is already under a resolved folder
         if key in found and found[key]["match"] == "folder":
             return
@@ -576,7 +716,7 @@ def match_exports(projects: list[dict], extra_dirs: list[Path] | None = None,
             return
         found[key] = {"path": key[0], "project_id": pid, "name": f.stem,
                       "size": st.st_size, "mtime": st.st_mtime, "match": how,
-                      "kind": "stem" if is_stem(f, root, names.get(pid, "")) else "song",
+                      "kind": kind or ("stem" if is_stem(f, root, names.get(pid, "")) else "song"),
                       "why": why, "sure": 1 if sure else 0}
 
     def out_of_time() -> bool:
@@ -602,6 +742,16 @@ def match_exports(projects: list[dict], extra_dirs: list[Path] | None = None,
                     add(f, Path(d), hit["project_id"], "name", hit["why"], hit["sure"])
         _progress["folders_done"] += 1
 
+    # 1b) stems-only folders: their sounds are the song's stems, and a full mix
+    # among them ("Night Drive.wav", "Night Drive Master.wav") is the song itself
+    for d, p in stem_folders.items():
+        if out_of_time():
+            break
+        for f in stem_files(Path(d)):
+            add(f, Path(d), p["project_id"], "folder", "in this stems folder", True,
+                kind="song" if full_mix(f, p.get("name") or "") else "stem")
+        _progress["folders_done"] += 1
+
     # 2) shared exports folders (Backups' own list, ones it found, Uploader's watch folders)
     seen_dirs: set[str] = set()
     for d in extra:
@@ -612,11 +762,13 @@ def match_exports(projects: list[dict], extra_dirs: list[Path] | None = None,
         if rd not in dir_projects and rd not in seen_dirs:
             seen_dirs.add(rd)
             for f in _audio_files(Path(rd), 6, skip_samples=False, deadline=deadline):
+                if in_stem_folder(f):
+                    continue
                 hit = _match_song(f, Path(rd), index, out_of_time)
                 if hit and (normalize(f.stem), hit["project_id"]) not in blocked:
                     add(f, Path(rd), hit["project_id"], "name", hit["why"], hit["sure"])
                 elif unmatched is not None:
-                    unmatched.append(_unmatched_row(f, Path(rd), index, hit))
+                    unmatched.append(_unmatched_row(f, Path(rd), index, hit, earlier))
         _progress["folders_done"] += 1
     if unmatched is not None:
         linked = {path for path, _pid in found}
@@ -653,12 +805,20 @@ def _match_song(f: Path, root: Path, index: _NameIndex, out_of_time) -> dict | N
     return None
 
 
-def _unmatched_row(f: Path, root: Path, index: _NameIndex, blocked_hit: dict | None) -> dict | None:
-    """A song nothing matched, with the project it's most likely from (if any)."""
+_UNMATCHED_KEYS = ("path", "name", "size", "mtime", "kind", "suggest_id", "suggest_why", "guesses")
+
+
+def _unmatched_row(f: Path, root: Path, index: _NameIndex, blocked_hit: dict | None,
+                   earlier: dict | None = None) -> dict | None:
+    """A song nothing matched, with the project it's most likely from (if any).
+    An unchanged song keeps its row from ``earlier`` (see match_exports)."""
     try:
         st = f.stat()
     except OSError:
         return None
+    old = (earlier or {}).get(str(f))
+    if old and old.get("size") == st.st_size and old.get("mtime") == st.st_mtime:
+        return {k: old.get(k) for k in _UNMATCHED_KEYS}
     sample = sample_reason(f, root, st.st_size)
     if sample:  # a Splice one-shot, a loop, a resampled clip: not a song to place
         return {"path": str(f), "name": f.stem, "size": st.st_size, "mtime": st.st_mtime,
@@ -840,18 +1000,38 @@ def _refresh(catalog, deadline: float, gen: int) -> int:
         found = find_export_folders(catalog, reach, deadline)
         unmatched: list[dict] = []
         h = hints(catalog)
+        # Unmatched songs are weighed against every project, the slow part with a
+        # big library. While the projects and hints are the same as last time, an
+        # unchanged song keeps last time's row.
+        fp = _projects_fingerprint(projects, h)
+        earlier = ({u["path"]: u for u in catalog.unmatched()}
+                   if catalog.get_setting("unmatched_fingerprint") == fp else None)
         rows = match_exports(projects, export_folders(catalog) + found + uploader_sources()
                              + h["render_dirs"],
-                             deadline=deadline, reach=reach, hints=h, unmatched=unmatched)
+                             deadline=deadline, reach=reach, hints=h, unmatched=unmatched,
+                             earlier=earlier)
         if gen != _generation:
             return 0  # given up on; a newer re-check owns the results
         catalog.set_setting("found_export_folders", [str(f) for f in found])
         # Folders that were skipped (away, or out of time) keep their earlier links.
         keep = _progress.get("timed_out") or bool(reach.dead)
         catalog.replace_unmatched(unmatched, keep_existing=keep)
+        catalog.set_setting("unmatched_fingerprint", fp)
         return catalog.replace_auto_exports(rows, keep_existing=keep)
     except Exception:
         return 0
+
+
+def _projects_fingerprint(projects: list[dict], h: dict) -> str:
+    """A short digest of everything an unmatched song's suggestions depend on: the
+    projects (names, folders, save times) and the hints (old names, saves, songs
+    you said aren't from a project)."""
+    data = [sorted((p.get("project_id"), p.get("name"), p.get("dir"), p.get("daw"), p.get("mtime"),
+                    p.get("backed_mtime")) for p in projects),
+            sorted((k, v) for k, v in (h.get("aliases") or {}).items()),
+            sorted((k, sorted(v)) for k, v in (h.get("saves") or {}).items()),
+            sorted(h.get("blocked") or ())]
+    return hashlib.sha1(json.dumps(data, default=str).encode()).hexdigest()
 
 
 def hints(catalog) -> dict:

@@ -117,7 +117,7 @@ export function VinylStack({ list, active, setActive, reduce, onOpenProject }: {
       <motion.div className="stage" ref={stageRef}
         drag={reduce ? false : "x"} dragConstraints={{ left: 0, right: 0 }} dragElastic={0.12}
         onDragEnd={reduce ? undefined : onDragEnd} onWheel={onWheel} onKeyDown={onKeyDown}
-        role="listbox" aria-orientation="horizontal" aria-label="Records — arrow keys to flip, Enter to open">
+        role="listbox" aria-orientation="horizontal" aria-label="Records. Arrow keys flip, Enter opens.">
         <div className={`dig-crate dig-crate--${look}`} aria-hidden="true"><span className="dig-crate__grip" /></div>
         {windowed.map((p, k) => {
           const i = lo + k;
@@ -127,7 +127,7 @@ export function VinylStack({ list, active, setActive, reduce, onOpenProject }: {
               ref={isActive ? activeRef : undefined}
               tabIndex={isActive ? 0 : -1}
               role="option" aria-selected={isActive}
-              aria-label={`${p.name}, ${p.bpm ? `${Math.round(p.bpm)} BPM` : "tempo unknown"}`}
+              aria-label={`${p.name}, ${p.bpm ? `${Math.round(p.bpm)} BPM` : "tempo unknown"}${p.verified ? ", backed up" : ""}`}
               aria-setsize={list.length} aria-posinset={i + 1}
               style={{ ["--tint" as string]: tintOf(p), transformPerspective: 1150 }}
               animate={withVisibility(vinylTransform(i - active, reduce, look === "sleeve"))}

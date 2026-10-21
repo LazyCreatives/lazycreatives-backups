@@ -36,8 +36,8 @@ export function Collection({ data }: { data: CollectionData }) {
                 {l.rows.slice(0, TOP).map((r) => (
                   <li key={r.label}>
                     {r.onClick
-                      ? <button type="button" className="liner__row" onClick={r.onClick}><span>{r.label}</span><i aria-hidden /><b>{r.n}</b></button>
-                      : <span className="liner__row"><span>{r.label}</span><i aria-hidden /><b>{r.n}</b></span>}
+                      ? <button type="button" className="liner__row" onClick={r.onClick}><span>{r.label}</span><i aria-hidden /><b>{r.n.toLocaleString()}</b></button>
+                      : <span className="liner__row"><span>{r.label}</span><i aria-hidden /><b>{r.n.toLocaleString()}</b></span>}
                   </li>
                 ))}
               </ol>
@@ -58,20 +58,22 @@ export function Collection({ data }: { data: CollectionData }) {
       <div className="coll__lists">
         {lists.map((l) => {
           const max = Math.max(1, ...l.rows.map((r) => r.n));
+          // the number column is as wide as the longest number shown ("1,234,567" needs more than "12")
+          const digits = Math.max(1, ...l.rows.slice(0, TOP).map((r) => r.n.toLocaleString().length));
           return (
-            <div key={l.title} className="coll__list">
+            <div key={l.title} className="coll__list" style={{ ["--coll-digits" as string]: digits } as React.CSSProperties}>
               <h3>{l.title}</h3>
               {l.rows.slice(0, TOP).map((r) => {
                 const inner = <>
                   <span className="coll__label">{r.label}</span>
                   <span className="coll__bar"><i style={{ width: `${(r.n / max) * 100}%`, background: r.colour }} /></span>
-                  <b>{r.n}</b>
+                  <b>{r.n.toLocaleString()}</b>
                 </>;
                 return r.onClick
                   ? <button key={r.label} type="button" className="coll__row" onClick={r.onClick} title={`Show ${r.label}`}>{inner}</button>
                   : <div key={r.label} className="coll__row">{inner}</div>;
               })}
-              {l.rows.length > TOP && <div className="coll__more">and {l.rows.length - TOP} more</div>}
+              {l.rows.length > TOP && <div className="coll__more">and {(l.rows.length - TOP).toLocaleString()} more</div>}
             </div>
           );
         })}

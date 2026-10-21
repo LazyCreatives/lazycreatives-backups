@@ -119,14 +119,21 @@ _NAMED_ONLY = [
 _TEMPO_ALONE = {g for g, *_ in _GENRES}
 _GENRES = _GENRES + _NAMED_ONLY
 
+# Each keyword's pattern, made once: making them again for every project was most of
+# the time a scan of a big library took.
+_KW_PATTERNS = [(kw, re.compile(r"(?<![a-z0-9])" + re.escape(kw) + r"(?![a-z0-9])"))
+                for _g, _e, _lo, _hi, kws in _GENRES for kw in kws]
+
+
 def _hits(text: str) -> set[str]:
     """The genre keywords found in text. A keyword inside a longer one that also
     matched there doesn't count, so "deep house" is Deep house and not House too."""
     spans = []
-    for _g, _e, _lo, _hi, kws in _GENRES:
-        for kw in kws:
-            for m in re.finditer(r"(?<![a-z0-9])" + re.escape(kw) + r"(?![a-z0-9])", text):
-                spans.append((m.start(), m.end(), kw))
+    for kw, pat in _KW_PATTERNS:
+        if kw not in text:  # quick check before the exact one
+            continue
+        for m in pat.finditer(text):
+            spans.append((m.start(), m.end(), kw))
     return {kw for a, b, kw in spans
             if not any(a2 <= a and b <= b2 and (b2 - a2) > (b - a) for a2, b2, _k in spans)}
 

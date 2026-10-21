@@ -53,7 +53,7 @@ export function Setup({ onDone }: { onDone: (c: Config, skipped: boolean) => voi
     try {
       const c = await api.saveSettings({ sources, dest: skip ? "" : dest, interval_minutes: 0, libraries: [] });
       onDone(c, skip);
-    } catch (e: any) { setErr(e.message || "Couldn't save settings"); setSaving(false); }
+    } catch (e: any) { setErr(e.message || "Couldn't save your choices. Try again."); setSaving(false); }
   }
 
   const back = step > 1
@@ -67,7 +67,7 @@ export function Setup({ onDone }: { onDone: (c: Config, skipped: boolean) => voi
         foot={<>{back}<Button onClick={() => setStep(2)}>Next</Button></>}>
         {/* two plain lines, the way a sleeve's back says what's on the record */}
         <ul className="pitch">
-          <li><b>Browse</b> every project on your computer in one list, whatever music program made it. Search by name, tempo or genre, and play the songs each one exported.</li>
+          <li><b>Browse</b> every project on your computer in one list, whatever DAW made it. Search by name, tempo or genre, and play the songs each one exported.</li>
           <li><b>Back up, if you want:</b> now, later or never. Every sample is followed and every copy is opened to check it works, so you never copy a project by hand again.</li>
         </ul>
         <WelcomeLook onPick={fadeSwitch} />
@@ -81,7 +81,7 @@ export function Setup({ onDone }: { onDone: (c: Config, skipped: boolean) => voi
       <WelcomeCard app="Backups" step={2} title="Where are your projects?"
         sub={found === null ? "Looking for your projects…"
           : any ? "We found these on your computer. Untick any you don't want in your library."
-          : "Add the folders with your projects. Ableton, FL Studio, Logic Pro, Studio One, Reaper, Audacity and Bitwig projects are all found."}
+          : "Add the folders with your projects. Ableton, FL Studio, Logic Pro, Studio One, Reaper, Bitwig, Audacity and DAWproject projects are all found."}
         foot={<>{back}<Button onClick={() => setStep(3)} disabled={sources.length === 0}>Next</Button></>}>
         {found === null && <div className="setup-looking"><SlothSpot pose="searching" size={120} /></div>}
         {any && (

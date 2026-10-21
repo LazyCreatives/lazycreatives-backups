@@ -102,7 +102,7 @@ export function shortcutList(isMac = IS_MAC): { keys: string; what: string }[] {
     { keys: isMac ? "Cmd + [   Cmd + ]" : "Alt + Left   Alt + Right", what: "Back and forward (or the mouse's side buttons)" },
     { keys: "Right-click", what: "More actions on a project or track" },
     { keys: `${mod} + W`, what: "Close the window (the app keeps running in the tray)" },
-    { keys: `${mod} + Shift + N`, what: "Open or close the narrow window that sits beside your music program" },
+    { keys: `${mod} + Shift + N`, what: "Open or close the narrow window that sits beside your DAW" },
   ];
 }
 

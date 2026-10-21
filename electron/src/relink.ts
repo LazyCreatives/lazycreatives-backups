@@ -15,7 +15,7 @@ export async function runRelinkBackup(path: string, opts: {
   for (;;) {
     const st = await api.jobStatus(job_id);
     if (st.state === "done") return;
-    if (st.state === "error") throw new Error(st.error || "Backup failed.");
+    if (st.state === "error") throw new Error(st.error || "That backup didn't finish. Check the backup drive is plugged in, then try again.");
     await new Promise((r) => setTimeout(r, 1000));
   }
 }

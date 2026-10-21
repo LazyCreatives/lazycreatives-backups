@@ -1,5 +1,6 @@
 """FastAPI application factory for the backup sidecar."""
 import asyncio
+import hashlib
 import hmac
 import json
 import os
@@ -24,7 +25,8 @@ from ablebackup.api.schemas import (
     ActivateRequest, BackupRequest, CloudConnectRequest, CloudDisconnectRequest,
     Config, ExportFoldersRequest, ExportDropRequest, ExportIgnoreRequest, ExportLinkRequest,
     ExportUndoRequest, GenreRequest,
-    PhoneSwitch, PluginFoldersRequest, RestoreRequest, ScanRequest, StemGroupRequest, StemPackRequest, TidyRequest,
+    PhoneSwitch, PluginFoldersRequest, RestoreRequest, ScanRequest, StemFolderJoinRequest, StemGroupRequest,
+    StemPackRequest, TidyRequest,
     TidyUndoRequest,
 )
 from ablebackup.catalog import Catalog
@@ -35,13 +37,17 @@ from ablebackup.service import (
     default_timestamp, full_disk_access_ok, pool_cache_age, rclone_available,
     backfill_genres, project_genres, relearn_genres, rclone_remotes, refresh_pool_cache,
     resolve_scan_roots, restore_snapshot, run_backup, safe_remote_name, scan_summary,
-    share_snapshot, snapshot_diff, BackupDriveMissing, prepare_dest, remember_dest,
+    share_snapshot, snapshot_diff, BackupDriveMissing, prepare_dest, remember_dest, drop_joined,
+    joined_stem_folders,
 )
 from ablebackup.resolver import _allowed_external_file
 from ablebackup.scanner import ParseCache, scan_one
 from ablebackup.songmatch import is_stem
 from ablebackup.suggest import suggested_folders
 from ablebackup.verifier import verify_snapshot
+
+
+_START_REFRESH_DELAY = 6.0  # seconds after start before songs are re-linked
 
 
 def create_app(token: str, db_path: Path) -> FastAPI:
@@ -57,9 +63,11 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         # Re-link song exports to projects in the background on every start, so songs
         # saved since the last scan (or a library from before this feature) show up
         # without needing a new scan.
-        # A daemon thread, so quitting the app never waits for it to finish.
-        threading.Thread(target=exports.refresh, args=(catalog,), daemon=True,
-                         name="exports-refresh").start()
+        # A daemon thread, so quitting the app never waits for it to finish. It waits
+        # a few seconds first, so the first screens load before it gets busy.
+        t = threading.Timer(_START_REFRESH_DELAY, exports.refresh, args=(catalog,))
+        t.daemon, t.name = True, "exports-refresh"
+        t.start()
         if app.state.phone._state()["enabled"]:
             app.state.phone.start()   # "Let my phone connect" was left on
         yield
@@ -319,7 +327,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
             # unchanged project files aren't read again (their samples still are)
             cache=ParseCache(app.state.catalog))
         if not _allows("multi_daw"):
-            projects = [p for p in projects if p.get("daw") == "ableton"]
+            projects = [p for p in projects if p.get("daw") in ("ableton", "stems")]
+        projects = drop_joined(app.state.catalog, projects, lambda p: p["project_dir"])
         # Persist what we found so History shows the whole library, not just backups.
         app.state.catalog.upsert_discovered([
             {"project_id": p["project_id"], "name": p["name"], "path": p["als_path"],
@@ -451,7 +460,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         cat = app.state.catalog
         project = cat.discovered_one(project_id) or {"name": ""}
         moved = cat.get_setting("stem_groups") or {}
-        return project, stempacks.stem_sets(cat.exports_for(project_id), project.get("name") or "", moved)
+        return project, stempacks.stem_sets(cat.exports_for(project_id), project.get("name") or "", moved,
+                                            one_set=project.get("daw") == "stems")
 
     @app.get("/api/stems/{project_id}", dependencies=[Depends(require_token)])
     def stem_sets(project_id: str):
@@ -531,6 +541,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
 
     # ---- plug-ins installed on this computer (the Plugins page) ----------------
     plugin_lock = threading.Lock()
+    app.state.plugin_counts = None  # (what they were worked out from, the page's answer)
 
     def _plugins(refresh: bool) -> dict:
         cat = app.state.catalog
@@ -543,11 +554,19 @@ def create_app(token: str, db_path: Path) -> FastAPI:
                                      kind_cache=(last or {}).get("kind_cache"))
                 cat.set_setting("plugin_scan", found)
         found = {k: v for k, v in found.items() if k != "kind_cache"}
+        projects = cat.plugin_uses()
+        # Which projects use each plug-in is worked out again only when the plug-ins
+        # or the projects' plug-in lists changed (slow with thousands of each).
+        key = hashlib.sha1(json.dumps([found, projects], sort_keys=True, default=str).encode()).hexdigest()
+        kept = app.state.plugin_counts
+        if kept and kept[0] == key:
+            return kept[1]
         rows = [dict(r) for r in found["plugins"]]
-        projects = cat.library()
         plugins.used_in(rows, projects)
-        return {**found, "plugins": rows, "projects_scanned": len(projects),
-                "missing": plugins.missing(rows, projects)}
+        out = {**found, "plugins": rows, "projects_scanned": len(projects),
+               "missing": plugins.missing(rows, projects)}
+        app.state.plugin_counts = (key, out)
+        return out
 
     @app.get("/api/plugins", dependencies=[Depends(require_token)])
     def plugin_list(refresh: bool = False):
@@ -645,10 +664,54 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     @app.post("/api/exports/drop/undo", dependencies=[Depends(require_token)])
     def exports_drop_undo(req: ExportUndoRequest):
         before = app.state.drop_undo.pop(req.token, None)
-        if before is None:
+        if before is None or isinstance(before, dict):
             raise HTTPException(status_code=404, detail="nothing to undo")
         for path, rows in before:
             app.state.catalog.restore_export_rows(path, rows)
+        return {"ok": True}
+
+    # ---- a stems-only folder that belongs to a project after all: its stems join
+    # that project and the folder stops being a project of its own. Only links are
+    # recorded; no file is moved ----------------------------------------------
+    @app.post("/api/stem-folders/join", dependencies=[Depends(require_token)])
+    def stem_folder_join(req: StemFolderJoinRequest):
+        cat = app.state.catalog
+        src, dst = cat.discovered_one(req.project_id), cat.discovered_one(req.target_id)
+        if not src or src.get("daw") != "stems":
+            raise HTTPException(status_code=404, detail="not a stems folder")
+        if not dst or dst["project_id"] == src["project_id"]:
+            raise HTTPException(status_code=404, detail="unknown project")
+        before = []
+        for r in cat.exports_for(src["project_id"]):
+            before.append((r["path"], cat.export_rows(r["path"])))
+            cat.link_export(r["path"], dst["project_id"], r["name"], r["size"], r["mtime"],
+                            r.get("kind") or "stem")
+            cat.hide_other_links(r["path"], dst["project_id"])
+        joined = joined_stem_folders(cat)
+        joined[src["dir"]] = dst["project_id"]
+        cat.set_setting("joined_stem_folders", joined)
+        row = cat.forget_discovered(src["project_id"])
+        token = uuid.uuid4().hex
+        undo = app.state.drop_undo
+        undo[token] = {"stem_folder": row, "links": before}
+        while len(undo) > 20:
+            undo.pop(next(iter(undo)))
+        return {"moved": len(before), "project": dst["name"], "token": token}
+
+    @app.post("/api/stem-folders/join/undo", dependencies=[Depends(require_token)])
+    def stem_folder_join_undo(req: ExportUndoRequest):
+        held = app.state.drop_undo.get(req.token)
+        if not isinstance(held, dict) or "stem_folder" not in held:
+            raise HTTPException(status_code=404, detail="nothing to undo")
+        app.state.drop_undo.pop(req.token)
+        cat = app.state.catalog
+        row = held["stem_folder"]
+        joined = joined_stem_folders(cat)
+        joined.pop(row["dir"], None)
+        cat.set_setting("joined_stem_folders", joined)
+        cat.restore_discovered(row)
+        for path, rows in held["links"]:
+            cat.restore_export_rows(path, rows)
         return {"ok": True}
 
     @app.get("/api/exports/unmatched", dependencies=[Depends(require_token)])

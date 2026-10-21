@@ -13,6 +13,63 @@ How to keep this up to date:
   The checks on pull requests fail if the app's version has no section here.
 -->
 
+## Unreleased
+
+## 0.3.0 (21 October 2026)
+
+### New
+- **Folders of stems with no project.** A folder that holds only a song's stems (sent by a collaborator, a remix contest pack, or a song whose project is gone) now shows in Library as its own tile marked "Stems only". It opens on the Stems desk, is backed up like any project, and shows in the phone app. If the stems turn out to belong to one of your projects, pick "These stems belong to a project…" and they move there, with Undo. Your files are only read.
+- **On this day.** Home shows a project you last saved on today's date in an earlier year, as one quiet line. Click it to open the project.
+- **Milestones.** The first time 100, 250, 500 and 1,000 of your projects are safe, Home says so once ("100 projects safe. That's gold."), and a small gold, platinum or diamond record sits by the Safe count from then on.
+- **Crash reports.** If Backups breaks, a note of what went wrong goes to Lazy Creatives so it can be fixed, without you filling anything in. It has the error, the app version and computer type, and any file paths in the error. Never your music. Turn it off any time in Settings, Privacy, Send crash reports.
+
+### Better
+- **Hundreds of folders stay tidy.** The folder row above Library shows your first 8 folders and an "All folders…" button that finds any folder by name, instead of a long strip you can't search.
+- **Faster with big libraries.** With thousands of projects, a scan takes about half the time, songs are linked to their projects much faster after the app starts (a folder of thousands of loose songs no longer stops it partway), going back to Library shows the list straight away, and Plugins opens at once on a second visit. The app also opens about a third of a second sooner, and Library scrolls smoothly in the Crate look. Dig opens straight away with hundreds of folders: it shows your first 8 folder crates and an "All folders…" crate that opens every folder with a search.
+- **A tidier look all round.** The folder row hides its scrollbar and scrolls with the mouse wheel, long folder paths cut from the start so you see the folder name, sizes and times never split over two lines, and "Open in DAW" buttons are quieter so the one thing to do stands out. Album pages put the cover at the top, say how many songs are not ready and how many to check for quality, and describe quality problems in plain words. The Plugins maker cards have a key for the instrument and effect colours, and Easier reading lines up the album page.
+- Tidy names suggests cleaner names: dates, tempos, keys, copy numbers like "(2)" and words like "final" or "master" are dropped, and names typed all in small letters or all in capitals get proper capitals.
+- Tidy names now numbers versions by the date each one was made, so the oldest is v1. "Keep yours" still keeps the numbers already in the names.
+- Tidy names can do a whole folder at once: right-click a folder tile and pick Tidy names. Each song has its own tick box, and songs that are already tidy are folded away.
+- Songs added to an album get a clean title ("glasshouse final 3 master" shows as "Glasshouse"). Titles you typed yourself stay as they are.
+- Library gives the project list more room: folders sit in one slim row that scrolls sideways, and "Look for projects in / Scan now" moved into a small Scan menu by the title.
+- With a folder open, the Library header counts only that folder, and "Back up the changed" and "Find missing samples" only work on the projects in it.
+- The Stems mixing desk puts each group (Drums, Bass, Vocals…) on its own row, a group folds shut to one line with its mute and solo, and the groups at the top take you straight to one. Built for songs with a hundred stems or more.
+- Clearer words on the Stems desk: "All stems in sync" instead of "Lines up", and faders show "dB". "Open in Ableton" on a project row now looks like a button.
+- Easier with a keyboard: the row of record spines on Home (Crate look) is one Tab stop, with the arrow keys to move along it, and stems move between groups on the mixing desk with Alt and the up or down arrow. In Dig, screen readers now say when a record is backed up.
+- Closing "Find anything" or another pop-up puts you back where you were, and the lists in Home's liner notes stay easy to click with Easier reading on.
+- **Your phone's link is locked.** Everything between Backups and your phone is now scrambled and signed, so nobody else on the same Wi-Fi can read your project lists, take your songs or pretend to be your computer. Phones paired before this update need pairing once more (Settings, Phone).
+- Safer behind the scenes: the app's private key no longer shows in places other programs can read, and a damaged or disguised song file can't make the player open other files.
+- Clearer wording all through the app: when something goes wrong it now says what to do next, backup messages read like plain sentences, and every place names your music program the same way (DAW).
+- Backing up a changed project from Home now shows it: the card says "Safe" for a moment, then glides out of the list. When the last one goes, the sloth says "All safe. Back to my nap."
+- On the backup screen, each project's mark stamps in as it becomes safe.
+- After Tidy names renames projects, the renamed rows glow for a moment and a note says how many were renamed, with Undo.
+- The first-backup window has the sloth hugging your drive instead of an emoji.
+- When a phone pairs, the code on Settings, Phone turns into "<your phone> is paired" and the phone appears in the list.
+- Plug the backup drive back in while Backups is open and Home notices by itself: the drive dot rings once and a note says it's back.
+- A folder tile glows for a moment when you drop projects on it, and its count rolls up. Folder counts roll whenever they change.
+- A stem moved to another group on the Stems desk glides there instead of jumping.
+- Calmer motion all through the app: the small "done" seals and the album's "Out now" stamp press in without bouncing, the full-screen player sinks back into the player bar when made smaller, the picked-projects bar and More filters fade out instead of vanishing, and record covers in Dig only move for a real mouse pointer.
+
+### Fixed
+- Home's backup bar now counts every project in the run, including ones with nothing new, so it fills properly instead of sitting near the start. When the backup ends it holds full for a moment, then fades out.
+- The Stems desk's jump to a group no longer glides when your computer is set to reduce motion.
+- Backing up a changed project from Home whose contents hadn't really changed (it was only saved again) no longer says "Backed up and checked 0 projects." It now says the project was checked and was already safe.
+
+### Fixed
+- **Long albums fit their page.** The Length strip stays inside its box, the Tempo line shows the first 24 songs then how many more, a 4-hour song shows 4:02:03, tempos are whole numbers, a release years away says "73 years to go", and big counts in Your collection have their thousands separated.
+
+- The Scan menu no longer opens behind the side bar in a narrow window or with Easier reading on.
+- In the Sleeve look, a project with a very long name no longer stretches its cover down the whole page.
+- The folder row stops scrolling on a folder's edge instead of half under "All projects", and the open folder stays lit while the pointer is on it.
+- With Send crash reports switched off, nothing at all goes to the crash report service any more.
+- Clean song names keep real words: "Brand New", "Prelude in C Major" and "DNA" stay as they are.
+- A project folder with several saves of one song no longer shows its own Stems folder as a separate "Stems only" project.
+- The Stems desk opens on Windows when a project's stems are on different drives.
+- Adding a stems folder to a project no longer shows two different stem counts.
+- On the Stems desk, stems whose names share most of their words ("Song - Kick 001 (Final Bounce)", "Song - Snare 002 (Final Bounce)") no longer all read the same. Each strip leaves off the words every stem shares and shows the part that differs on one line ("Kick 001"), and the full name shows when you point at it.
+- A very long folder name at the top of Library stops at one line with "…"; point at it to see all of it.
+- An empty Library now says where Scan now will look, and that the Scan menu at the top picks somewhere else, instead of "Pick where to look above".
+
 ## 0.2.14 (19 October 2026)
 
 ### New

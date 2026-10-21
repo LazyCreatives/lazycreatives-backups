@@ -33,6 +33,7 @@
   display: flex; align-items: center; gap: 12px; padding: 10px 16px 10px 10px; font-size: 13px; color: var(--text-dim);
   border: 1px solid var(--border-strong); border-radius: 8px;
 }
+.allgood .slothspot { margin: 0; }  /* beside the words, not centred above them */
 .allgood b { color: var(--text); font-weight: 600; }
 .allgood__say { margin-left: auto; font-size: 13px; color: var(--text-faint); font-style: italic; }
 .songgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; }
@@ -74,9 +75,9 @@
 .needcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
 .needcard {
   display: grid; grid-template-columns: 96px minmax(0, 1fr); border: 1px solid var(--border-strong); border-radius: 10px;
-  overflow: hidden; background: var(--surface); cursor: pointer; transition: border-color 0.15s;
+  overflow: hidden; background: var(--surface); cursor: pointer; transition: border-color var(--dur-quick);
 }
-.needcard:hover { border-color: var(--border-interactive); }
+@media (hover: hover) and (pointer: fine) { .needcard:hover { border-color: var(--border-interactive); } }
 .needcard .cover { width: 96px; height: 100%; min-height: 96px; border-radius: 0; }
 .needcard__body { padding: 12px 14px; display: grid; gap: 6px; align-content: center; min-width: 0; }
 .needcard__body .col-act { justify-content: flex-start; flex-wrap: wrap; row-gap: 6px; }
@@ -99,3 +100,56 @@
 
 /* "Show all 218 in the Library" under a Home list that was cut short */
 .home-more { display: inline-block; margin-top: 10px; font-size: 13px; }
+
+/* A Changed card or row backed up from Home: "Safe" with the small seal (DoneSeal, in
+   library.css), then it fades up and out while the others glide into its place (glide.ts). */
+.warn-line--safe { color: var(--accent-2); gap: 6px; }
+.warn-line--safe .doneseal { flex: none; }
+.needcard .warn-line--safe .doneseal { margin-top: 2px; }
+.home-out { animation: homeOut var(--dur-slow) var(--ease-leave) forwards; pointer-events: none; }
+@keyframes homeOut { to { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+/* the last one went: the sloth's line settles in */
+.allgood--in { animation: lcFade var(--dur-slow) var(--ease-lazy) both; }
+
+/* The backup drive came back: its dot rings once (sonarPing, theme.css) */
+.dot--back { position: relative; }
+.dot--back::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--accent-2); pointer-events: none;
+  animation: sonarPing 1.4s var(--ease-glide) 1 both;
+}
+
+/* Milestones (milestones.ts): a small record by the Safe count, gold, platinum or
+   diamond, with a label hole; pressed in calmly when just reached. */
+.mdisc {
+  display: inline-block; width: 13px; height: 13px; margin-left: 6px; border-radius: 50%; flex: none; vertical-align: -1px;
+  background:
+    radial-gradient(circle, transparent 0 1.6px, var(--disc-label) 1.7px 3.4px, transparent 3.5px),
+    repeating-radial-gradient(circle, var(--disc) 0 1px, var(--disc-groove) 1px 1.6px);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25);
+}
+.mdisc--gold { --disc: #E2BE62; --disc-groove: #C99D3A; --disc-label: #F4DE9C; }
+.mdisc--platinum { --disc: #D3D8DF; --disc-groove: #AEB5BF; --disc-label: #F2F4F7; }
+.mdisc--diamond { --disc: #CDEBF4; --disc-groove: #9FD0E0; --disc-label: #F4FBFD; }
+.mdisc--new { animation: doneStamp var(--dur-slow) var(--ease-glide) both; }
+.home-mile { display: flex; align-items: center; gap: 8px; margin: -6px 0 18px; font-size: 14px; color: var(--text); animation: lcFade var(--dur-slow) var(--ease-lazy) both; }
+.home-mile .mdisc { width: 16px; height: 16px; margin: 0; }
+.deckcard__lbl .mdisc { display: block; margin: 7px 0 0; }  /* under "Safe", so the big number keeps its room */
+
+/* "On this day": one quiet line, opens the project */
+.otd {
+  display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; max-width: 520px;
+  margin: 0 0 22px; padding: 6px 12px 6px 6px; text-align: left; cursor: pointer; font: inherit; color: var(--text);
+  background: transparent; border: 1px solid var(--border); border-radius: var(--radius-lg); transition: border-color var(--dur-quick);
+}
+.otd .cover { border-radius: calc(var(--radius-lg) - 3px); }
+.otd > svg { color: var(--text-faint); }
+.otd__text { display: grid; min-width: 0; gap: 1px; }
+.otd__when { font-size: 12px; color: var(--text-faint); }
+.otd__name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (hover: hover) and (pointer: fine) { .otd:hover { border-color: var(--border-interactive); } }
+.otd:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+html[data-reading] .otd__name { white-space: normal; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) {
+  .home-out { animation: none; opacity: 0; }
+  .mdisc--new, .allgood--in, .home-mile { animation: none; }
+}

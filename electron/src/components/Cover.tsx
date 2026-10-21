@@ -82,7 +82,7 @@ export function Cover({ name, genre, size, className = "", label = true, colour,
           <text x="6" y="95" fontFamily={FONT} fontWeight={600} fontSize="5.5" letterSpacing="0.4"
             fill={paper ? shade(c, -0.55) : c}>{(genre || "").toUpperCase().slice(0, 22)}</text>
           {label && <text x="94" y="95" textAnchor="end" fontFamily={FONT} fontWeight={600} fontSize="5"
-            fill={ink} opacity={0.5}>LC·{no}</text>}
+            fill={ink} fillOpacity={0.5}>LC·{no}</text>}
         </>}
       </svg>
     );
@@ -112,7 +112,7 @@ export function Cover({ name, genre, size, className = "", label = true, colour,
       shapes.push(<circle key={"g" + i} cx={64} cy={cy} r={20 + i * 4.5} fill="none" stroke="#252B33" strokeWidth={0.6} />);
     shapes.push(<circle key="lab" cx={64} cy={cy} r={12} fill={c} />);
     shapes.push(<circle key="hole" cx={64} cy={cy} r={1.4} fill={bg} />);
-    shapes.push(<rect key="sleeve" x={0} y={0} width={44 + r() * 8} height={100} fill={shade(c, -0.15)} opacity={a ? 0.78 : 1} />);
+    shapes.push(<rect key="sleeve" x={0} y={0} width={44 + r() * 8} height={100} fill={shade(c, -0.15)} fillOpacity={a ? 0.78 : 1} />);
   } else if (kind === 2) {
     // a band of sound across the middle
     const n = 30, w = 88 / n;
@@ -122,7 +122,7 @@ export function Cover({ name, genre, size, className = "", label = true, colour,
       const bh = 6 + v * 34;
       shapes.push(<rect key={i} x={6 + i * w} y={56 - bh / 2} width={w * 0.62} height={bh} fill={shade(c, 0.2)} />);
     }
-    shapes.push(<rect key="rule" x={6} y={82} width={88} height={0.8} fill={shade(c, 0.2)} opacity={0.7} />);
+    shapes.push(<rect key="rule" x={6} y={82} width={88} height={0.8} fill={shade(c, 0.2)} fillOpacity={0.7} />);
     shapes.push(<text key="t" x={6} y={92} fontFamily={FONT} fontWeight={600} fontSize={6.5} letterSpacing={0.6}
       fill={shade(c, 0.5)}>{capped(name.toUpperCase(), 16)}</text>);
   } else {
@@ -152,12 +152,12 @@ export function Cover({ name, genre, size, className = "", label = true, colour,
       {/* your picture as the background: printed in the genre's colour, or dimmed (photo) */}
       {a && <image href={a.src} {...place(a, 100, 100)} preserveAspectRatio="none"
         filter={photo ? undefined : `url(#d${id})`} />}
-      {photo && <rect width="100" height="100" fill="#07090C" opacity={paper ? 0.18 : 0.42} />}
+      {photo && <rect width="100" height="100" fill="#07090C" fillOpacity={paper ? 0.18 : 0.42} />}
       <g filter={photo ? `url(#s${id})` : undefined}>{shapes}</g>
-      <rect width="100" height="100" fill={`url(#${id})`} opacity={paper ? 0.45 : 0.7} />
+      <rect width="100" height="100" fill={`url(#${id})`} fillOpacity={paper ? 0.45 : 0.7} />
       {label && (kind === 1 || kind === 3) && (size == null || size >= 80) &&
         <text x="6" y="96" fontFamily={FONT} fontWeight={600} fontSize="6" letterSpacing="0.4"
-          fill={paper ? "#000" : "#fff"} opacity={paper ? 0.5 : 0.55}>
+          fill={paper ? "#000" : "#fff"} fillOpacity={paper ? 0.5 : 0.55}>
           LC·{no}
         </text>}
     </svg>

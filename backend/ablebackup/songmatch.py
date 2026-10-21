@@ -53,15 +53,23 @@ def close_spelling(a: str, b: str) -> bool:
 
 
 def _distance(a: str, b: str, limit: int) -> int:
-    prev = list(range(len(b) + 1))
+    """How many letters to change, add or drop to turn a into b, or limit + 1 when
+    it's more than ``limit``. Only the cells within ``limit`` of the diagonal can
+    stay within it, so only those are worked out."""
+    if abs(len(a) - len(b)) > limit:
+        return limit + 1
+    big = limit + 1
+    prev = [j if j <= limit else big for j in range(len(b) + 1)]
     for i, ca in enumerate(a, 1):
-        cur = [i]
-        for j, cb in enumerate(b, 1):
-            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
-        if min(cur) > limit:
-            return limit + 1
+        lo, hi = max(1, i - limit), min(len(b), i + limit)
+        cur = [big] * (len(b) + 1)
+        cur[0] = i if i <= limit else big
+        for j in range(lo, hi + 1):
+            cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != b[j - 1]), big)
+        if min(cur[lo - 1:hi + 1]) > limit:
+            return big
         prev = cur
-    return prev[-1]
+    return min(prev[-1], big)
 
 
 # ---- when things were saved ----------------------------------------------------

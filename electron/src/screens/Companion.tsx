@@ -139,7 +139,7 @@ export function Companion() {
           </dl>
           <button type="button" className="btn btn--primary cw-now__go" onClick={() => backUp(cur)}
             disabled={busy || !!running || live.backup.active || !canBackUp}
-            title={canBackUp ? "Back up this project now, checked" : "Choose where backups go, and connect that drive, first"}>
+            title={canBackUp ? "Back up this project now and check the copy" : "Choose where backups go, and connect that drive, first"}>
             {busy && <span className="cw-spin" aria-hidden="true" />}{label}
           </button>
           {curNote && <div className={`cw-note${curNote.ok ? "" : " cw-note--warn"}`} role="status">{curNote.text}</div>}

@@ -18,7 +18,7 @@ import "../plugins.css";
 const api = makeApi();
 const ALL_FORMATS: PluginFormat[] = ["VST3", "AU", "CLAP", "VST2", "AAX", "LV2"];
 const FORMAT_HELP: Record<PluginFormat, string> = {
-  VST3: "VST3: works in most music programs",
+  VST3: "VST3: works in most DAWs",
   AU: "Audio Unit: Mac only, used by Logic Pro and GarageBand (and others)",
   CLAP: "CLAP: the newer open format (Bitwig, Reaper, Studio One, FL Studio)",
   VST2: "VST2: the older VST format",
@@ -92,7 +92,7 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
   async function load(refresh = false) {
     setBusy(true); setErr(null);
     try { setData(await api.plugins(refresh)); }
-    catch (e: any) { setErr(e.message || "Couldn't look in your plugin folders."); }
+    catch (e: any) { setErr(e.message || "Couldn't look in your plugin folders. Press Look again."); }
     finally { setBusy(false); }
   }
   useEffect(() => { load(); }, []);
@@ -353,6 +353,9 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
               </button>
             )}
             <h2 className="plug-main__title col-trunc" title={title}>{title}</h2>
+            {!listView && <span className="plug-key" aria-hidden>
+              <span><i className="plug-dot" data-kind="Instrument" />Instruments</span><span><i className="plug-dot" data-kind="Effect" />Effects</span>
+            </span>}
             <span className="plug-main__count">{count} · looked {fmtDay(data.scanned_at * 1000, { time: true })}</span>
           </div>
           {showMissing ? (

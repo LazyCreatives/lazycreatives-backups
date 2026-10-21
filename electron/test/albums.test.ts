@@ -18,11 +18,11 @@ describe("albums", () => {
     expect(daysToGo("", now)).toBe("");
   });
 
-  it("says what is left to sort", () => {
+  it("says how many are not ready", () => {
     expect(albumState(album([]))).toEqual({ label: "No songs yet", tone: "quiet" });
     const a = album([song("Low Beams", true), song("Glovebox", false)]);
     expect(readyCount(a)).toBe(1);
-    expect(albumState(a)).toEqual({ label: "1 to sort", tone: "warn" });
+    expect(albumState(a)).toEqual({ label: "1 not ready", tone: "warn" });
     expect(albumState(album([song("Low Beams", true)])).label).toBe("Ready");
   });
 

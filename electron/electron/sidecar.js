@@ -27,7 +27,7 @@ function waitForHealth(port, timeoutMs = 15000) {
       );
       req.on("error", () => {
         if (Date.now() - start > timeoutMs) reject(new Error("sidecar health timeout"));
-        else setTimeout(tick, 250);
+        else setTimeout(tick, 50); // often enough that the window opens as soon as the engine is up
       });
       req.on("timeout", () => req.destroy());
     };

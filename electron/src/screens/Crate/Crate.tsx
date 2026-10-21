@@ -39,10 +39,10 @@ export function Crate({ group, onOpen, reduce }: { group: CrateGroup; onOpen: ()
         : safe === 0 && warn === 0 && c.changed === 0
         ? <span>Not backed up yet</span>
         : <>
-            {warn > 0 && <><span className="at">{fmtCount(warn)} need{warn === 1 ? "s" : ""} a look</span>{" · "}</>}
-            <span className="ok">{fmtCount(safe)} safe</span>
-            {c.changed > 0 && ` · ${fmtCount(c.changed)} changed`}
-            {c.none > 0 && ` · ${fmtCount(c.none)} not backed up`}
+            {warn > 0 && <><span className="at vlabel__i">{fmtCount(warn)} need{warn === 1 ? "s" : ""} a look</span>{" · "}</>}
+            <span className="ok vlabel__i">{fmtCount(safe)} safe</span>
+            {c.changed > 0 && <>{" · "}<span className="vlabel__i">{fmtCount(c.changed)} changed</span></>}
+            {c.none > 0 && <>{" · "}<span className="vlabel__i">{fmtCount(c.none)} not backed up</span></>}
           </>}
     </span>
   );
@@ -68,6 +68,7 @@ export function Crate({ group, onOpen, reduce }: { group: CrateGroup; onOpen: ()
       <motion.div className={`boxset boxset--${Math.min(4, four.length)} boxset--thick${thick}`} {...common}>
         <div className="boxset__art">
           {four.map((p) => <Cover key={p.id} name={p.name} genre={genreOf(p)} label={four.length === 1} />)}
+          {four.length === 3 && <span className="boxset__back" aria-hidden />}
           <span className="sleeve__badge">{records}</span>
         </div>
         <div className="sleeve__meta">

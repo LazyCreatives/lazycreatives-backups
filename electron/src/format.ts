@@ -2,12 +2,12 @@
 // formatting here so every screen reads consistently.
 
 export function fmtSize(n: number): string {
-  if (!n || n < 0) return "0 B";
-  if (n >= 1e12) return (n / 1e12).toFixed(2) + " TB";
-  if (n >= 1e9) return (n / 1e9).toFixed(2) + " GB";
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + " MB";
-  if (n >= 1e3) return (n / 1e3).toFixed(0) + " KB";
-  return n + " B";
+  if (!n || n < 0) return "0\u00a0B";
+  if (n >= 1e12) return (n / 1e12).toFixed(2) + "\u00a0TB";
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + "\u00a0GB";
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + "\u00a0MB";
+  if (n >= 1e3) return (n / 1e3).toFixed(0) + "\u00a0KB";
+  return n + "\u00a0B";
 }
 
 // The backend stamps snapshots as "YYYY-MM-DD_HHMM" (local time).
@@ -47,8 +47,14 @@ export function dawLabel(daw?: string): string {
     : daw === "logic" ? "Logic Pro"
     : daw === "studioone" ? "Studio One"
     : daw === "bitwig" ? "Bitwig"
-    : daw === "ableton" ? "Ableton" : "Music app";
+    : daw === "stems" ? "Stems only"
+    : daw === "ableton" ? "Ableton" : "DAW";
 }
+
+// A folder of stems with no project file: there's no music program to open it in,
+// so "open" shows the folder instead.
+export const stemsOnly = (daw?: string | null): boolean => daw === "stems";
+export const openWord = (daw?: string): string => stemsOnly(daw) ? "Show the folder" : `Open in ${dawLabel(daw)}`;
 
 export function fmtClock(iso?: string | null): string {
   if (!iso) return "—";

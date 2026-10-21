@@ -47,6 +47,7 @@ export function Sources() {
   const [connectMsg, setConnectMsg] = useState<string | null>(null);
   const [connectErr, setConnectErr] = useState<string | null>(null);
   const [openAtLogin, setOpenAtLogin] = useState<boolean | null>(null);
+  const [crashReports, setCrashReports] = useState<boolean | null>(null);
   const [pauseMin, setPauseMin] = useState(pausesOnMinimize);
   const [ov, setOv] = useState<Overview | null>(null);
   // a real project to show the cover pictures on (Settings, Covers)
@@ -80,6 +81,7 @@ export function Sources() {
     api.rclone().then(setRclone).catch(() => {});
     api.cloudProviders().then(setProviders).catch(() => {});
     (window as any).ablebackup?.getOpenAtLogin?.().then(setOpenAtLogin).catch(() => {});
+    (window as any).ablebackup?.getCrashReports?.().then((on: boolean) => setCrashReports(!!on)).catch(() => {});
   }, []);
 
   async function toggleOpenAtLogin(on: boolean) {
@@ -87,6 +89,13 @@ export function Sources() {
     if (!b?.setOpenAtLogin) return;
     try { setOpenAtLogin(await b.setOpenAtLogin(on)); }
     catch { setSaveError(`Couldn't change whether the app starts with your ${words.computer}.`); }
+  }
+
+  async function toggleCrashReports(on: boolean) {
+    const b = (window as any).ablebackup;
+    if (!b?.setCrashReports) return;
+    try { setCrashReports(await b.setCrashReports(on)); }
+    catch { setSaveError("Couldn't change crash reports."); }
   }
 
   async function addSource() {
@@ -156,11 +165,11 @@ export function Sources() {
           pollConnect(id, label, tries + 1);
         } else {
           setConnecting(null);
-          setConnectErr(`Timed out waiting for ${label} sign-in.`);
+          setConnectErr(`${label} sign-in took too long. Press Connect ${label} to try again.`);
         }
       } catch {
         if (tries < 200) pollConnect(id, label, tries + 1);
-        else { setConnecting(null); setConnectErr("Lost contact while connecting."); }
+        else { setConnecting(null); setConnectErr(`The connection dropped before ${label} sign-in finished. Press Connect ${label} to try again.`); }
       }
     }, 1500);
   }
@@ -252,7 +261,7 @@ export function Sources() {
           {cfg.dest ? <Icon name="disc" size={22} className="drive__icon" /> : <SlothSpot pose="hugging-drive" size={56} />}
           <div className="drive__main">
             <span className="pathline">
-              <span className="mono col-trunc drive__path" title={cfg.dest}>{cfg.dest || "No folder chosen yet"}</span>
+              <span className="mono col-trunc col-trunc--start drive__path" title={cfg.dest}><bdi>{cfg.dest || "No folder chosen yet"}</bdi></span>
               {cfg.dest && <CopyButton text={cfg.dest} what="folder path" size={13} />}
             </span>
             {ov && ov.nas.total_bytes > 0 ? (
@@ -382,8 +391,14 @@ export function Sources() {
         <p className="set-about">Only in the folders you pick on the Backups tab: your own drive, or your own Dropbox, Google Drive or iCloud folder. Lazy Creatives has no copy and never sees your music.</p>
       </SetRow>
       <SetRow title={`What leaves your ${words.computer}`} help="No tracking, no accounts, no adverts.">
-        <p className="set-about">Checking for updates asks GitHub for the newest version number. If you turn on a second copy in the cloud, your backups go to your own cloud account. If you switch on Let my phone connect, the songs you pick go to your own paired phone over your home Wi-Fi. Nothing else is sent.</p>
+        <p className="set-about">Checking for updates asks GitHub for the newest version number. If you turn on a second copy in the cloud, your backups go to your own cloud account. If you switch on Let my phone connect, the songs you pick go to your own paired phone over your home Wi-Fi. If Send crash reports is on, a note of what went wrong goes to Lazy Creatives. Nothing else is sent.</p>
       </SetRow>
+      {crashReports !== null && (
+        <SetRow title="Send crash reports"
+          help="When the app breaks, the error goes to Lazy Creatives through Sentry so it can be fixed. It can include file paths, so folder and song names. Never your music.">
+          <OnOff label="Send crash reports" on={crashReports} onChange={toggleCrashReports} />
+        </SetRow>
+      )}
       <SetRow title="Something not working?"
         help="Opens a short report on GitHub with your app version and computer type filled in. You read it before you send it. If the app ever crashes, it offers the same report the next time it opens.">
         <Button variant="ghost" size="sm" onClick={() => (window as any).ablebackup?.reportProblem?.()}>Report a problem</Button>
@@ -425,10 +440,27 @@ function YourPhone() {
   const [code, setCode] = useState<PhoneCode | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  // A phone that paired while the code was up: the code turns into "<phone> is paired"
+  // and its row fades into the list (newIds). The first status read is what was already there.
+  const known = useRef<Set<string> | null>(null);
+  const [paired, setPaired] = useState<string | null>(null);
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
+  const take = (next: PhoneStatus) => {
+    const ids = next.devices.map((d) => d.id);
+    if (known.current) {
+      const fresh = next.devices.filter((d) => !known.current!.has(d.id));
+      if (fresh.length) {
+        setPaired(fresh[fresh.length - 1].name);
+        setNewIds(new Set(fresh.map((d) => d.id)));
+      }
+    }
+    known.current = new Set(ids);
+    setSt(next);
+  };
 
   function load() {
     setFailed(false);
-    api.phoneStatus().then(setSt).catch(() => setFailed(true));
+    api.phoneStatus().then(take).catch(() => setFailed(true));
   }
   useEffect(load, []);
   // A fresh code while the switch is on; each lasts ten minutes, so renew it in time.
@@ -443,13 +475,13 @@ function YourPhone() {
   // While the code shows, look for a newly paired phone every few seconds.
   useEffect(() => {
     if (!st?.enabled) return;
-    const t = window.setInterval(() => api.phoneStatus().then(setSt).catch(() => {}), 4000);
+    const t = window.setInterval(() => api.phoneStatus().then(take).catch(() => {}), 4000);
     return () => window.clearInterval(t);
   }, [st?.enabled]);
 
   async function flip(on: boolean) {
     setBusy(true);
-    try { setSt(await api.phoneSwitch(on)); }
+    try { take(await api.phoneSwitch(on)); if (!on) setPaired(null); }
     catch (e) { toast(`Couldn't switch it ${on ? "on" : "off"}: ${(e as Error).message}`); }
     finally { setBusy(false); }
   }
@@ -461,7 +493,7 @@ function YourPhone() {
       confirm: "Remove phone", danger: true,
     });
     if (!ok) return;
-    try { setSt(await api.phoneForget(id)); toast(`${name} can't connect any more.`); }
+    try { take(await api.phoneForget(id)); toast(`${name} can't connect any more.`); }
     catch (e) { toast(`Couldn't remove it: ${(e as Error).message}`); }
   }
 
@@ -477,7 +509,16 @@ function YourPhone() {
             <Button variant="ghost" size="sm" onClick={load}>Try again</Button>
           </div>
         )}
-        {on && code && (
+        {on && paired ? (
+          <div className="phone-pair phone-pair--done" role="status">
+            <span className="phone-paired"><Icon name="check" size={40} /></span>
+            <div className="phone-paired__text">
+              <p className="phone-paired__name"><b>{paired}</b> is paired</p>
+              <p className="set-about">It can connect whenever it's on your home Wi-Fi.{" "}
+                <button type="button" className="linkbtn" onClick={() => { setPaired(null); api.phoneCode().then(setCode).catch(() => {}); }}>Pair another phone</button></p>
+            </div>
+          </div>
+        ) : on && code && (
           <div className="phone-pair">
             <QrCode text={code.link} />
             <p className="set-about">Open Lazy Creatives on your phone and scan this code. It works once, and a new one shows each time you come back here.</p>
@@ -493,7 +534,7 @@ function YourPhone() {
           : (
             <div className="table phone-cols">
               {st.devices.map((d) => (
-                <div key={d.id} className="row cols">
+                <div key={d.id} className={`row cols${newIds.has(d.id) ? " phone-row--new" : ""}`}>
                   <Icon name="headphones" size={15} className="faint" />
                   <span className="col-trunc" title={d.name}>{d.name}</span>
                   <span className="col-num">paired {fmtDay(d.paired_at * 1000, { year: "auto" })}</span>
@@ -542,7 +583,7 @@ function FolderTable({ paths, loaded, empty, onRemove, icon = "folder" }: {
             { label: "Copy folder path", onClick: () => { copyText(p); } },
             "-", { label: "Remove", onClick: () => onRemove(p), danger: true },
           ])}>
-            <span className="mono col-trunc" style={{ fontSize: 12, color: "var(--text-dim)" }} title={p}>{p}</span>
+            <span className="mono col-trunc col-trunc--start" style={{ fontSize: 12, color: "var(--text-dim)" }} title={p}><bdi>{p}</bdi></span>
             <CopyButton text={p} what="folder path" size={13} />
           </span>
           <span className="col-act"><Button variant="quiet" size="sm" onClick={() => onRemove(p)}>Remove</Button></span>
@@ -633,7 +674,7 @@ export function ExportFolders() {
                   { label: "Copy folder path", onClick: () => { copyText(r.path); } },
                   ...(r.act ? ["-" as const, { label: r.act[0], onClick: r.act[1], danger: true }] : []),
                 ])}>
-                  <span className="mono col-trunc" style={{ fontSize: 12, color: "var(--text-dim)" }} title={r.path}>{r.path}</span>
+                  <span className="mono col-trunc col-trunc--start" style={{ fontSize: 12, color: "var(--text-dim)" }} title={r.path}><bdi>{r.path}</bdi></span>
                   <CopyButton text={r.path} what="folder path" size={13} />
                 </span>
                 <span className="faint col-trunc" style={{ fontSize: 12 }}>{r.from}</span>

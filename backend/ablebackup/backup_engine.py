@@ -160,10 +160,11 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
         record(logical, digest, sz, str(ref.resolved_path), ref.inside_project, ref.relinked)
 
     seen_exports: set[str] = set()
+    as_refs = {os.path.realpath(k) for k in placement}
     for e in exports or []:
         src = Path(e["path"])
-        if str(src) in seen_exports or not src.is_file():
-            continue
+        if str(src) in seen_exports or os.path.realpath(src) in as_refs or not src.is_file():
+            continue  # placed above already: a stems-only folder's own sounds
         seen_exports.add(str(src))
         kind = "stem" if e.get("kind") == "stem" else "song"
         logical = f"{STEMS_DIR if kind == 'stem' else EXPORTS_DIR}/{src.name}"

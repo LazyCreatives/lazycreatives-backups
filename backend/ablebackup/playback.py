@@ -167,7 +167,10 @@ def decode(path: str) -> bytes:
         # First audio track only (no cover pictures), written to ffmpeg's output pipe,
         # never to a file.
         try:
-            r = subprocess.run([exe, "-nostdin", "-hide_banner", "-loglevel", "error", "-i", path,
+            r = subprocess.run([exe, "-nostdin", "-hide_banner", "-loglevel", "error",
+                                # Plain files only: a song disguised as a playlist can't
+                                # make ffmpeg open other files or addresses.
+                                "-protocol_whitelist", "file,pipe", "-i", path,
                                 "-map", "0:a:0", "-vn", "-sn", "-dn", "-c:a", "pcm_s24le",
                                 "-f", "wav", "pipe:1"],
                                stdin=subprocess.DEVNULL, capture_output=True, timeout=TIMEOUT,

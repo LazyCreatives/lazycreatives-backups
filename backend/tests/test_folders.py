@@ -99,3 +99,13 @@ def test_tidy_names_keeps_projects_in_their_folders_and_files_stay_put(tmp_path)
         c.post("/api/tidy/undo", json={"batch_id": done["batch_id"]})
         assert c.get("/api/folders").json()["folders"][0]["project_ids"] == [pid]
         assert fid
+
+
+def test_one_folder_reads_the_same_as_in_the_full_list(tmp_path):
+    f = Folders(tmp_path / "folders.db")
+    for i in range(30):
+        f.create(f"Folder {i}", [f"p{i}", f"p{i + 1}"])
+    for x in f.all():
+        assert f.get(x["id"]) == x
+    with pytest.raises(NotFound):
+        f.get("nope")

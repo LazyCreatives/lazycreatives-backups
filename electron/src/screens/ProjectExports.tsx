@@ -8,7 +8,7 @@ import { Icon } from "../components/Icon";
 import { PlayButton, SongWave } from "../components/Player";
 import { SONGS_LINKED } from "../songDrop";
 import { osWords } from "../platform";
-import { fmtSize, fmtDay } from "../format";
+import { fmtSize, fmtDay, stemsOnly } from "../format";
 import { isShortExport, shortExportSeconds } from "../exportFolders";
 import { StemSets } from "./StemSets";
 
@@ -38,7 +38,9 @@ export function ProjectExports({ item, onChanged, onOpenStems }: {
   const [folders, setFolders] = useState<{ folders: string[]; found_folders?: string[]; ignored?: string[]; uploader_folders: string[] } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showStems, setShowStems] = useState(false);
+  // a stems-only folder is all stems: they're what the page is for, so they show open
+  const stemsFolder = stemsOnly(item.daw);
+  const [showStems, setShowStems] = useState(stemsFolder);
   // Songs shorter than Settings > "Hide short exports" (test bounces, clicks) wait
   // behind a button; nothing is deleted.
   const [minSecs] = useState(shortExportSeconds);
@@ -144,7 +146,7 @@ export function ProjectExports({ item, onChanged, onOpenStems }: {
                 title={e.sure === 0
                   ? `Guessed: ${e.why}. Right-click to confirm it, or press × if it isn't from this project.\n${e.path}`
                   : `${e.path}\n${e.why || HOW[e.match]}`}>{e.name}{short && <span className="pill pill--skipped song-short"
-                    title={`Shorter than ${minSecs} seconds (Settings, Folders)`}>Short</span>}</span>
+                    title={`Shorter than ${minSecs} seconds (Settings > Folders)`}>Short</span>}</span>
             </div>
             {e.exists
               ? <SongWave path={e.path} meta={songMeta(e.name)} height={20} />
@@ -184,8 +186,9 @@ export function ProjectExports({ item, onChanged, onOpenStems }: {
 
       {data && rows.length === 0 && !checking && (
         <div className="sub" style={{ margin: "0 0 10px" }}>
-          No exported songs found for this project yet.
-          {lookIn.length === 0 && " Tell Backups where you save your exports and it will find them."}
+          {stemsFolder ? "No sounds in this folder any more. They may have been moved or deleted."
+            : <>No exported songs found for this project yet.
+              {lookIn.length === 0 && " Tell Backups where you save your exports and it will find them."}</>}
         </div>
       )}
 
@@ -235,7 +238,7 @@ export function ProjectExports({ item, onChanged, onOpenStems }: {
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
         <Button variant="ghost" size="sm" disabled={busy} onClick={addSong}>Add a song…</Button>
-        <Button variant="ghost" size="sm" disabled={busy} onClick={addFolder}>Add an exports folder…</Button>
+        {!stemsFolder && <Button variant="ghost" size="sm" disabled={busy} onClick={addFolder}>Add an exports folder…</Button>}
         <Button variant="ghost" size="sm" disabled={busy || !!checking} onClick={() => run(() => api.refreshExports())}
           title="Look through the folders again for songs saved since">Look again</Button>
       </div>
@@ -245,7 +248,7 @@ export function ProjectExports({ item, onChanged, onOpenStems }: {
 
       {folders && (
         <div className="faint" style={{ margin: "12px 0 0", fontSize: 12 }}>
-          Looking in: the project folder
+          Looking in: {stemsFolder ? "this stems folder" : "the project folder"}
           {folders.folders.map((f) => (
             <span key={f}>
               {", "}<span title={f}>{folderName(f)}</span>

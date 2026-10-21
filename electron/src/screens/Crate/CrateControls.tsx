@@ -12,7 +12,7 @@ export function CrateControls({ groupBy, setGroupBy, crateSort, setCrateSort, se
       <span className="crate-controls__label">Crates by</span>
       <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} aria-label="Group crates by">
         <option value="genre">Genre</option>
-        <option value="daw">Music app</option>
+        <option value="daw">DAW</option>
         <option value="tempo">Tempo</option>
         <option value="recency">Recency</option>
       </select>

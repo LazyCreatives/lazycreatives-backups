@@ -20,6 +20,8 @@ for pkg in ("uvicorn", "fastapi", "starlette", "apscheduler", "defusedxml",
 # — collect_all would also ship every .py as readable source in _internal/, exposing
 # the licensing logic + keys. The bytecode goes into the PYZ; no plaintext source.
 hiddenimports += collect_submodules("ablebackup")
+# Sentry loads its integrations by name, so list them all (crashreports.py).
+hiddenimports += collect_submodules("sentry_sdk")
 
 a = Analysis(
     ["ablebackup/server.py"],

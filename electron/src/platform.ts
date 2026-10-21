@@ -16,7 +16,7 @@ export function currentOs(): Os {
 const WORDS: Record<Os, { computer: string; fileManager: string; tray: string }> = {
   mac: { computer: "Mac", fileManager: "Finder", tray: "menu bar" },
   windows: { computer: "PC", fileManager: "File Explorer", tray: "system tray" },
-  linux: { computer: "computer", fileManager: "file manager", tray: "system tray" },
+  linux: { computer: "computer", fileManager: "your file manager", tray: "system tray" },
 };
 
 export function osWords(os: Os = currentOs()) {

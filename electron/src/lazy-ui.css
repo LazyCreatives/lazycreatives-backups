@@ -127,7 +127,7 @@ html[data-material="vibrancy"] .nav { background: color-mix(in srgb, var(--bg) 4
 
 /* ---- shell ---- */
 .app { display: grid; grid-template-columns: var(--nav-w) minmax(0, 1fr); height: 100%; position: relative; z-index: 1; }
-.main { padding: 28px clamp(20px, 3vw, 40px); overflow: auto; }
+.main { padding: 28px clamp(20px, 3vw, 40px); overflow: auto; scrollbar-gutter: stable; }  /* room for the scrollbar always, so nothing shifts between pages */
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
 .page-head h1 { margin: 0; }
 .page-head .sub { margin: 6px 0 0; }
@@ -175,6 +175,7 @@ html[data-material="vibrancy"] .nav { background: color-mix(in srgb, var(--bg) 4
   display: grid; gap: 4px; font-size: 12px; color: var(--text-dim);
 }
 .nav__foot .faint { font-size: 12px; }
+.nav__foot-state { display: flex; align-items: center; gap: 8px; }
 /* "Recently opened" in the sidebar (components/Recents.tsx). Crate: ruled rows like a
    record list, square covers. Sleeve: soft rounded covers, no rules. */
 .nav__recents { display: grid; gap: 1px; margin-top: 18px; min-width: 0; }
@@ -201,6 +202,9 @@ html[data-material="vibrancy"] .nav { background: color-mix(in srgb, var(--bg) 4
   .app { grid-template-columns: 60px minmax(0, 1fr); }
   .nav { padding: 18px 8px; }
   .nav__label, .lc-brand__text, .nav__foot, .nav__recents { display: none; }
+  /* Uploader keeps its SoundCloud dot (the words are in its tooltip) */
+  .nav__foot:has(.nav__foot-state) { display: flex; justify-content: center; padding-inline: 0; }
+  .nav__foot:has(.nav__foot-state) > :not(.nav__foot-state) { display: none; }
   .nav__item { justify-content: center; padding: 0; }
   .lc-brand { justify-content: center; padding: 0 0 18px; }
   .nav__find { justify-content: center; padding: 0; }
@@ -393,9 +397,11 @@ label.field > span, div.field > span { font-weight: 500; }
 /* the fill slides in from the left (--pct, 0-100) rather than resizing, so it never re-lays the page */
 .progress__fill, .progress__fill--active {
   height: 100%; width: 100%; border-radius: 3px; background: var(--accent);
-  transform: translateX(calc(var(--pct, 0) * 1% - 100%)); transition: transform .7s var(--ease-glide);
+  transform: translateX(calc(var(--pct, 0) * 1% - 100%)); transition: transform calc(var(--dur-slow) * 1.75) var(--ease-glide);
 }
 .progress__fill--active::after { display: none; }
+/* a bar that goes away when its work is done (wrapped in <Exit>) fades rather than blinking out */
+.exit[data-leaving] > .progress { animation: wnewFadeOut var(--dur-quick) var(--ease-leave) both; }
 
 /* ---- notices ---- */
 .banner {
@@ -432,7 +438,7 @@ label.field > span, div.field > span { font-weight: 500; }
   content: attr(data-tip); position: absolute; z-index: 60; bottom: 150%; left: 50%; transform: translateX(-50%);
   background: var(--surface-3); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius);
   padding: 8px 10px; width: max-content; max-width: 240px; font: 400 12px/1.45 var(--font); text-align: left;
-  white-space: normal; box-shadow: var(--shadow-pop); opacity: 0; pointer-events: none; transition: opacity .12s ease;
+  white-space: normal; box-shadow: var(--shadow-pop); opacity: 0; pointer-events: none; transition: opacity var(--dur-quick) ease;
 }
 .info--left::after { bottom: 50%; left: auto; right: 150%; transform: translateY(50%); }
 .info:hover::after, .info:focus::after { opacity: 1; }
@@ -473,7 +479,7 @@ label.field > span, div.field > span { font-weight: 500; }
   flex: none; display: inline-grid; place-items: center; border-radius: 50%;
   border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text);
   line-height: 1; cursor: pointer; padding: 0;
-  transition: background .15s, color .15s, transform .1s;
+  transition: background var(--dur-quick), color var(--dur-quick), transform var(--dur-quick);
 }
 .playbtn:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .playbtn-slot { flex: none; width: 28px; }
@@ -485,6 +491,8 @@ label.field > span, div.field > span { font-weight: 500; }
 /* rolling counters (Rolling.tsx): the roll needs a little room above and below the digits;
    take it back so the number sits exactly where plain text would */
 .rolling { --number-flow-mask-height: 0.15em; margin-block: -0.15em; }
+/* the comma in "1,240" keeps its own narrow width (figures stay tabular) */
+.rolling::part(symbol) { font-variant-numeric: normal; }
 .wave__cursor { fill: var(--text); opacity: 0.7; pointer-events: none; }
 .wave-wrap { position: relative; display: block; min-width: 0; }
 .wave__time {
@@ -509,7 +517,7 @@ label.field > span, div.field > span { font-weight: 500; }
 .sleeve {
   display: flex; flex-direction: column; text-align: left; padding: 0; overflow: hidden; cursor: pointer;
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
-  color: inherit; font: inherit; transition: border-color .15s, transform .15s;
+  color: inherit; font: inherit; transition: border-color var(--dur-quick);
 }
 @media (hover: hover) and (pointer: fine) {
   .sleeve:hover { border-color: var(--border-interactive); }
@@ -598,6 +606,9 @@ label.field > span, div.field > span { font-weight: 500; }
 .nowplaying__meter { justify-self: end; width: 96px; }
 .nowplaying__open { justify-self: center; }
 @keyframes npIn { from { opacity: 0; transform: translateY(24px); } }
+/* made smaller again (wrapped in <Exit>): it sinks back down into the player bar */
+.exit[data-leaving] .nowplaying { animation: npOut var(--dur-quick) var(--ease-leave) both; }
+@keyframes npOut { to { opacity: 0; transform: translateY(24px); } }
 @media (prefers-reduced-motion: reduce) { .nowplaying { animation: none; } }
 /* Sleeve: the cover's colour glows behind it, like the sleeve's ink on the wall */
 [data-look="sleeve"] .nowplaying {
@@ -804,6 +815,9 @@ label.field > span, div.field > span { font-weight: 500; }
 .copybtn--big:hover { border-color: var(--border-interactive); }
 /* a path with its copy button beside it */
 .pathline { display: flex; align-items: center; gap: 4px; min-width: 0; }
+/* a long folder path loses its start, not its end: "…/Music/Ableton/Projects" (the text sits in a <bdi>) */
+.col-trunc--start { direction: rtl; text-align: left; }
+.col-trunc--start > bdi { direction: ltr; unicode-bidi: isolate; }
 .pathline > :first-child { min-width: 0; }
 /* in a list of paths the copy buttons stand in one column, whatever each path's length */
 .table .pathline { flex: 1 1 auto; }
@@ -924,7 +938,7 @@ select {
     background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
     box-shadow: var(--shadow-pop); color: var(--text);
     opacity: 0; transform: translateY(-4px);
-    transition: opacity 140ms var(--ease-glide), transform 140ms var(--ease-glide), display 140ms allow-discrete, overlay 140ms allow-discrete;
+    transition: opacity var(--dur-quick) var(--ease-glide), transform var(--dur-quick) var(--ease-glide), display var(--dur-quick) allow-discrete, overlay var(--dur-quick) allow-discrete;
   }
   select:open::picker(select) { opacity: 1; transform: none; }
   @starting-style { select:open::picker(select) { opacity: 0; transform: translateY(-4px); } }
@@ -945,12 +959,11 @@ select {
 [data-look="crate"] { --radius-lg: 2px; }
 [data-look="sleeve"] { --radius: 8px; --radius-lg: 14px; }
 [data-look="sleeve"] .sleeve__art .cover { border-radius: 0; }
-html:not(.lc-dealt) .sleeves > * { animation: lcRise 320ms var(--ease-glide) both; }
+html:not(.lc-dealt) .sleeves > * { animation: lcRise calc(var(--dur-slow) * 0.8) var(--ease-glide) both; }
 .sleeves > :nth-child(2) { animation-delay: 25ms; } .sleeves > :nth-child(3) { animation-delay: 50ms; }
 .sleeves > :nth-child(4) { animation-delay: 75ms; } .sleeves > :nth-child(5) { animation-delay: 100ms; }
 .sleeves > :nth-child(6) { animation-delay: 125ms; } .sleeves > :nth-child(7) { animation-delay: 150ms; }
 .sleeves > :nth-child(8) { animation-delay: 175ms; } .sleeves > :nth-child(n+9) { animation-delay: 200ms; }
-.sleeve { transition: border-color .15s; }
 @media (prefers-reduced-motion: reduce) { .sleeves > * { animation: none; } select::picker(select) { transition: none; } }
 
 /* Genre correction (components/GenrePick.tsx): the genre box, the genre chip on
@@ -958,7 +971,7 @@ html:not(.lc-dealt) .sleeves > * { animation: lcRise 320ms var(--ease-glide) bot
 .genre-guess { text-decoration: underline dotted; text-decoration-color: var(--text-faint); text-underline-offset: 3px; }
 .gpick { width: min(480px, 100%); }
 .gpick__body { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 18px; padding: 20px 20px 4px; align-items: start; }
-.gpick__art .cover { box-shadow: 0 8px 20px rgb(var(--shade-rgb) / calc(0.35 * var(--shade-k))); transition: filter .2s; }
+.gpick__art .cover { box-shadow: 0 8px 20px rgb(var(--shade-rgb) / calc(0.35 * var(--shade-k))); transition: filter var(--dur-base); }
 .gpick__main { min-width: 0; display: grid; gap: 8px; }
 .gpick__main .eyebrow { margin: 0; }
 .gpick__main h2 { margin: 0; font-size: 18px; line-height: 1.25; }
@@ -974,7 +987,7 @@ html:not(.lc-dealt) .sleeves > * { animation: lcRise 320ms var(--ease-glide) bot
 .gpick__opt--on { color: var(--accent); font-weight: 600; }
 .gpick__opt--own { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0; color: var(--text); }
 .gpick__dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-.gpick__swatch { position: absolute; left: 11px; top: 50%; width: 10px; height: 10px; margin-top: -5px; border-radius: 50%; z-index: 1; pointer-events: none; transition: background .2s; }
+.gpick__swatch { position: absolute; left: 11px; top: 50%; width: 10px; height: 10px; margin-top: -5px; border-radius: 50%; z-index: 1; pointer-events: none; transition: background var(--dur-base); }
 .gpick__own { width: 100%; }
 .gpick__note { margin: 2px 0 0; color: var(--text-faint); font-size: 12px; line-height: 1.5; }
 .gpick__foot { align-items: center; }
@@ -988,7 +1001,7 @@ html:not(.lc-dealt) .sleeves > * { animation: lcRise 320ms var(--ease-glide) bot
   display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; cursor: pointer;
   border: 1px solid var(--border-strong); border-radius: 999px; background: transparent;
   font: 12px var(--font); color: var(--text); white-space: nowrap;
-  transition: border-color .15s, background .15s;
+  transition: border-color var(--dur-quick), background var(--dur-quick);
 }
 .genrechip:hover, .genrechip:focus-visible { border-color: var(--accent); background: var(--accent-soft); outline: none; }
 .genrechip__dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
@@ -1368,7 +1381,7 @@ button.coll__row:hover .coll__label { color: var(--accent); }
   color: var(--text); font: 13px var(--font); text-align: left;
 }
 .liner__row::before { content: counter(side); width: 18px; flex-shrink: 0; font: 500 12px var(--font-mono); color: var(--text-faint); }
-button.liner__row { cursor: pointer; }
+button.liner__row { cursor: pointer; min-height: 24px; }  /* 24px to click, even with Easier reading on */
 button.liner__row:hover span { color: var(--accent); }
 .liner__row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; }
 .liner__row i { flex: 1; min-width: 12px; border-bottom: 1px dotted var(--border-interactive); transform: translateY(-3px); }
@@ -1574,61 +1587,90 @@ button.wave__mark { cursor: pointer; }
 .set-intro { margin: 18px 0 0; max-width: 72ch; font-size: 13px; line-height: 1.55; color: var(--text-dim); }
 .set-intro + .set-row { border-top: 0; }
 
-/* Folders you sort projects into (components/ProjectFolders.tsx): a row of tiles above a list, one per folder, plus
-   "All" and "New folder". Crate: flat squared tiles with a folder mark. Sleeve: bigger
-   cards with the first four covers in the folder. A tile lights up while projects are
-   dragged over it. The "Add to folder" box (.fpick) ticks the folders a project is in. */
+/* Folders you sort projects into (components/ProjectFolders.tsx): one slim row of tiles
+   above a list, one per folder, plus "All" and "New folder". The row scrolls sideways
+   when it's full; "All" stays at its left end and "New folder" at its right, so the list
+   below keeps its room. Crate: flat squared tiles. Sleeve: rounder tiles with the first
+   four covers in the folder. A tile lights up while projects are dragged over it.
+   The "Add to folder" box (.fpick) ticks the folders a project is in. */
 .fshelf {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 8px;
-  margin: 0 0 16px;
+  display: flex; gap: 8px; margin: 0 0 16px; padding: 2px 0 8px; overflow-x: auto; overflow-y: hidden;
+  scroll-padding-inline: var(--fs-pad-l, 190px) var(--fs-pad-r, 190px); overscroll-behavior-x: contain; scrollbar-width: none;
+  scroll-snap-type: x proximity;  /* a scrolled row comes to rest on a tile's edge, not half under "All" */
 }
+.fshelf > .ftile:not(.ftile--all):not(.ftile--new) { scroll-snap-align: start; }
+.fshelf::-webkit-scrollbar { display: none; }
 .ftile {
-  display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 10px;
-  min-height: 52px; padding: 6px 12px 6px 6px; text-align: left; cursor: pointer;
+  flex: none; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 9px;
+  max-width: 15rem; min-height: 40px; padding: 5px 12px 5px 5px; text-align: left; cursor: pointer;
   border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
   color: var(--text); font: inherit; min-width: 0;
-  transition: border-color .15s, background .15s, transform .15s var(--ease-glide, ease);
+  transition: border-color var(--dur-quick), background var(--dur-quick), transform var(--dur-quick) var(--ease-glide);
 }
 .ftile:hover { border-color: var(--border-strong); background: var(--surface-2); }
 .ftile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ftile--on { border-color: var(--accent); background: var(--accent-soft); }
+.ftile--on:hover { border-color: var(--accent); background: var(--accent-soft); }  /* stays lit under the pointer */
 .ftile--over { border-color: var(--accent); background: var(--accent-soft); border-style: dashed; transform: scale(1.02); }
+/* "All" and "New folder" stay in view at the row's ends while the folders scroll past */
+.ftile--all { position: sticky; left: 0; z-index: 1; box-shadow: 14px 0 12px -6px var(--bg); }
+.ftile--new { position: sticky; right: 0; z-index: 1; box-shadow: -14px 0 12px -6px var(--bg); }
 .ftile__art {
-  width: 40px; height: 40px; display: grid; place-items: center; overflow: hidden; flex-shrink: 0;
+  width: 28px; height: 28px; display: grid; place-items: center; overflow: hidden; flex-shrink: 0;
   border-radius: calc(var(--radius) - 2px); background: var(--surface-2); color: var(--text-dim);
 }
-.ftile__art--2, .ftile__art--3, .ftile__art--4 { grid-template-columns: 20px 20px; grid-template-rows: 20px 20px; place-items: stretch; }
-.ftile__art--3 > :first-child { grid-row: span 2; width: 20px; height: 40px; }
+.ftile__art--2, .ftile__art--3, .ftile__art--4 { grid-template-columns: 14px 14px; grid-template-rows: 14px 14px; place-items: stretch; }
+.ftile__art--3 > :first-child { grid-row: span 2; width: 14px; height: 28px; }
 .ftile__art .cover { border-radius: 0; box-shadow: none; }
 .ftile--on .ftile__art { color: var(--accent); }
-.ftile__text { min-width: 0; display: grid; gap: 1px; grid-column: 2 / 4; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; column-gap: 8px; }
-.ftile__name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ftile__n { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ftile__text { min-width: 0; display: flex; align-items: baseline; gap: 8px; grid-column: 2 / 4; }
+.ftile__name { min-width: 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ftile__n { margin-left: auto; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ftile--all .ftile__art, .ftile--new .ftile__art { background: transparent; border: 1px dashed var(--border-strong); }
 .ftile--all .ftile__art { border-style: solid; }
-.ftile--new { color: var(--text-dim); border-style: dashed; background: transparent; }
+/* the ends cover what scrolls under them, so they're solid */
+.ftile--all:not(.ftile--on) { background: var(--bg); }
+.ftile--all:not(.ftile--on):hover { background: var(--surface-2); }
+.ftile--new { color: var(--text-dim); border-style: dashed; background: var(--bg); }
 .ftile--new:hover { color: var(--text); }
-.ftile--more { grid-template-columns: minmax(0, 1fr) auto; padding-left: 14px; color: var(--text-dim); background: transparent; }
-.ftile--more .ftile__text { grid-column: 1; }
-.ftile--naming { cursor: text; border-color: var(--accent); grid-template-columns: 40px minmax(0, 1fr); padding-right: 6px; }
+.ftile--more { color: var(--text-dim); position: sticky; right: calc(var(--fs-new-w, 180px) + 8px); z-index: 1; background: var(--bg); box-shadow: -14px 0 12px -6px var(--bg), 9px 0 0 var(--bg); }
+.ftile--more:hover { color: var(--text); }
+.ftile--more .ftile__art { background: transparent; border: 1px solid var(--border-strong); }
+/* more folders than fit: "New folder" is just its "+", and the folders fade out under it */
+.fshelf--more .ftile--new { padding-right: 5px; grid-template-columns: 28px; box-shadow: -36px 0 18px -8px var(--bg); }
+.fshelf--more .ftile--new .ftile__text { display: none; }
+[data-look="sleeve"] .fshelf--more .ftile--new { padding-right: 5px; grid-template-columns: 40px; }
+.ftile--all.ftile--on, .ftile--new.ftile--over { background: linear-gradient(var(--accent-soft), var(--accent-soft)) var(--bg); }
+.ftile--naming { cursor: text; border-color: var(--accent); grid-template-columns: 28px minmax(0, 1fr); padding-right: 6px; width: 15rem; }
 .ftile__input {
-  width: 100%; min-width: 0; height: 34px; padding: 0 8px; font: 600 13px var(--font); color: var(--text);
+  width: 100%; min-width: 0; height: 28px; padding: 0 8px; font: 600 13px var(--font); color: var(--text);
   background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: calc(var(--radius) - 2px);
 }
 .ftile__input:focus { outline: none; border-color: var(--accent); }
 [data-look="crate"] .ftile, [data-look="crate"] .ftile__art, [data-look="crate"] .ftile__input { border-radius: 2px; }
-[data-look="sleeve"] .fshelf { grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 12px; }
-[data-look="sleeve"] .ftile { min-height: 72px; grid-template-columns: 56px minmax(0, 1fr) auto; padding: 8px 14px 8px 8px; border-radius: 14px; }
-[data-look="sleeve"] .ftile--naming { grid-template-columns: 56px minmax(0, 1fr); }
-[data-look="sleeve"] .ftile__art { width: 56px; height: 56px; border-radius: 9px; }
-[data-look="sleeve"] .ftile__art--2, [data-look="sleeve"] .ftile__art--3, [data-look="sleeve"] .ftile__art--4 { grid-template-columns: 28px 28px; grid-template-rows: 28px 28px; }
-[data-look="sleeve"] .ftile__art--3 > :first-child { width: 28px; height: 56px; }
-[data-look="sleeve"] .ftile__text { grid-template-columns: minmax(0, 1fr); }
+[data-look="sleeve"] .fshelf { gap: 10px; }
+[data-look="sleeve"] .ftile { min-height: 52px; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; padding: 5px 14px 5px 5px; border-radius: 12px; max-width: 17rem; }
+[data-look="sleeve"] .ftile--naming { grid-template-columns: 40px minmax(0, 1fr); width: 17rem; }
+[data-look="sleeve"] .ftile__art { width: 40px; height: 40px; border-radius: 8px; }
+[data-look="sleeve"] .ftile__art--2, [data-look="sleeve"] .ftile__art--3, [data-look="sleeve"] .ftile__art--4 { grid-template-columns: 20px 20px; grid-template-rows: 20px 20px; }
+[data-look="sleeve"] .ftile__art--3 > :first-child { width: 20px; height: 40px; }
 [data-look="sleeve"] .ftile__name { font-size: 14px; }
-@media (prefers-reduced-motion: reduce) { .ftile { transition: none; } .ftile--over { transform: none; } }
+/* A tile that just took a drop holds a soft ring for a moment (the same 2s as "came from")
+   while its count rolls up. A ring drawn on its own layer, so only its opacity moves. */
+.ftile--took { position: relative; }
+.ftile--took::after {
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 3px var(--accent-soft);
+  animation: ftileTook 2s var(--ease-lazy) both;
+}
+@keyframes ftileTook { 0% { opacity: 0; } 12%, 45% { opacity: 1; } 100% { opacity: 0; } }
+.ftile__n .rolling { font: inherit; }
+@media (prefers-reduced-motion: reduce) {
+  .ftile { transition: none; } .ftile--over { transform: none; }
+  .ftile--took::after { animation: none; opacity: 1; }  /* still there while the class is (2s), no fade */
+}
 /* Easier reading: wider tiles, and a long name takes two lines before it ends in "…" */
-html[data-reading] .fshelf { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
-html[data-reading] .ftile__text { grid-template-columns: minmax(0, 1fr); }
+html[data-reading] .ftile { max-width: 20rem; }
 html[data-reading] .ftile__name { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 
 /* the small label that follows the pointer while dragging projects */
@@ -1655,6 +1697,9 @@ html[data-reading] .ftile__name { white-space: normal; display: -webkit-box; -we
   min-height: 40px; padding: 0 12px; cursor: pointer; border-bottom: 1px solid var(--border); color: var(--text-dim);
 }
 .fpick__row:last-child { border-bottom: none; }
+.fpick__row--go { grid-template-columns: 16px minmax(0, 1fr) auto; width: 100%; border: 0; border-bottom: 1px solid var(--border); background: none; font: inherit; text-align: left; }
+.fpick__row--go:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.fpick__row--on, .fpick__row--on:hover { color: var(--accent); background: var(--accent-soft); }
 .fpick__row:hover { background: var(--surface-2); }
 .fpick__row input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 .fpick__name { color: var(--text); font-size: 13px; }

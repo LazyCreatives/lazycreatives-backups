@@ -29,7 +29,7 @@ export async function makeStemPack(projectId: string, s: StemSet): Promise<void>
       const path: string = res.result.path;
       toast(`Stem pack saved: ${path.split(/[\\/]/).pop()}`, { label: "Show", onClick: () => bridge()?.revealPath?.(path) });
     } else if (res.state === "error") toastWarn(`Couldn't make the stem pack: ${res.error}`);
-    else toast("Still packing in the background. Check the folder shortly.");
+    else toast("Still making the stem pack. It will be in the folder you picked in a minute or two.");
   } catch (e: any) {
     toastWarn(`Couldn't make the stem pack: ${e?.message ?? e}`);
   }
@@ -88,7 +88,7 @@ export function StemSets({ projectId, rows, cols, onOpen }: {
             </div>
             <div className="stemset-sub">
               {c.ok
-                ? <span className="pill pill--ok" title={quality ? `Same length and quality: ${quality}` : "Same length"}>Lines up</span>
+                ? <span className="pill pill--ok" title={quality ? `Same length and quality: ${quality}` : "Same length"}>In sync</span>
                 : <span className="pill pill--partial" title={c.problems.join("\n")}>Check these</span>}
               {live && (mix.playing || mix.loading || mix.time > 0) && (mix.loading
                 ? <span className="faint">Loading…</span>

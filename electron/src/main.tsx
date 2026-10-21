@@ -31,11 +31,18 @@ applyReading();
 // Light / dark changes cross-fade (see fade.ts).
 fadeThemeChanges();
 
-// Surface uncaught renderer errors to the console (forwarded to the run log by main.js).
-window.addEventListener("error", (e) =>
-  console.error("[uncaught]", e.message, "at", e.filename + ":" + e.lineno));
-window.addEventListener("unhandledrejection", (e) =>
-  console.error("[unhandledrejection]", (e.reason && e.reason.message) || String(e.reason)));
+// Surface uncaught renderer errors to the console (forwarded to the run log by main.js),
+// and to crash reports when Settings > Privacy allows them (electron/sentry.js).
+const reportError = (message: string, stack?: string) => (window as any).ablebackup?.reportError?.(message, stack);
+window.addEventListener("error", (e) => {
+  console.error("[uncaught]", e.message, "at", e.filename + ":" + e.lineno);
+  reportError(e.message, e.error?.stack);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  const message = (e.reason && e.reason.message) || String(e.reason);
+  console.error("[unhandledrejection]", message);
+  reportError(message, e.reason?.stack);
+});
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

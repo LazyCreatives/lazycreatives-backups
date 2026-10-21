@@ -42,7 +42,7 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
         setLoading(false);
         await load(true);           // then walk the library to mark what's auto-findable
       } catch (e: any) {
-        if (alive) { setErr(e.message || "Couldn't read this project."); setLoading(false); }
+        if (alive) { setErr(e.message || "Couldn't read this project. It may have been moved or renamed. Scan again in the Library to find it."); setLoading(false); }
       }
     })();
     return () => { alive = false; };
@@ -61,17 +61,17 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
         ? "Every sample found and saved in a checked backup."
         : okMsg.replace("{n}", String(after.missing_count)));
     } catch (e: any) {
-      setErr(e.message || "That didn't work — check a backup destination is set in Settings.");
+      setErr(e.message || "Couldn't back it up. Check a backup drive is chosen in Settings > Backups.");
     } finally {
       setBusy(null);
     }
   }
 
   const fixNow = () =>
-    runBackup({}, "fix", "Found and backed up what we could · {n} still need you to point them out.");
+    runBackup({}, "fix", "Found and backed up what we could. {n} still need you to point to them.");
   async function lookInFolder() {
     const dir = await bridge()?.pickFolder?.();
-    if (dir) runBackup({ libraries: [dir] }, "folder", "Searched that folder · {n} still missing.");
+    if (dir) runBackup({ libraries: [dir] }, "folder", "Searched that folder. {n} still missing.");
   }
   async function pointToFile(m: Miss) {
     const file = await bridge()?.pickFile?.();
@@ -93,7 +93,7 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
             {loading || miss === null
               ? "Reading the project…"
               : miss.length === 0
-              ? <span className="ok">Nothing missing — every sample is where the project expects it.</span>
+              ? <span className="ok">Nothing missing. Every sample is where the project expects it.</span>
               : !probed
               ? <>{miss.length} sample{miss.length === 1 ? "" : "s"} the project can’t find on disk · <span className="dim">checking your library…</span></>
               : lost === 0 && recoverable === 0
@@ -102,7 +102,7 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
               ? <><span className="found">{recoverable} found in your library</span> · <span className="lost">{lost} need you to point them out</span></>
               : lost === 0
               ? <span className="found">All {recoverable}{handPickedCount ? " left" : ""} are in your library — Find missing samples backs them up.</span>
-              : <span className="lost">{lost} couldn’t be found anywhere — point me to them.</span>}
+              : <span className="lost">{lost} couldn’t be found anywhere. Point to them yourself.</span>}
           </div>
         </div>
         {!!miss?.length && (

@@ -3,6 +3,7 @@ import { SPIN_SECONDS, DUR, EASE_LAZY } from "./motion";
 import type { Project } from "./types";
 import { genreOf } from "./types";
 import { Cover } from "../../components/Cover";
+import { Icon } from "../../components/Icon";
 
 // One record's faces. Crate look: a vinyl whose centre label is the project's cover; the
 // record (.platter) spins on the ACTIVE record only. Sleeve look: the square cover
@@ -16,7 +17,7 @@ export function Vinyl({ project, isActive, reduce, look }: {
     <motion.span className="vbadge" initial={false}
       animate={isActive && !reduce ? { opacity: [0, 1], scale: [0.9, 1] } : { opacity: 1, scale: 1 }}
       transition={{ duration: reduce ? 0 : DUR.base, ease: EASE_LAZY }}
-      aria-hidden="true">✓</motion.span>
+      aria-hidden="true"><Icon name="check" size={13} /></motion.span>
   );
 
   if (look === "sleeve") {

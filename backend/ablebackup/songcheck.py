@@ -36,7 +36,8 @@ def measure(path: str) -> dict:
     exe = ffmpeg()
     if not exe:
         raise CannotCheck("ffmpeg is missing")
-    cmd = [exe, "-hide_banner", "-nostdin", "-i", str(path), "-map", "0:a:0",
+    cmd = [exe, "-hide_banner", "-nostdin", "-protocol_whitelist", "file,pipe",
+           "-i", str(path), "-map", "0:a:0",
            "-af", "astats=metadata=0:measure_perchannel=none,ebur128=peak=true:framelog=verbose",
            "-c:a", "pcm_f32le", "-f", "null", "-"]
     try:

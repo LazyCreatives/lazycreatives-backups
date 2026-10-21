@@ -61,16 +61,6 @@
 .sonar__dot { position: absolute; inset: 6px; border-radius: 50%; background: var(--accent); }
 @keyframes sonarPing { 0% { transform: scale(0.5); opacity: 0.7; } 100% { transform: scale(2.6); opacity: 0; } }
 
-/* --- nav EQ visualizer: bars idle low, bounce when the app is working --- */
-.eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 16px; }
-.eq i { width: 3px; height: 4px; border-radius: 2px; background: #0b0c10; opacity: 0.7; }
-.eq--on i { animation: eqBounce 0.9s ease-in-out infinite; }
-.eq--on i:nth-child(1) { animation-delay: -0.2s; }
-.eq--on i:nth-child(2) { animation-delay: -0.5s; }
-.eq--on i:nth-child(3) { animation-delay: -0.1s; }
-.eq--on i:nth-child(4) { animation-delay: -0.7s; }
-@keyframes eqBounce { 0%, 100% { height: 4px; } 50% { height: 14px; } }
-
 /* --- decorative waveform (brand audio motif) --- */
 .waveform { display: flex; align-items: center; gap: 3px; height: 100%; width: 100%; }
 .waveform span {
@@ -92,7 +82,7 @@
 @keyframes dedupCollapse { from { width: 100%; } }
 
 /* --- hover micro-interactions + log stream-in + empty-state float --- */
-.logline { animation: logIn 0.26s ease both; }
+.logline { animation: logIn var(--dur-base) ease both; }
 @keyframes logIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
@@ -106,7 +96,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .seal__badge, .seal__check, .seal__ray, .tile--enter, .scanrow--enter, .sonar span, .shimmer,
-  .celebrate, .celebrate::before, .eq--on i, .view-enter, .progress__fill--active::after,
+  .celebrate, .celebrate::before, .view-enter, .progress__fill--active::after,
   .waveform span, .dedupbar__actual, .mark--on .mark__wave line, .brandlockup--busy,
   .nav__item--active::before, .logline, .empty__icon {
     animation: none !important; opacity: 1 !important; stroke-dashoffset: 0 !important; transform: none !important;
@@ -116,13 +106,13 @@
 /* ---- modal (first-backup onboarding) ---- */
 .modal__scrim {
   position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px;
-  background: rgb(var(--scrim-rgb) / calc(0.55 * var(--scrim-k))); backdrop-filter: blur(3px); animation: scrimIn .2s ease both;
+  background: rgb(var(--scrim-rgb) / calc(0.55 * var(--scrim-k))); backdrop-filter: blur(3px); animation: scrimIn var(--dur-base) ease both;
 }
 .modal {
   max-width: 460px; width: 100%; text-align: center; padding: 30px 30px 26px;
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
   box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center;
-  animation: modalIn .34s var(--ease-glide) both;
+  animation: modalIn var(--dur-slow) var(--ease-glide) both;
 }
 @keyframes scrimIn { from { opacity: 0; } }
 @keyframes modalIn { 0% { transform: translateY(14px) scale(0.96); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
@@ -148,7 +138,7 @@
 .snapchip {
   padding: 6px 11px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface); color: var(--text-dim); font: inherit; font-size: 12px;
-  cursor: pointer; transition: background .14s, border-color .14s, color .14s;
+  cursor: pointer; transition: background var(--dur-quick), border-color var(--dur-quick), color var(--dur-quick);
 }
 .snapchip:hover { border-color: var(--border-strong); color: var(--text); }
 .snapchip--on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
@@ -325,3 +315,22 @@ html[data-theme="light"] .table--crate.plug-table > .plug-item > .row:hover {
   .phone-cols { --cols: 16px minmax(0, 1fr) 128px 84px; }
   .phone-cols .row > :nth-child(3) { display: none; }
 }
+
+/* first-backup window: the seal beside the sloth hugging the drive, and its line */
+.firstbackup__art { display: flex; align-items: center; justify-content: center; gap: 14px; }
+/* the sloth's speech bubble (.empty__say), its point under the sloth rather than the middle */
+.firstbackup__say { margin: 8px 0 4px; }
+.firstbackup__say::before { left: calc(50% + 39px); }
+/* a phone just paired: the code gives way to a check and its name, the row fades in */
+.phone-pair--done { animation: lcFade var(--dur-slow) var(--ease-lazy) both; }
+.phone-paired {
+  width: 132px; height: 132px; flex: none; display: grid; place-items: center; border-radius: 6px;
+  background: var(--ok-soft); color: var(--accent-2); border: 1px solid color-mix(in srgb, var(--accent-2) 40%, transparent);
+}
+.phone-paired__text { flex: 1 1 16rem; min-width: 0; }
+.phone-paired__name { margin: 0 0 4px; font-size: 15px; overflow-wrap: anywhere; }
+.phone-row--new { animation: lcFade var(--dur-slow) var(--ease-lazy) both; }
+[data-look="crate"] .phone-paired { border-radius: 2px; }
+
+/* Your collection: the count column grows with its longest number, so "1,234,567" never runs past the edge */
+.coll__row { grid-template-columns: minmax(70px, 120px) minmax(0, 1fr) max(40px, calc(var(--coll-digits, 4) * 7.4px + 4px)); }

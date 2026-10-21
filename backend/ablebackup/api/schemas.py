@@ -61,6 +61,12 @@ class ExportDropRequest(BaseModel):
     move: bool = False
 
 
+class StemFolderJoinRequest(BaseModel):
+    """A stems-only folder (project_id) whose stems belong to another project."""
+    project_id: str = Field(..., min_length=1, max_length=128)
+    target_id: str = Field(..., min_length=1, max_length=128)
+
+
 class ExportUndoRequest(BaseModel):
     token: str = Field(..., min_length=1, max_length=64)
 
@@ -99,7 +105,7 @@ class TidyRequest(BaseModel):
     project_ids: list[str] = Field(..., min_length=1, max_length=500)
     names: dict[str, str] | None = Field(None)       # {group id: song name}
     style: str = Field("v", max_length=8)             # v | v0
-    numbers: str = Field("keep", max_length=8)        # keep | order
+    numbers: str = Field("order", max_length=8)       # order | keep
     song_style: str = Field("paren", max_length=8)    # paren | dash
     folder: bool = True                               # rename the project folder too
     overrides: dict[str, str] | None = Field(None)    # {current path: new name}

@@ -93,6 +93,9 @@
   box-shadow: var(--shadow-pop); margin-inline: auto; animation: pickIn var(--dur-base) var(--ease-glide) both;
 }
 @keyframes pickIn { from { opacity: 0; transform: translateY(8px); } }
+/* the last tick cleared: it sinks back down instead of blinking out (<Exit> in Library.tsx) */
+.exit[data-leaving] > .pickbar { animation: pickOut var(--dur-quick) var(--ease-leave) both; }
+@keyframes pickOut { to { opacity: 0; transform: translateY(8px); } }
 @media (prefers-reduced-motion: reduce) { .pickbar { animation: none; } }
 .pickbar__n { font-size: 13px; color: var(--text-dim); margin-right: 4px; }
 .pickbar__n b { color: var(--text); }
@@ -127,6 +130,20 @@
 }
 .lib-menu__item:hover:not(:disabled) { background: var(--surface-3); }
 .lib-menu__item:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* "Scan ▾" by the Library title: where to look for projects, then scan */
+.scanmenu__btn { gap: 6px; }
+.scanmenu__list { min-width: 230px; }
+.scanmenu__list--right { right: auto; left: 0; }
+.scanmenu__head { padding: 6px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); }
+.scanmenu__item { display: flex; align-items: center; gap: 8px; }
+.scanmenu__tick { width: 14px; display: inline-grid; place-items: center; color: var(--accent); }
+/* a long folder name stops at one line with "…" (full name on hover) */
+.lib-head__folder {
+  display: inline-flex; max-width: min(100%, 32em); vertical-align: bottom; white-space: nowrap;
+  color: var(--text); font-weight: 600;
+}
+.lib-head__folder > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 /* project page */
 .lib-back {
@@ -326,6 +343,8 @@
   background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-pop); animation: ctxIn var(--dur-quick) var(--ease-glide) both; transform-origin: top left;
 }
+.exit[data-leaving] > .lib-more__panel { animation: moreOut var(--dur-quick) var(--ease-leave) both; }
+@keyframes moreOut { to { opacity: 0; transform: scale(0.97); } }
 .lib-more__field { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); }
 .lib-more__field .lib-pick { width: 100%; }
 [data-look="crate"] .lib-more__btn, [data-look="crate"] .lib-more__panel { border-radius: 2px; }
@@ -338,7 +357,9 @@
    moment, then leaves the cover clean again. */
 .doneseal { flex: none; overflow: visible; }
 .doneseal__disc { fill: var(--ok-soft); stroke: var(--accent-2); stroke-width: 1.5; transform-origin: 8px 8px;
-  animation: sealStamp var(--dur-slow) var(--ease-glide) both; }
+  animation: doneStamp var(--dur-slow) var(--ease-glide) both; }
+/* a calm press: no overshoot and no spin (the big seal keeps its stamp; this one shows on every row) */
+@keyframes doneStamp { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
 .doneseal__tick { fill: none; stroke: var(--accent-2); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
   stroke-dasharray: 12; stroke-dashoffset: 12; animation: sealDraw var(--dur-slow) var(--dur-base) var(--ease-lazy) forwards; }
 .lib-state--done > .col-trunc { animation: lcFade var(--dur-slow) var(--ease-lazy) both; }
@@ -412,7 +433,8 @@ html[data-theme="light"] .stem-g--other  { --g: #66717D; }
 .stemset-group { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .stemset-group::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--g); flex: none; }
 
-/* ── Stems page: a mixing desk, one narrow strip per stem, scrolling sideways ── */
+/* ── Stems page: a mixing desk, one narrow strip per stem. Each group is a row of its
+   own that scrolls sideways when it's long, and folds shut to one line. ── */
 .stemdesk { display: flex; flex-direction: column; min-width: 0; }
 .desk-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 10px 20px; margin: 4px 0 12px; }
 .desk-title { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
@@ -430,34 +452,55 @@ html[data-theme="light"] .stem-g--other  { --g: #66717D; }
 .desk-play { width: 40px; height: 40px; flex: none; }
 .desk-clock { font-size: 13px; min-width: 7.5em; color: var(--text-dim); }
 .desk-seek { flex: 1 1 200px; min-width: 140px; accent-color: var(--accent); }
-.desk-hint { margin: 10px 0 8px; font-size: 12px; }
-
-.desk {
-  display: flex; align-items: stretch; gap: 10px; overflow-x: auto; overflow-y: hidden;
-  padding: 0 0 10px; scroll-snap-type: x proximity; scrollbar-gutter: stable;
+.desk-hint { margin: 8px 0 10px; font-size: 12px; }
+/* the groups at the top: click one to go to it */
+.desk-jump { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; margin-top: 12px; }
+.desk-jump__groups { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.desk-jump__g {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 0 11px 0 9px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; font-weight: 600;
 }
-.desk:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.desk-jump__g::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--g); flex: none; }
+.desk-jump__g .mono { color: var(--text-dim); font-weight: 500; }
+.desk-jump__g:hover { border-color: var(--g); }
+.desk-jump__g:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[data-look="crate"] .desk-jump__g { border-radius: 2px; }
+
+.desk { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 0 0 10px; }
+/* the stand-in copy of a moved stem while it glides to its new group (glide.ts) */
+.glide-ghost { background: var(--surface); box-shadow: var(--shadow-pop); border: 1px solid var(--border-strong); border-radius: var(--radius); }
 .desk-group {
-  flex: none; display: flex; flex-direction: column; scroll-snap-align: start;
+  display: flex; flex-direction: column; min-width: 0; scroll-margin-top: 12px;
   border: 1px solid var(--border); border-top: 3px solid var(--g); border-radius: var(--radius-lg);
   background: var(--surface); transition: background var(--dur-quick), border-color var(--dur-quick);
 }
 .desk--dragging .desk-group { border-style: dashed; border-top-style: solid; }
 .desk-group--over { background: color-mix(in srgb, var(--g) 14%, var(--surface)); border-color: var(--g); }
 .desk-group__name {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 7px 10px 6px;
-  font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 10px 3px 4px;
   border-bottom: 1px solid var(--border); white-space: nowrap;
 }
-.desk-group__name .mono { color: var(--text-faint); font-weight: 500; letter-spacing: 0; }
-.desk-strips { display: flex; flex: 1; }
+.desk-group--shut .desk-group__name { border-bottom: 0; }
+.desk-group__fold {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 0 8px 0 6px; cursor: pointer;
+  border: 0; border-radius: var(--radius); background: transparent; color: var(--text); font: inherit;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.desk-group__fold:hover:not(:disabled) { background: var(--surface-2); }
+.desk-group__fold:disabled { cursor: default; }
+.desk-group__fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.desk-group__fold .mono { color: var(--text-faint); font-weight: 500; letter-spacing: 0; }
+.desk-group__ms { align-items: center; gap: 6px; }
+.desk-group__db { font-size: 11px; color: var(--text-dim); margin-right: 4px; }
+.desk-strips { display: flex; flex: 1; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.desk-strips:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .desk-drop {
   display: grid; place-items: center; width: 7em; min-height: 120px; margin: 8px; font-size: 12px;
   border: 1px dashed var(--border-strong); border-radius: var(--radius);
 }
 
 .strip {
-  flex: none; width: 4.75em; display: grid; grid-template-rows: auto 3.9em 1fr auto auto; justify-items: center;
+  flex: none; width: 5.25em; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 3.9em 1fr auto auto; justify-items: center;
   gap: 6px; padding: 8px 4px 10px; font-size: 12px; border-right: 1px solid var(--border); cursor: grab;
 }
 .strip:last-child { border-right: 0; }
@@ -466,12 +509,16 @@ html[data-theme="light"] .stem-g--other  { --g: #66717D; }
 .strip--off > :not(.strip__ms) { opacity: 0.38; }
 .strip__cap { width: 100%; height: 4px; border-radius: 2px; background: var(--g); }
 .strip--bus .strip__cap { background: repeating-linear-gradient(90deg, var(--g) 0 6px, transparent 6px 9px); }
+/* one line: the words every stem shares are already left off (stemNames.ts), the full
+   name is in the strip's tooltip */
 .strip__name {
-  width: 100%; text-align: center; line-height: 1.3; color: var(--text); overflow-wrap: break-word; hyphens: auto;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  width: 100%; min-width: 0; overflow: hidden; display: flex; justify-content: center;
+  line-height: 1.3; color: var(--text); white-space: nowrap;
 }
+.strip__name-a { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.strip__name-b { flex: none; }
 .strip--bus .strip__name { font-weight: 700; }
-.strip__body { display: flex; align-items: stretch; justify-content: center; gap: 5px; height: 190px; min-height: 0; }
+.strip__body { display: flex; align-items: stretch; justify-content: center; gap: 5px; height: 150px; min-height: 0; }
 .strip__meter {
   position: relative; width: 6px; border-radius: 3px; overflow: hidden; background: var(--well);
   box-shadow: inset 0 0 0 1px var(--border);
@@ -479,7 +526,7 @@ html[data-theme="light"] .stem-g--other  { --g: #66717D; }
 .strip__meter i {
   position: absolute; inset: 0; transform: scaleY(0); transform-origin: bottom;
   background: linear-gradient(to top, var(--accent-2) 0 70%, var(--warn) 86%, var(--danger) 100%);
-  background-size: 100% 190px; background-position: bottom;
+  background-size: 100% 150px; background-position: bottom;
 }
 .strip__meter i.meter--hot { box-shadow: inset 0 2px 0 var(--danger); }
 .strip__fader {
@@ -493,7 +540,17 @@ html[data-theme="light"] .stem-g--other  { --g: #66717D; }
 .stemset-info { grid-column: 2 / -2; min-width: 0; }
 .stemset-head > .song-actions { grid-column: -2 / -1; }
 .stemset-when { margin: 0 0 0 10px; font-size: 12px; }
-/* the group's name stays in view while its strips scroll past */
-.desk-group__name > span:first-child { position: sticky; left: 10px; }
-html[data-reading] .strip { width: 7em; }
-html[data-reading] .strip--bus { width: 6em; }
+/* the "All" strip stays at the row's left while the group's strips scroll past */
+.strip--bus { position: sticky; left: 0; z-index: 1; box-shadow: 1px 0 0 var(--border); }
+html[data-reading] .strip { width: 8em; }
+html[data-reading] .strip--bus { width: 8em; }
+
+
+/* Library's head: the summary keeps at least a readable line; the buttons drop below it
+   on a narrow window instead of squeezing it to three lines */
+.page-head:has(.scanmenu__btn) { flex-wrap: wrap; row-gap: 12px; }
+.page-head:has(.scanmenu__btn) > :first-child { flex: 1 1 20rem; }
+.page-head:has(.scanmenu__btn) .page-head__actions { flex-wrap: wrap; flex-shrink: 1; min-width: 0; }
+
+/* "These stems belong to a project": the project picker inside its dialog */
+.sjoin__pick { padding: 4px 20px 0; }

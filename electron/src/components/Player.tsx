@@ -7,7 +7,7 @@ import { Wave, type WaveMark } from "./Wave";
 import { AUDITION_DELAY, AUDITION_FROM, auditionOn, bindAuditionKeys, useAuditionMode } from "../audition";
 import { Meter, hear, listenTo } from "./Meter";
 import { onWindowMinimized, pausesOnMinimize } from "../desktop";
-import { toastWarn } from "./Desktop";
+import { Exit, toastWarn } from "./Desktop";
 
 const api = makeApi();
 
@@ -537,7 +537,7 @@ export function PlayerBar({ onOpenProject }: { onOpenProject?: (key: string) => 
         <Meter peaks={peaks} playing={s.playing} duration={s.duration} now={now} />
         <button type="button" className="iconbtn" onClick={close} aria-label="Close the player"><Icon name="close" /></button>
       </div>
-      {big && (
+      <Exit>{big && (
         <NowPlaying color={color} onClose={() => setBig(false)}
           art={<Cover name={coverName} genre={m.genre} className="nowplaying__cover" />}
           title={name} sub={s.error ?? m.sub ?? `${m.title} · latest song`} open={open} openLabel="Open project"
@@ -545,7 +545,7 @@ export function PlayerBar({ onOpenProject }: { onOpenProject?: (key: string) => 
           wave={<Wave peaks={peaks} color={color} played={played} height={88} onSeek={seek} duration={s.duration} className="nowplaying__wave" />}
           time={s.time} duration={s.duration}
           meter={<Meter peaks={peaks} playing={s.playing} duration={s.duration} now={now} />} />
-      )}
+      )}</Exit>
     </>
   );
 }

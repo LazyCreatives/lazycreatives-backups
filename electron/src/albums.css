@@ -51,6 +51,9 @@ button.alb-pill:hover { color: var(--text); text-decoration: underline; text-und
 
 /* Sleeve: the album page opens like a record sleeve, with its name on the spine */
 .albpage--sleeve .albpage__head { gap: 28px; }
+/* Easier reading: the title runs to several lines, so the cover stays up beside its top */
+html[data-reading] .albpage__head { align-items: start; }
+html[data-reading] .alb-kind__seg { display: inline-grid; grid-template-columns: repeat(3, auto); }
 .albpage__sleeve {
   display: grid; grid-template-columns: 22px auto; border-radius: 3px; overflow: hidden;
   box-shadow: 0 14px 30px rgb(var(--shade-rgb) / calc(0.4 * var(--shade-k)));
@@ -76,10 +79,10 @@ button.alb-pill:hover { color: var(--text); text-decoration: underline; text-und
 }
 .albpage__sleeve .outnow { left: 34px; bottom: 12px; font-size: 13px; padding: 5px 8px; }
 .outnow--stamp { animation: albStamp var(--dur-slow) var(--ease-glide) both; }
+/* a calm press onto the cover: it settles from a little larger, no overshoot */
 @keyframes albStamp {
-  0% { opacity: 0; transform: scale(1.7) rotate(-14deg); }
-  60% { opacity: 1; transform: scale(.94) rotate(-5deg); }
-  100% { opacity: 1; transform: scale(1) rotate(-6deg); }
+  from { opacity: 0; transform: scale(1.15) rotate(-6deg); }
+  to { opacity: 1; transform: scale(1) rotate(-6deg); }
 }
 @media (prefers-reduced-motion: reduce) { .outnow--stamp { animation: none; } }
 
@@ -116,9 +119,11 @@ button.alb-pill:hover { color: var(--text); text-decoration: underline; text-und
   .alb-songs--backups .alb-song-cols { --cols: 14px 22px 28px 36px minmax(120px, 2fr) 52px 124px minmax(150px, 1fr) 32px; }
   .alb-songs--backups .alb-song-cols > :nth-child(8) { display: none; }
 }
-@container albsongs (max-width: 620px) {
-  /* narrow, or Easier reading's big text: the name takes the spare room, "Length" fits its heading */
+@container albsongs (max-width: 720px) {
+  /* narrow, or Easier reading's big text: Quality keeps only its dot so the name takes the
+     spare room, and "Length" fits its heading */
   .alb-song-cols, .alb-songs--backups .alb-song-cols { --cols: 14px 22px 28px 36px minmax(120px, 1.6fr) 4.6em 18px minmax(110px, 1fr) 32px; }
+  .alb-songs--backups .alb-song-cols > :nth-child(8) { display: none; }
   .alb-q__text, .alb-q-head, .alb-q .alb-more { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .alb-q .alb-pill { padding-left: 8px; }
 }
@@ -213,6 +218,9 @@ button.alb-pill:hover { color: var(--text); text-decoration: underline; text-und
 .alb-plan__line { margin-bottom: 8px; }
 .alb-plan__bar { position: relative; display: flex; gap: 2px; height: 10px; border-radius: 3px; background: var(--surface-2); margin-bottom: 18px; }
 .alb-plan__bar > i { display: block; height: 100%; border-radius: 2px; min-width: 3px; }
+/* a long album: the songs pack edge to edge so the strip always fits its box */
+.alb-plan__bar--dense { gap: 0; }
+.alb-plan__bar--dense > i { min-width: 0; border-radius: 0; }
 .alb-plan__mark { position: absolute; top: -3px; bottom: -3px; width: 0; border-left: 1.5px dashed var(--text-dim); }
 .alb-plan__mark > span { position: absolute; top: 100%; left: 0; transform: translateX(-50%); margin-top: 3px; font-size: 11px; color: var(--text-faint); white-space: nowrap; }
 .alb-plan__tempo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 0; }
@@ -222,9 +230,11 @@ button.alb-pill:hover { color: var(--text); text-decoration: underline; text-und
 .alb-plan__arrow { color: var(--text-faint); padding: 0 5px; font-size: 12px; }
 .alb-plan__arrow--jump { color: var(--warn); }
 .alb-plan__note { margin-left: 12px; font-size: 12px; }
+.alb-plan__rest { font-size: 12px; white-space: nowrap; }
 .alb-kind { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .alb-kind__seg { flex-wrap: wrap; }
-.alb-kind__tip { margin-left: 4px; color: var(--accent); font-size: 10px; vertical-align: 1px; }
+.alb-kind__tip { margin-left: 5px; display: inline-block; vertical-align: 2px; }
+.alb-kind__dot { display: block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
 .alb-kind__help { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--border-strong, var(--border)); background: none; color: var(--text-dim); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; position: relative; }
 .alb-kind__help::after { content: ""; position: absolute; inset: -9px; }   /* 44px to tap */
 .alb-kind__help:hover, .alb-kind__help[aria-expanded="true"] { color: var(--text); border-color: var(--accent); }
@@ -262,7 +272,7 @@ button.alb-pill:hover { color: var(--text); text-decoration: underline; text-und
 .alb-pick__group { border-top: 1px solid var(--border); }
 .alb-pick__group:first-child { border-top: 0; }
 .alb-pick__row {
-  display: grid; grid-template-columns: 36px minmax(0, 1fr) 2.6em 3.2em 28px 28px; gap: 10px; align-items: center;
+  display: grid; grid-template-columns: 36px minmax(0, 1fr) 2.6em 4.4em 28px 28px; gap: 10px; align-items: center;
   padding: 8px 12px; cursor: grab; position: relative;
 }
 .alb-pick__row:hover { background: var(--row-hover); }

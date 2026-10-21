@@ -166,11 +166,14 @@ def _nearest(rows: list[dict], when: float) -> dict | None:
     return min(rows, key=lambda r: abs((r.get("mtime") or 0) - when), default=None)
 
 
-def stem_sets(rows: list[dict], project: str, moved: dict | None = None) -> list[dict]:
+def stem_sets(rows: list[dict], project: str, moved: dict | None = None,
+              one_set: bool = False) -> list[dict]:
     """Group a project's export rows into stem sets, newest first, each with its
     parts, line-up check and the song and instrumental that go with it. Each part
     is sorted into a group (Drums, Bass…); ``moved`` holds the stems you dragged to
-    another group (path -> group) and wins over the automatic one."""
+    another group (path -> group) and wins over the automatic one. ``one_set``
+    keeps every stem in one set (a stems-only folder holds one song's stems, however
+    far apart they were saved)."""
     moved = moved or {}
     stems = sorted((r for r in rows if r.get("kind") == "stem" and os.path.isfile(r["path"])),
                    key=lambda r: (str(Path(r["path"]).parent), r.get("mtime") or 0))
@@ -180,8 +183,8 @@ def stem_sets(rows: list[dict], project: str, moved: dict | None = None) -> list
     groups: list[list[dict]] = []
     for r in stems:
         cur = groups[-1] if groups else None
-        if cur and Path(cur[-1]["path"]).parent == Path(r["path"]).parent \
-                and (r.get("mtime") or 0) - (cur[-1].get("mtime") or 0) <= SET_GAP:
+        if cur and (one_set or Path(cur[-1]["path"]).parent == Path(r["path"]).parent
+                    and (r.get("mtime") or 0) - (cur[-1].get("mtime") or 0) <= SET_GAP):
             cur.append(r)
         else:
             groups.append([r])
@@ -202,7 +205,7 @@ def stem_sets(rows: list[dict], project: str, moved: dict | None = None) -> list
         out.append({
             "id": _set_id([p["path"] for p in parts]),
             "when": when,
-            "folder": str(Path(g[0]["path"]).parent),
+            "folder": _folder_of([r["path"] for r in g], one_set),
             "parts": parts,
             "size": sum(p["size"] or 0 for p in parts),
             "check": check_set(parts),
@@ -211,6 +214,17 @@ def stem_sets(rows: list[dict], project: str, moved: dict | None = None) -> list
         })
     out.sort(key=lambda s: s["when"], reverse=True)
     return out
+
+
+def _folder_of(paths: list[str], one_set: bool) -> str:
+    """The folder a set's stems share. Stems on different drives (Windows) share none:
+    then the first stem's folder."""
+    if one_set and len(paths) > 1:
+        try:
+            return os.path.commonpath(paths)
+        except ValueError:
+            pass
+    return str(Path(paths[0]).parent)
 
 
 def _safe(name: str) -> str:

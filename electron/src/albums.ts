@@ -338,17 +338,41 @@ export function fmtRelease(date: string): string {
   return isNaN(d.getTime()) ? "" : d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
-// "38 days to go", "Out tomorrow", "Out today", "Came out 3 days ago".
+// "38 days to go", "Out tomorrow", "Out today", "Came out 3 days ago". Past two months
+// it counts months ("5 months to go"), past a year and a half years ("73 years to go").
 export function daysToGo(date: string, now: Date = new Date()): string {
   if (!date) return "";
   const d = new Date(`${date}T12:00:00`);
   if (isNaN(d.getTime())) return "";
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
   const n = Math.round((d.getTime() - today.getTime()) / 86400000);
-  if (n > 1) return `${n} days to go`;
+  if (n > 1) return `${farOff(n)} to go`;
   if (n === 1) return "Out tomorrow";
   if (n === 0) return "Out today";
-  return n === -1 ? "Came out yesterday" : `Came out ${-n} days ago`;
+  return n === -1 ? "Came out yesterday" : `Came out ${farOff(-n)} ago`;
+}
+function farOff(days: number): string {
+  if (days <= 60) return `${days} days`;
+  if (days < 548) return `${Math.round(days / 30.44)} months`;
+  return `${Math.round(days / 365.25).toLocaleString()} years`;
+}
+
+// A song's length on a clock: "3:07", and "4:02:03" past the hour (never "242:03").
+export function fmtClock(seconds: number): string {
+  const t = Math.max(0, Math.floor(seconds)), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${p2(m)}:${p2(s)}` : `${m}:${p2(s)}`;
+}
+
+// A tempo as people say it: 89.999 -> "90", 174.5 -> "175".
+export function fmtBpm(bpm: number | null | undefined): string {
+  return bpm ? String(Math.round(bpm)) : "";
+}
+
+// The album's tempo line shows this many songs; a long album ends in "… N more".
+export const TEMPO_SHOWN = 24;
+export function tempoLine<T>(tempos: T[], max = TEMPO_SHOWN): { shown: T[]; more: number } {
+  return tempos.length > max ? { shown: tempos.slice(0, max), more: tempos.length - max } : { shown: tempos, more: 0 };
 }
 
 // Where release day is: 1 still to come, 0 today, -1 already out (null with no date).
@@ -376,7 +400,7 @@ export function mainGenre(a: Album): string {
 export function albumState(a: Album): { label: string; tone: "ok" | "warn" | "quiet" } {
   if (!a.songs.length) return { label: "No songs yet", tone: "quiet" };
   const left = a.songs.length - readyCount(a);
-  return left ? { label: `${left} to sort`, tone: "warn" } : { label: "Ready", tone: "ok" };
+  return left ? { label: `${left} not ready`, tone: "warn" } : { label: "Ready", tone: "ok" };
 }
 
 export function fadeLabel(secs: number): string {

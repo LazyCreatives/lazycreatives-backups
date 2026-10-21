@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type RefObject } from "react";
 import {
-  addSongs, albumCandidates, albumState, changeSong, groupCandidates, KINDS, kindName, releaseKind, setKind, stillWorking, withArticle, tempoJump, daysToGo, deleteAlbum, FADE_PRESETS, fadeLabel, fmtRelease,
+  addSongs, albumCandidates, albumState, changeSong, groupCandidates, KINDS, kindName, releaseKind, setKind, stillWorking, withArticle, tempoJump, tempoLine, fmtClock, fmtBpm, daysToGo, deleteAlbum, FADE_PRESETS, fadeLabel, fmtRelease,
   mainGenre, makeAlbum, MAX_FADE, moveItem, newerExport, orderSongs, putBack, readyCount, releaseDay, renameAlbum, setCrossfade,
   setReleaseDate, shortTitle, someOf, songVersions, swapSong, takeOut, useAlbums, useCandidates, useSongChecks,
   type Album, type AlbumCandidate, type AlbumKind, type AlbumSong, type CandidateGroup, type SongCheck,
@@ -43,7 +43,7 @@ export interface AlbumSync {
 }
 
 const OTHER = { backups: "Uploader", uploader: "Backups" } as const;
-const clock = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+const clock = fmtClock;
 const totalLength = (t: number) => (t >= 3600 ? `${Math.floor(t / 3600)} h ${Math.round((t % 3600) / 60)} min` : t ? clock(t) : "");
 const JOIN_SECS = 15;   // "Play joins only": this long either side of each change
 
@@ -74,7 +74,7 @@ function AlbumList({ list, error, look, composing, app, onOpen, onClose }: Album
   const empty = list !== null && list.length === 0;
   const next = (list ?? []).find((a) => a.release_date && daysToGo(a.release_date).endsWith("to go"));
   const sub = list === null ? "" : empty ? `Plan what comes out next. Albums here show in ${OTHER[app]} too.`
-    : `${list.length} album${list.length === 1 ? "" : "s"}${next ? ` · ${shortTitle(next.title)} ${daysToGo(next.release_date).replace(" to go", " away")}` : ""} · shared with ${OTHER[app]}`;
+    : `${list.length.toLocaleString()} album${list.length === 1 ? "" : "s"}${next ? ` · ${shortTitle(next.title)} ${daysToGo(next.release_date).replace(" to go", " away")}` : ""} · shared with ${OTHER[app]}`;
   return (
     <div className="alb">
       <header className="page-head">
@@ -276,6 +276,7 @@ function AlbumPage({ a, look, app, onClose, metaFor, onOpenProject, sync }: Albu
   const save = (p: Promise<unknown>) => p.catch((e) => toastWarn(String((e as Error).message)));
   const n = readyCount(a);
   const left = a.songs.length - n;
+  const toCheck = a.songs.filter((s) => checks[s.path]?.state === "check").length;
 
   const pageMenu: MenuItem[] = [
     { label: "Rename", onClick: () => setRenaming(true) },
@@ -297,7 +298,8 @@ function AlbumPage({ a, look, app, onClose, metaFor, onOpenProject, sync }: Albu
             ? <RenameBox title={a.title} onDone={(t) => { setRenaming(false); if (t && t !== a.title) void save(renameAlbum(a.id, t)); }} />
             : <h1 className="albpage__title" title="Double-click to rename" onDoubleClick={() => setRenaming(true)}>{a.title}</h1>}
           <div className="albpage__line">
-            {a.songs.length ? <>{a.songs.length} song{a.songs.length === 1 ? "" : "s"} · <LengthOf a={a} /> · {left ? `${n} ready, ${left} need${left === 1 ? "s" : ""} something` : "all ready"}</> : "No songs yet"}
+            {a.songs.length ? <>{a.songs.length} song{a.songs.length === 1 ? "" : "s"} · <LengthOf a={a} /> · {left ? `${n} of ${a.songs.length} ready` : "all ready"}
+              {toCheck > 0 && ` · ${toCheck} to check for quality`}</> : "No songs yet"}
           </div>
           {dating && <div className="albpage__date">
             <input type="date" defaultValue={a.release_date} autoFocus aria-label="Release date"
@@ -411,8 +413,8 @@ type Checks = Record<string, SongCheck | null | undefined>;
 type Newer = Map<string, AlbumCandidate | null>;
 
 function QualityPill({ c, open = false, onToggle }: { c: SongCheck | null | undefined; open?: boolean; onToggle?: () => void }) {
-  if (c === undefined) return <span className="faint alb-q">Checking…</span>;
-  if (!c || c.state === "missing" || c.state === "unreadable") return <span className="faint alb-q" title={c ? "This file couldn't be read" : "Couldn't check this song"}>—</span>;
+  if (c === undefined) return <span className="faint alb-q"><span className="alb-q__text">Checking…</span></span>;
+  if (!c || c.state === "missing" || c.state === "unreadable") return <span className="faint alb-q" title={c ? "This file couldn't be read" : "Couldn't check this song"}><span className="alb-q__text">—</span></span>;
   const ok = c.state === "ok";
   const label = ok ? "Plays anywhere" : c.problems[0].short;
   if (!onToggle) {  // just the word (a version not on the album yet)
@@ -512,7 +514,7 @@ function KindRow({ a, suggested }: { a: Album; suggested: AlbumKind }) {
             {KINDS.map((k) => (
               <button key={k.kind} type="button" title={k.rule} aria-pressed={on === k.kind}
                 className={`seg__opt${on === k.kind ? " seg__opt--on" : ""}`} onClick={() => pick(k.kind)}>
-                {k.name}{k.kind === suggested && <span className="alb-kind__tip" title="What its length makes it"><span aria-hidden>•</span><span className="sr-only"> (by its length)</span></span>}
+                {k.name}{k.kind === suggested && <span className="alb-kind__tip" title="What its length makes it"><span className="alb-kind__dot" aria-hidden /><span className="sr-only"> (by its length)</span></span>}
               </button>
             ))}
           </span>
@@ -531,6 +533,19 @@ function KindRow({ a, suggested }: { a: Album; suggested: AlbumKind }) {
   );
 }
 
+// Two versions of one song share a title: name each by its file then ("Afterglow v2").
+function songNamer(songs: Album["songs"]): (s: Album["songs"][number]) => string {
+  const seen = new Map<string, number>();
+  for (const s of songs) seen.set(s.title, (seen.get(s.title) ?? 0) + 1);
+  return (s) => (seen.get(s.title)! > 1 ? (s.path.split(/[\\/]/).pop() ?? s.title).replace(/\.[^.]+$/, "") : s.title);
+}
+
+// A problem's short name, with its plain meaning when that's short: "8 kHz, lower quality than a CD".
+function plainProblem(p: { short: string; what: string }): string {
+  const rest = p.what.startsWith(`${p.short}. `) ? p.what.slice(p.short.length + 2).replace(/\.$/, "") : "";
+  return rest && rest.length <= 34 ? `${p.short}, ${lowerFirst(rest)}` : p.short;
+}
+
 const KIND_RULE = "Spotify and Apple Music count 1 to 3 songs as a single, 4 to 6 as an EP, and 7 songs or 30 minutes as an album.";
 
 function Planner({ a, checks, newer }: { a: Album; checks: Checks; newer: Newer }) {
@@ -544,10 +559,12 @@ function Planner({ a, checks, newer }: { a: Album; checks: Checks; newer: Newer 
   const working = a.songs.filter((s) => s.working).length;
   const tempos = a.songs.map((s) => s.bpm ?? null);
   const jumps = tempos.slice(1).map((b, i) => tempoJump(tempos[i], b)).filter((j) => j !== null).length;
+  const line = tempoLine(tempos);   // a long album shows the first few, then "… N more"
   const measured = a.songs.map((s) => checks[s.path]).filter((c): c is SongCheck => !!c && (c.state === "ok" || c.state === "check"));
   const toCheck = a.songs.filter((s) => checks[s.path]?.state === "check");
   const checking = a.songs.some((s) => checks[s.path] === undefined);
   const newerN = a.songs.filter((s) => newer.get(s.path)).length;
+  const named = songNamer(a.songs);
   return (
     <section className="alb-plan" aria-label="Plan">
       {a.songs.map((s) => <Len key={s.path} path={s.path} onLen={(n) => setLens((l) => (l[s.path] === n ? l : { ...l, [s.path]: n }))} />)}
@@ -559,9 +576,9 @@ function Planner({ a, checks, newer }: { a: Album; checks: Checks; newer: Newer 
             <b>{withArticle(called)}</b>
             <span className="faint"> · {a.songs.length} song{a.songs.length === 1 ? "" : "s"} · {known ? totalLength(total) : total ? `${totalLength(total)}+` : "—"}</span>
             {called !== kind && known && <span className="faint"> · stores list it as {lowerFirst(withArticle(kind))}</span>}
-            {kind !== "album" && known && <span className="faint"> · album at 30 min or 7 songs: {Math.ceil(toAlbum / 60)} min or {songsToAlbum} song{songsToAlbum === 1 ? "" : "s"} more</span>}
+            {kind !== "album" && known && <span className="faint"> · {songsToAlbum === 1 ? "one more song" : `${songsToAlbum} more songs`} or {Math.ceil(toAlbum / 60)} more minute{Math.ceil(toAlbum / 60) === 1 ? "" : "s"} makes it an album</span>}
           </div>
-          <div className="alb-plan__bar" role="img" aria-label={`${a.songs.length} songs, ${totalLength(total) || "length not known yet"}. The album mark is at 30 minutes.`}>
+          <div className={`alb-plan__bar${a.songs.length > 48 ? " alb-plan__bar--dense" : ""}`} role="img" aria-label={`${a.songs.length} songs, ${totalLength(total) || "length not known yet"}. The album mark is at 30 minutes.`}>
             {a.songs.map((s, i) => <i key={s.path} style={{ width: `${((lens[s.path] || 0) / scale) * 100}%`, background: coverColor(s.genre || null, s.project || s.title) }}
               title={`${i + 1}. ${s.title}${lens[s.path] ? ` · ${clock(lens[s.path])}` : ""}`} />)}
             <span className="alb-plan__mark" style={{ left: `${(30 * 60 / scale) * 100}%` }}><span>30 min</span></span>
@@ -571,16 +588,20 @@ function Planner({ a, checks, newer }: { a: Album; checks: Checks; newer: Newer 
       <div className="alb-plan__row">
         <span className="alb-plan__label">Tempo</span>
         <div className="alb-plan__what alb-plan__tempo">
-          {tempos.some((b) => b) && tempos.map((b, i) => {
+          {tempos.some((b) => b) && line.shown.map((b, i) => {
             const jump = i > 0 ? tempoJump(tempos[i - 1], b) : null;
             return <span key={a.songs[i].path} className="alb-plan__step">
               {i > 0 && <span className={`alb-plan__arrow${jump !== null ? " alb-plan__arrow--jump" : ""}`} aria-hidden>→</span>}
               <span className={`alb-plan__bpm${jump !== null ? " alb-plan__bpm--jump" : ""}`}
                 title={jump !== null ? `${a.songs[i - 1].title} at ${Math.round(tempos[i - 1]!)} BPM into ${a.songs[i].title} at ${Math.round(b!)} BPM: a big change of pace. Move a song in between, or let it run straight in with no blend.`
                   : `${i + 1}. ${a.songs[i].title}`}>
-                {b ? Math.round(b) : "?"}</span>
+                {b ? fmtBpm(b) : "?"}</span>
             </span>;
           })}
+          {line.more > 0 && tempos.some((b) => b) && <span className="alb-plan__step">
+            <span className="alb-plan__arrow" aria-hidden>→</span>
+            <span className="faint alb-plan__rest">… {line.more.toLocaleString()} more</span>
+          </span>}
           <span className={`faint${tempos.some((b) => b) ? " alb-plan__note" : ""}`}>{jumps ? `${jumps} big change${jumps === 1 ? "" : "s"} of pace` : tempos.some((b) => b) ? "BPM flows" : "No BPM known yet. Backups reads it from each project."}</span>
         </div>
       </div>
@@ -588,7 +609,7 @@ function Planner({ a, checks, newer }: { a: Album; checks: Checks; newer: Newer 
         <span className="alb-plan__label">Finished</span>
         <div className="alb-plan__what">
           <span><b>{a.songs.length - working} of {a.songs.length}</b></span>
-          {working > 0 && <span className="faint"> · still working on {someOf(a.songs.filter((s) => s.working).map((s) => s.title))}</span>}
+          {working > 0 && <span className="faint"> · still working on {someOf(a.songs.filter((s) => s.working).map(named))}</span>}
           {newerN > 0 && <span className="faint"> · {newerN} newer export{newerN === 1 ? "" : "s"} to use</span>}
         </div>
       </div>
@@ -597,7 +618,7 @@ function Planner({ a, checks, newer }: { a: Album; checks: Checks; newer: Newer 
         <div className="alb-plan__what" title="Checked for CDJs, USB sticks and club systems: file type, bit depth, sample rate, MP3 bitrate, clipping and loudness. Your files are only read.">
           {measured.length === 0 && checking ? <span className="faint">Checking each song…</span> : <>
             <span><b>{measured.length - toCheck.length} of {a.songs.length}</b> play anywhere</span>
-            {toCheck.length > 0 && <span className="faint"> · check {someOf(toCheck.map((s) => `${s.title} (${checks[s.path]!.problems.map((p) => p.short).join(", ")})`))}</span>}
+            {toCheck.length > 0 && <span className="faint"> · check {someOf(toCheck.map((s) => `${named(s)} (${checks[s.path]!.problems.map(plainProblem).join(", ")})`))}</span>}
             {checking && <span className="faint"> · still checking</span>}
           </>}
         </div>
@@ -756,14 +777,14 @@ function SongList({ a, app, nowAt, playing, onPlay, onOpenProject, checks, newer
                   aria-label={`${versions.has(s.path) ? "Hide" : "Show"} the ${vs.length} versions of ${s.title}`}
                   title="Listen to the other versions and pick the one the album plays"
                   onClick={(e) => { e.stopPropagation(); toggleVersions(s.path); }}>
-                  {vs.length}<span className="alb-vers__word"> versions</span><Icon name={versions.has(s.path) ? "chevronDown" : "chevronRight"} size={12} /></button>}
+                  {vs.length.toLocaleString()}<span className="alb-vers__word"> versions</span><Icon name={versions.has(s.path) ? "chevronDown" : "chevronRight"} size={12} /></button>}
               </div>
               <div className="row__sub col-trunc">{s.project
                 ? (onOpenProject && s.project_id
                   ? <button type="button" className="linkbtn alb-proj" onClick={(e) => { e.stopPropagation(); onOpenProject(s); }}
                       title={`Open the project ${s.project}`}>{s.project}</button>
                   : <span title={`From the project ${s.project}`}>{s.project}</span>)
-                : <span title="Not linked to a project yet">{fileLine(s)}</span>}{s.daw ? ` · ${dawName(s.daw)}` : ""}{s.bpm ? ` · ${s.bpm} BPM` : ""}</div>
+                : <span title="Not linked to a project yet">{fileLine(s)}</span>}{s.daw ? ` · ${dawName(s.daw)}` : ""}{s.bpm ? ` · ${fmtBpm(s.bpm)} BPM` : ""}</div>
             </div>
             <span className="col-num"><SongLen path={s.path} /></span>
             <span className="alb-into">{last ? <span className="faint">—</span>
@@ -859,7 +880,7 @@ const fileLine = (s: AlbumSong) => s.path.split(/[\\/]/).pop() || s.path;
 // Music programs by their proper names ("fl" -> "FL Studio").
 const DAWS: Record<string, string> = {
   ableton: "Ableton", fl: "FL Studio", flstudio: "FL Studio", reaper: "Reaper", logic: "Logic Pro",
-  studioone: "Studio One", bitwig: "Bitwig", dawproject: "DAWproject",
+  studioone: "Studio One", bitwig: "Bitwig", dawproject: "DAWproject", stems: "Stems only",
 };
 const dawName = (d: string) => DAWS[d.toLowerCase().replace(/[\s_-]/g, "")] ?? d;
 
@@ -973,7 +994,7 @@ function PickRow({ c, main = false, working = false, more, onAdd, onOpenProject 
             <Icon name={more.open ? "chevronDown" : "chevronRight"} size={12} />{more.n} more version{more.n === 1 ? "" : "s"}</button>}
         </div>}
       </div>
-      <span className="alb-pick__bpm col-num faint" title="Tempo (BPM)">{c.bpm ? Math.round(c.bpm) : ""}</span>
+      <span className="alb-pick__bpm col-num faint" title="Tempo (BPM)">{fmtBpm(c.bpm)}</span>
       <span className="alb-pick__len col-num faint">{c.duration ? clock(c.duration) : <SongLen path={c.path} />}</span>
       <PlayButton path={c.path} meta={meta} size={28} />
       <button type="button" className="alb-add__plus" aria-label={`Add ${c.title} to the album`} title="Add to the end of the album"

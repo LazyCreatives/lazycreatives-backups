@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS folder_projects (
   added_at REAL NOT NULL,
   PRIMARY KEY (folder_id, project_id)
 );
+CREATE INDEX IF NOT EXISTS idx_folder_projects_project ON folder_projects(project_id);
 """
 
 
@@ -112,10 +113,19 @@ class Folders:
         return folders
 
     def get(self, folder_id: str) -> dict:
-        for f in self.all():
-            if f["id"] == folder_id:
-                return f
-        raise NotFound(folder_id)
+        """One folder, as in all(). Read on its own: reading every folder to find one
+        got slow with thousands of folders."""
+        with self._db() as con:
+            row = con.execute("SELECT * FROM folders WHERE id = ?", (folder_id,)).fetchone()
+            if row is None:
+                raise NotFound(folder_id)
+            ids = [r["project_id"] for r in con.execute(
+                "SELECT project_id FROM folder_projects WHERE folder_id = ? ORDER BY added_at DESC, project_id",
+                (folder_id,))]
+        f = dict(row)
+        f.pop("pos", None)
+        f["project_ids"] = ids
+        return f
 
     def of_project(self, project_id: str) -> list[str]:
         """The folders a project is in."""

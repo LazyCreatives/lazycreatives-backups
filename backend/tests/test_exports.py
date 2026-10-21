@@ -265,8 +265,11 @@ def test_exports_folder_found_without_being_told(tmp_path, monkeypatch):
     assert cat.exports_for("p1") == []
 
 
-def test_exports_relinked_when_the_app_starts(tmp_path):
-    """A library scanned before songs were linked gets them on the next start."""
+def test_exports_relinked_when_the_app_starts(tmp_path, monkeypatch):
+    """A library scanned before songs were linked gets them on the next start (a few
+    seconds in, so the first screen isn't slowed by it)."""
+    from ablebackup.api import app as app_module
+    monkeypatch.setattr(app_module, "_START_REFRESH_DELAY", 0.1)
     db = tmp_path / "c.db"
     cat = Catalog(db)
     _project(cat, "p1", "Sunset", tmp_path / "Sunset Project")

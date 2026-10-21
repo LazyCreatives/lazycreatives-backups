@@ -22,7 +22,7 @@ describe("one way of counting", () => {
     expect(countStatuses(items)).toEqual({ all: 5, safe: 2, changed: 1, missing: 1, none: 1 });
   });
   it("reads as one line for the Library heading", () => {
-    expect(statusSummary(countStatuses(items))).toBe("2 safe · 1 changed · 1 missing samples · 1 not backed up yet");
+    expect(statusSummary(countStatuses(items))).toBe("2 safe · 1 changed · 1 with missing samples · 1 not backed up yet");
   });
   it("Dig records carry the same state", () => {
     expect(items.map(toProjectFromLibrary).map((p) => p.status)).toEqual(["safe", "safe", "changed", "missing", "none"]);
@@ -33,7 +33,7 @@ describe("a backup that didn't work says why", () => {
   it("a finished run with a failed project is not a success", () => {
     const r = judge({ ok_count: 0, error_count: 1, errors: [{ project_name: "x", error: "[Errno 28] No space left on device" }] }, 1);
     expect(r.ok).toBe(false);
-    if (!r.ok) { expect(r.reason).toBe("The backup drive is full."); expect(r.failed[0].project_name).toBe("x"); }
+    if (!r.ok) { expect(r.reason).toBe("The backup drive is full. Free up space on it, or pick a bigger one in Settings > Backups."); expect(r.failed[0].project_name).toBe("x"); }
   });
   it("a project file that wasn't there is not a success either", () => {
     const r = judge({ ok_count: 0, error_count: 0, skipped_count: 0 }, 1);

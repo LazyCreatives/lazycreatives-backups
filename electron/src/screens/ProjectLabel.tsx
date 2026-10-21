@@ -8,7 +8,7 @@ import { makeApi } from "../api";
 import type { LibraryItem, Snapshot, SnapshotDiff } from "../types";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
-import { fmtSize, dawLabel, fmtDay, fmtCount, shortPath } from "../format";
+import { fmtSize, dawLabel, fmtDay, fmtCount, shortPath, openWord, stemsOnly } from "../format";
 import { parseStamp } from "./Crate/types";
 import { Cover } from "../components/Cover";
 import { SleeveWear } from "../components/SleeveWear";
@@ -50,8 +50,9 @@ export interface ProjectTab { key: string; label: string; count?: number; conten
 // backups, missing samples and history, and a column of plain facts on the right.
 // The head keeps two buttons (the main one, and Open in its DAW); everything else is in
 // its "··· More" menu, which is also what right-clicking the head shows.
-export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actions, more = [] }: {
+export function ProjectLabel({ item, onOpenInDaw, onOpenStems, onReveal, onGenre, tabs, actions, more = [] }: {
   item: LibraryItem; onOpenInDaw: () => void; onReveal: () => void; onGenre?: () => void; tabs: ProjectTab[];
+  onOpenStems?: () => void;  // a stems-only folder opens on the Stems desk
   actions?: ReactNode;    // the main button (Back up now), when there is one
   more?: MoreItem[];      // the page's own extra actions for the menu (Tidy names…)
 }) {
@@ -131,7 +132,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
   }
   const labelData = () => ({
     exported: new Date().toISOString(),
-    app: "LazyCreatives Backups",
+    app: "Lazy Creatives Backups",
     project: {
       name: item.name, catalog: cat, crate, created: created ? new Date(created).toISOString() : null,
       daw: dawLabel(item.daw), bpm: item.bpm ?? null, key: item.music_key ?? null, tracks: item.tracks ?? null,
@@ -150,7 +151,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
   }
   function exportLiner() {
     const L: string[] = [];
-    L.push("LAZY CREATIVES — BACKUPS · LINER NOTES");
+    L.push("LAZY CREATIVES · BACKUPS · LINER NOTES");
     L.push("=".repeat(46));
     L.push(`${item.name}  ·  ${cat}  ·  ${crate}`);
     L.push("");
@@ -169,7 +170,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
       L.push(`${" ".repeat(19)}${s.file_count} files · ${fmtSize(s.total_size)}${s.missing?.length ? ` · ${s.missing.length} missing` : ""}`);
     }
     L.push("");
-    L.push("You make the music. We handle the rest — and prove it's done.");
+    L.push("You make the music. We'll handle the files.");
     download(`${cat}-liner-notes.txt`, L.join("\n"), "text/plain");
   }
 
@@ -196,8 +197,11 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
     ) },
   ];
   const active = allTabs.find((t) => t.key === tab) ?? allTabs[0];
+  // a stems-only folder: no music program, so its parts are stems, not tracks
+  const stems = stemsOnly(item.daw);
+  const partsWord = stems ? "Stems" : "Tracks";
   const meta = [crate !== "Untagged" ? crate : "", item.bpm ? `${Math.round(item.bpm)} BPM` : "", item.music_key || "",
-    item.tracks ? `${item.tracks} tracks` : "", dawLabel(item.daw)].filter(Boolean).join(" · ");
+    item.tracks ? `${item.tracks} ${partsWord.toLowerCase()}` : "", dawLabel(item.daw)].filter(Boolean).join(" · ");
   // The facts column holds only what the head doesn't already show: the head has the
   // tempo, tracks, backups, the music program, the status and the genre.
   const facts: [string, ReactNode, string?][] = [
@@ -212,22 +216,24 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
   ];
   const menu: MoreItem[] = [
     { label: `Show in ${osWords().fileManager}`, onClick: onReveal },
-    { label: "Copy project path", onClick: () => { copyText(item.path); } },
+    { label: stems ? "Copy folder path" : "Copy project path", onClick: () => { copyText(item.path); } },
     { label: "Change cover…", onClick: () => { pickCover({ title: item.name, name: item.name, genre: item.genre }); } },
     ...(onGenre ? [{ label: item.genre ? "Change genre…" : "Set genre…", onClick: onGenre }] : []),
     ...more,
     { label: "Save liner notes", onClick: exportLiner },
     { label: "Save label data", onClick: exportLabel },
   ];
+  const open = stems && onOpenStems ? onOpenStems : onOpenInDaw;
+  const openLabel = stems && onOpenStems ? "Open the Stems desk" : openWord(item.daw);
   const onHeadMenu = (e: React.MouseEvent) => {
     // a right-click on a link or button inside the head keeps its own menu
     if ((e.target as HTMLElement).closest("input, textarea")) return;
-    openMenu(e, [{ label: `Open in ${dawLabel(item.daw)}`, onClick: onOpenInDaw }, "-", ...menu] as MenuItem[]);
+    openMenu(e, [{ label: openLabel, onClick: open }, "-", ...menu] as MenuItem[]);
   };
   const headButtons = (
     <>
       {actions}
-      <Button variant="ghost" onClick={onOpenInDaw}>Open in {dawLabel(item.daw)}</Button>
+      <Button variant="ghost" onClick={open}>{openLabel}</Button>
       <MoreMenu items={menu} name={item.name} button />
     </>
   );
@@ -243,11 +249,11 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
   const tint = coverColor(item.genre, item.name);
   const statusText = warn > 0 ? <span className="warn-text">{fmtCount(warn)} sample{warn === 1 ? "" : "s"} missing</span>
     : item.changed ? <span className="muted-dot"><span className="dot dot--accent" /> changed since its last backup</span>
-    : item.backed_up ? <span className="ok-text"><span className="dot dot--ok" /> safe, opens</span>
+    : item.backed_up ? <span className="ok-text"><span className="dot dot--ok" /> {stems ? "safe" : "safe, opens"}</span>
     : <span className="faint">not backed up yet</span>;
   const statusChip = warn > 0 ? <span className="fact-chip fact-chip--warn">{fmtCount(warn)} sample{warn === 1 ? "" : "s"} missing</span>
     : item.changed ? <span className="fact-chip fact-chip--changed" title="Saved since its last backup; back it up to keep this version"><span className="dot dot--accent" />Changed since last backup</span>
-    : item.backed_up ? <span className="fact-chip fact-chip--ok"><span className="dot dot--ok" />Safe, opens</span>
+    : item.backed_up ? <span className="fact-chip fact-chip--ok"><span className="dot dot--ok" />{stems ? "Safe" : "Safe, opens"}</span>
     : <span className="fact-chip">Not backed up yet</span>;
 
   const chip = onGenre && <GenreChip genre={item.genre ?? null} setByYou={!!item.genre_by_you} onClick={onGenre} />;
@@ -266,9 +272,9 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
             <dl className={`proj-spec${item.music_key ? " proj-spec--key" : ""}`}>
               {item.bpm ? <div><dt>BPM</dt><dd>{Math.round(item.bpm)}</dd></div> : null}
               {item.music_key ? <div><dt>Key</dt><dd className="proj-spec__word">{item.music_key}</dd></div> : null}
-              {item.tracks ? <div><dt>Tracks</dt><dd>{item.tracks}</dd></div> : null}
+              {item.tracks ? <div><dt>{partsWord}</dt><dd>{item.tracks}</dd></div> : null}
               <div><dt>{item.snapshot_count === 1 ? "Backup" : "Backups"}</dt><dd>{fmtCount(item.snapshot_count)}</dd></div>
-              <div><dt>Made in</dt><dd className="proj-spec__word">{dawLabel(item.daw)}</dd></div>
+              <div><dt>{stems ? "Kind" : "Made in"}</dt><dd className="proj-spec__word">{dawLabel(item.daw)}</dd></div>
             </dl>
             <div className="proj-hero__meta">
               {statusText}
@@ -297,7 +303,7 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
               <div className="deckread">
                 <span className="deckread__cell"><small>BPM</small><b>{item.bpm ? Math.round(item.bpm) : "–"}</b></span>
                 {item.music_key && <span className="deckread__cell"><small>Key</small><b>{item.music_key}</b></span>}
-                <span className="deckread__cell"><small>Tracks</small><b>{item.tracks || "–"}</b></span>
+                <span className="deckread__cell"><small>{partsWord}</small><b>{item.tracks || "–"}</b></span>
                 <span className="deckread__cell"><small>Size</small><b>{fmtSize(item.size)}</b></span>
                 <span className="deckread__cell"><small>Backups</small><b>{fmtCount(item.snapshot_count)}</b></span>
               </div>
@@ -322,7 +328,9 @@ export function ProjectLabel({ item, onOpenInDaw, onReveal, onGenre, tabs, actio
             ) : (
               <>
                 <span className="deck__empty-icon"><Icon name="music" size={18} /></span>
-                <div className="faint" style={{ fontSize: 13 }}>No song exported from this project yet. When you export one, its waveform shows up here and you can play it.</div>
+                <div className="faint" style={{ fontSize: 13 }}>{stems
+                  ? "No full mix in this folder, only the parts. Open the Stems desk to hear them together."
+                  : "No song exported from this project yet. When you export one, its waveform shows up here and you can play it."}</div>
               </>
             )}
           </div>

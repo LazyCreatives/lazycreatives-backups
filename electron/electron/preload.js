@@ -8,7 +8,7 @@ function argValue(flag) {
 contextBridge.exposeInMainWorld("ablebackup", {
   // Easier reading's text size: the whole window scales, so columns stay lined up (src/reading.ts).
   setZoom: (f) => { if (typeof f === "number" && f >= 1 && f <= 1.5) webFrame.setZoomFactor(f); },
-  token: argValue("--ablebackup-token"),
+  token: ipcRenderer.sendSync("sidecar-token"),
   port: argValue("--ablebackup-port"),
   // "vibrancy" (Mac), "mica" (Windows 11) or "none": see windowMaterial in desktop.js.
   material: argValue("--lc-material") || "none",
@@ -21,6 +21,10 @@ contextBridge.exposeInMainWorld("ablebackup", {
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
   openUploader: (albumId) => ipcRenderer.invoke("open-uploader", albumId),
   reportProblem: () => ipcRenderer.invoke("report-problem"),
+  // Settings > Privacy > Send crash reports, and window errors for them (sentry.js).
+  getCrashReports: () => ipcRenderer.invoke("get-crash-reports"),
+  setCrashReports: (on) => ipcRenderer.invoke("set-crash-reports", on),
+  reportError: (message, stack) => ipcRenderer.send("window-error", { message: String(message || ""), stack: String(stack || "") }),
   openFdaSettings: () => ipcRenderer.invoke("open-fda-settings"),
   platform: process.platform,
   getOpenAtLogin: () => ipcRenderer.invoke("get-open-at-login"),

@@ -19,6 +19,6 @@ describe("music program names", () => {
     expect(toProject({ project_name: "Night Drive", daw: "bitwig" } as any).daw).toBe("bitwig");
   });
   it("still falls back for programs it doesn't know", () => {
-    expect(dawLabel("cubase")).toBe("Music app");
+    expect(dawLabel("cubase")).toBe("DAW");
   });
 });

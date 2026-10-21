@@ -439,3 +439,70 @@ def test_every_word_of_a_project_in_any_order_links_it(tmp_path):
     _touch(shared / "BREAKS 140 WOBS.aif")
     exports.refresh(cat)
     assert "BREAKS 140 WOBS" in _rows(cat, "w")
+
+
+# ---- speed: big libraries ----------------------------------------------------------
+def test_unchanged_songs_keep_their_suggestion_until_a_project_changes(tmp_path, monkeypatch):
+    """A re-check with the same projects reuses each unchanged song's row instead of
+    weighing it against every project again; a new or renamed project redoes it."""
+    cat, shared = _setup(tmp_path)
+    _project(cat, "s", "Sunset", tmp_path / "p" / "Sunset Project")
+    _touch(shared / "Sunsest.wav")  # a typo: suggested, not linked
+    exports.refresh(cat)
+    [u] = cat.unmatched()
+    assert u["suggest_id"] == "s"
+    weighed = []
+    real = exports.sample_reason  # the first step of weighing a song nothing matched
+    monkeypatch.setattr(exports, "sample_reason",
+                        lambda f, *a: (weighed.append(f.stem), real(f, *a))[1])
+    exports.refresh(cat)
+    assert weighed == [] and cat.unmatched()[0]["suggest_id"] == "s"
+    _project(cat, "m", "Sunsets", tmp_path / "p" / "Sunsets Project")
+    exports.refresh(cat)
+    assert weighed == ["Sunsest"]
+
+
+def test_banded_distance_agrees_with_the_full_count():
+    import random
+    from ablebackup.songmatch import _distance
+
+    def full(a, b):
+        prev = list(range(len(b) + 1))
+        for i, ca in enumerate(a, 1):
+            cur = [i]
+            for j, cb in enumerate(b, 1):
+                cur.append(min(prev[j] + 1, cur[-1] + 1, prev[j - 1] + (ca != cb)))
+            prev = cur
+        return prev[-1]
+
+    rnd = random.Random(7)
+    for _ in range(5000):
+        a = "".join(rnd.choice("abc") for _ in range(rnd.randint(0, 12)))
+        b = "".join(rnd.choice("abc") for _ in range(rnd.randint(0, 12)))
+        for limit in (1, 2):
+            assert _distance(a, b, limit) == min(full(a, b), limit + 1), (a, b, limit)
+
+
+def test_name_lookup_keys_catch_every_close_spelling():
+    """Every pair of names within the typo limit shares a lookup key, so the fast
+    lookup finds what checking every project would."""
+    import random
+    from ablebackup.songmatch import _distance
+    rnd = random.Random(3)
+    letters = "abcdefghij"
+    for _ in range(4000):
+        a = "".join(rnd.choice(letters) for _ in range(rnd.randint(5, 14)))
+        b = list(a)
+        for _ in range(rnd.randint(1, 2)):
+            op, i = rnd.choice("sid"), rnd.randrange(len(b))
+            if op == "s":
+                b[i] = rnd.choice(letters)
+            elif op == "i":
+                b.insert(i, rnd.choice(letters))
+            elif len(b) > 5:
+                del b[i]
+        b = "".join(b)
+        n = min(len(a), len(b))
+        limit = 1 if n < 10 else 2
+        if a != b and _distance(a, b, limit) <= limit:
+            assert exports._fuzzy_keys(a) & exports._fuzzy_keys(b), (a, b)

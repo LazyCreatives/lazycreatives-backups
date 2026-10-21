@@ -3,7 +3,7 @@
 // every screen shows error.message as it is, so the wording is fixed here, once.
 // SHARED FILE: identical in Backups and Uploader (electron/src/plainProblem.ts).
 
-const REPORT = "Try again, and if it keeps happening use Help, Report a problem.";
+const REPORT = "Try again, and if it keeps happening use Help > Report a problem.";
 export const LOST_ENGINE = "The app lost touch with its engine. Close and reopen the app; your files are fine.";
 const BAD_PICTURE = "That picture couldn't be read. Save it again as a JPEG or PNG and pick it again.";
 

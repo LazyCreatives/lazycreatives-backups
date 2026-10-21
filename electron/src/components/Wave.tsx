@@ -61,11 +61,11 @@ export function Wave({ peaks, color, played = 0, height = 26, onSeek, duration, 
       onPointerUp={onSeek ? () => { dragging.current = false; } : undefined}
       onPointerLeave={onSeek ? () => { if (!dragging.current) setHover(null); } : undefined}>
       {!peaks
-        ? <rect x="0" y="49" width="1" height="2" fill={color} opacity="0.25" />
+        ? <rect x="0" y="49" width="1" height="2" fill={color} fillOpacity="0.25" />
         : peaks.map((v, i) => {
             const h = Math.max(4, v * 100);
             return <rect key={i} x={i + 0.15} y={(100 - h) / 2} width={0.7} height={h} rx={0.2}
-              fill={color} opacity={played ? (i / n < played ? 1 : 0.35) : 0.85} />;
+              fill={color} fillOpacity={played ? (i / n < played ? 1 : 0.35) : 0.85} />;
           })}
       {hover !== null && <rect className="wave__cursor" x={hover * Math.max(n, 1) - 0.15} y="0" width="0.3" height="100" />}
     </svg>

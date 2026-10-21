@@ -1,7 +1,7 @@
 {
   "name": "lazycreatives-backups",
   "productName": "LazyCreatives Backups",
-  "version": "0.2.14",
+  "version": "0.3.0",
   "description": "LazyCreatives Backups — verified, deduplicated backups for Ableton & FL Studio projects",
   "main": "electron/main.js",
   "scripts": {
@@ -119,6 +119,7 @@
     "@fontsource/schibsted-grotesk": "^5.3.0",
     "@number-flow/react": "^0.6.2",
     "@paper-design/shaders-react": "^0.0.81",
+    "@sentry/electron": "8.3.0",
     "electron-updater": "^6.8.9",
     "motion": "^12.40.0",
     "qrcode-generator": "^1.4.4"

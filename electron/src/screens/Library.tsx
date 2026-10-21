@@ -1,11 +1,11 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { pickCover } from "../components/CoverPick";
-import { makeApi } from "../api";
+import { lastLibrary, makeApi } from "../api";
 import type { LibraryItem } from "../types";
 import type { ScanProgress } from "../useProgress";
 import { Button } from "../components/Button";
 import { ProgressBar } from "../components/ProgressBar";
-import { fmtSize, fmtDate, dawLabel, fmtDay, fmtCount, fmtCap } from "../format";
+import { fmtSize, fmtDate, dawLabel, fmtDay, fmtCount, fmtCap, openWord, stemsOnly } from "../format";
 import { ProjectBackups } from "./ProjectBackups";
 import { ProjectLabel } from "./ProjectLabel";
 import { ProjectExports } from "./ProjectExports";
@@ -23,10 +23,11 @@ import { pickGenre, pickCrateColor } from "../components/GenrePick";
 import { PageHeader } from "../components/PageHeader";
 import { UnmatchedSongs } from "./UnmatchedSongs";
 import { StemDesk } from "./StemDesk";
+import { StemFolderJoin } from "./StemFolderJoin";
 import { SmartBar } from "../components/SmartBar";
 import { ColumnBrowse, NO_GENRE, facets, openFromRow } from "../components/Browse";
 import { BPM_BANDS, FIRST_DIR, NO_FILTERS, applyFilters, describeFilters, yearOf, rememberSort, rememberedSort, sortItems, type LibSort, type SortKey, extraFilterCount, isFiltered, countStatuses, statusSummary, rememberFilters, rememberedFilters, type LibFilters, type LibraryView, type StatusFilter, viewFor } from "../libraryFilter";
-import { openMenu, toast, type MenuItem, toastWarn } from "../components/Desktop";
+import { Exit, openMenu, toast, type MenuItem, toastWarn } from "../components/Desktop";
 import { copyText, keep, recall } from "../desktop";
 import { pinnedFirst, renamePins, setPins, togglePin, usePins } from "../pins";
 import { renameRecents } from "../recents";
@@ -34,6 +35,7 @@ import { NoteOpened } from "../components/Recents";
 import { TidyNames } from "./TidyNames";
 import type { TidyBatch, TidyDone } from "../types";
 import { EmptyState } from "../components/SlothSpot";
+import { DoneSeal } from "../components/DoneSeal";
 import { ScanSloth } from "../components/ScanSloth";
 import { backupAndWait, type RunResult } from "../runBackup";
 import { SONGS_LINKED, SongDropTarget, useSongDrop, useSongDragActive } from "../songDrop";
@@ -59,7 +61,7 @@ const IS_MAC = currentOs() === "mac";
 
 const DAW_NAMES: Record<string, string> = {
   ableton: "Ableton", flstudio: "FL Studio", reaper: "Reaper", dawproject: "DAWproject", audacity: "Audacity",
-  logic: "Logic Pro", studioone: "Studio One", bitwig: "Bitwig",
+  logic: "Logic Pro", studioone: "Studio One", bitwig: "Bitwig", stems: "Stems only",
 };
 
 function ownerLabel(owner: string): string {
@@ -68,7 +70,9 @@ function ownerLabel(owner: string): string {
 }
 
 const bridge = () => (window as any).ablebackup;
-const openInDaw = (p?: string) => { if (p) bridge()?.openProject?.(p); };
+const openInDaw = (p?: string, daw?: string) => {
+  if (p) { if (stemsOnly(daw)) bridge()?.revealPath?.(p); else bridge()?.openProject?.(p); }
+};
 const revealPath = (p?: string) => { if (p) bridge()?.revealPath?.(p); };
 
 // One plain line that says the truth about a project: missing samples beat
@@ -108,7 +112,7 @@ function MoreFilters({ on, children }: { on: number; children: React.ReactNode }
         aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((o) => !o)}>
         More filters{on > 0 && <span className="lib-more__n">{on}</span>}<Icon name="chevronDown" size={13} />
       </button>
-      {open && <div className="lib-more__panel" role="dialog" aria-label="More filters">{children}</div>}
+      <Exit>{open && <div className="lib-more__panel" role="dialog" aria-label="More filters">{children}</div>}</Exit>
     </div>
   );
 }
@@ -143,14 +147,15 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   scanOnOpen?: boolean; onScanStarted?: () => void;  // first run: find projects straight away
   show?: LibraryView | null; onShown?: () => void;   // another screen asked for this view
 }) {
-  const [items, setItems] = useState<LibraryItem[]>([]);
+  // drawn from the last load straight away; a fresh copy follows (see load)
+  const [items, setItems] = useState<LibraryItem[]>(() => lastLibrary()?.projects ?? []);
   // songs in exports folders no project matched, and whether that list is open
-  const [unmatched, setUnmatched] = useState(0);
+  const [unmatched, setUnmatched] = useState(() => lastLibrary()?.unmatched_songs ?? 0);
   const [showUnmatched, setShowUnmatched] = useState(false);
   // the Stems page (a mixing desk) of the open project: which project and stem set
-  const [desk, setDesk] = useState<{ projectId: string; setId: string } | null>(null);
+  const [desk, setDesk] = useState<{ projectId: string; setId: string | null } | null>(null);
   useEffect(() => { setDesk(null); }, [openProject]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => lastLibrary() === null);
   const [scope, setScopeState] = useState(rememberedScope);
   const setScope = (v: string) => { rememberedScope = v; savedScopeTouched = true; keep("lc-library-scope", v); setScopeState(v); };
   const [scanning, setScanning] = useState(false);
@@ -207,6 +212,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   const lastOpen = useRef<string | null>(null);  // the project page shown last, to un-fold its group
   // "Tidy names": the projects whose names are being tidied (the window is open)
   const [tidyFor, setTidyFor] = useState<LibraryItem[] | null>(null);
+  const [joinFor, setJoinFor] = useState<LibraryItem | null>(null);  // a stems folder that belongs to a project
   const [tidyTick, setTidyTick] = useState(0);  // bumps after a rename or undo
 
   function load() {
@@ -225,9 +231,45 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
     setTidyTick((t) => t + 1);
     if (openProject && idMap[openProject]) onOpen(idMap[openProject]);
   }
+  // The renamed rows get the soft "came from" wash for a moment (the first one scrolled
+  // into view if it's off screen), so a bulk rename is seen, not silent.
+  function washRenamed(idMap: Record<string, string>) {
+    const ids = [...new Set(Object.values(idMap))];
+    if (!ids.length) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {  // after the reloaded list is drawn
+      const rows = ids.map((id) => document.querySelector<HTMLElement>(`[data-nav-key="${CSS.escape(id)}"]`)).filter((r): r is HTMLElement => !!r);
+      const first = rows[0];
+      if (first) {
+        const r = first.getBoundingClientRect();
+        if (r.top < 0 || r.bottom > window.innerHeight) {
+          const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+          first.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
+        }
+      }
+      rows.forEach((row) => {
+        row.classList.remove("nav-came-from");
+        void row.offsetWidth;  // restart the wash if it is already showing
+        row.classList.add("nav-came-from");
+        window.setTimeout(() => row.classList.remove("nav-came-from"), 2000);
+      });
+    }));
+  }
   async function tidyDone(r: TidyDone) {
     setTidyFor(null);
     await afterRename(r.id_map);
+    washRenamed(r.id_map);
+    toast(`Renamed ${fmtCount(r.renamed)}.`, { label: "Undo", onClick: () => { void undoTidy(r.batch_id); } });
+  }
+  // Undo from the note: the old names come back, and those rows are washed too.
+  async function undoTidy(batchId: string) {
+    try {
+      const u = await api.tidyUndo(batchId);
+      await afterRename(u.id_map);
+      washRenamed(u.id_map);
+      toast("The old names are back.");
+    } catch (e: any) {
+      toastWarn(e?.message || "Couldn't put the old names back. Try Undo on the project's page.");
+    }
   }
   useEffect(() => { load(); }, []);
   // A song dropped on a project (or its Undo): show its new latest song.
@@ -329,7 +371,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
       setSkipped(r.skipped_dirs || 0);
       setFdaOk(r.full_disk_access);
       load();
-    } catch (e: any) { setErr(e.message || "Scan failed."); }
+    } catch (e: any) { setErr(e.message || "Couldn't finish looking for projects. Check your project folders are plugged in, then press Scan now again."); }
     finally { setScanning(false); }
   }
 
@@ -364,7 +406,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
       toast(found > 0
         ? `Found ${found} of ${item.missing_count} in ${item.name}. ${now.missing_count} still missing.`
         : `None of ${item.name}'s ${fmtCount(item.missing_count)} missing sample${item.missing_count === 1 ? "" : "s"} turned up in your folders.`,
-        { label: "Point me to them", onClick: () => onOpen(item.project_id) });
+        { label: "Point to them", onClick: () => onOpen(item.project_id) });
     } else if (now) {
       toast(`Found every missing sample in ${item.name} and backed it up.`);
     }
@@ -372,7 +414,8 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
 
   // Back up several projects in one run (the changed ones, or the ticked ones).
   const [changedBusy, setChangedBusy] = useState(false);
-  const backupChanged = () => backupMany(items.filter((i) => i.changed && i.missing_count === 0));
+  // the header's buttons work on what's shown: the open folder, or everything
+  const backupChanged = () => backupMany(pool.filter((i) => i.changed && i.missing_count === 0));
   async function backupMany(targets: LibraryItem[]) {
     if (!targets.length) return;
     setChangedBusy(true); setErr(null);
@@ -406,7 +449,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   // Fix everything at once: one backup pass over every project with missing samples,
   // auto-finding from your libraries + sources.
   async function fixAll() {
-    const targets = items.filter((i) => i.missing_count > 0);
+    const targets = pool.filter((i) => i.missing_count > 0);
     if (targets.length === 0) return;
     setFixingAll(true); setErr(null); setNotice(null);
     const before = targets.reduce((n, t) => n + t.missing_count, 0);
@@ -419,17 +462,18 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
       }
       const r = await api.library();
       setItems(r.projects);
-      const after = r.projects.reduce((n, t) => n + t.missing_count, 0);
+      const looked = new Set(targets.map((t) => t.project_id));
+      const after = r.projects.filter((t) => looked.has(t.project_id)).reduce((n, t) => n + t.missing_count, 0);
       const found = before - after;
       setNotice(found > 0
-        ? `Found ${fmtCount(found)} of ${fmtCount(before)} missing sample${before === 1 ? "" : "s"}.${after > 0 ? ` ${fmtCount(after)} still missing — open a project and point me to them.` : ""}`
-        : `None of the ${fmtCount(before)} missing sample${before === 1 ? "" : "s"} turned up in your folders — open a project and point me to them.`);
+        ? `Found ${fmtCount(found)} of ${fmtCount(before)} missing sample${before === 1 ? "" : "s"}.${after > 0 ? ` ${fmtCount(after)} still missing. Open a project and point to them yourself.` : ""}`
+        : `None of the ${fmtCount(before)} missing sample${before === 1 ? "" : "s"} turned up in your folders. Open a project and point to them yourself.`);
     } catch { setErr("Couldn't read your library after the search. Restart the app; your projects are untouched."); }
     finally { setFixingAll(false); }
   }
 
-  const attentionCount = items.filter((i) => i.missing_count > 0).length;
-  const changedItems = items.filter((i) => i.changed && i.missing_count === 0);
+  const attentionCount = pool.filter((i) => i.missing_count > 0).length;
+  const changedItems = pool.filter((i) => i.changed && i.missing_count === 0);
   const pins = usePins();
   const rated = items.map((i) => ratingOf(i.project_id)).join();
   // The list follows the search a beat behind the box: typing stays instant and the
@@ -448,7 +492,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   const statusCounts = useMemo(() => {
     return countStatuses(applyFilters(pool, dFilters, true));
   }, [pool, dFilters]);
-  const allCounts = useMemo(() => countStatuses(items), [items]);
+  const allCounts = useMemo(() => countStatuses(pool), [pool]);
   const dawOptions = useMemo(() => [...new Set(items.map((i) => i.daw || "").filter(Boolean))].sort(), [items]);
   const anyRated = rated.replace(/[0,]/g, "") !== "";
   // Genre and Year to browse by, counted over what the other filters leave
@@ -540,9 +584,12 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
         <TidyUndo projectId={it.project_id} tick={tidyTick} onUndone={afterRename} />
         <ProjectLabel item={it}
           onGenre={() => changeGenre([it])}
-          onOpenInDaw={() => openInDaw(it.path)}
+          onOpenInDaw={() => openInDaw(it.path, it.daw)}
+          onOpenStems={stemsOnly(it.daw) ? () => setDesk({ projectId: it.project_id, setId: null }) : undefined}
           onReveal={() => revealPath(it.path)}
-          more={[{ label: "Tidy names…", onClick: () => setTidyFor([it]) }]}
+          more={stemsOnly(it.daw)
+            ? [{ label: "These stems belong to a project…", onClick: () => setJoinFor(it) }]
+            : [{ label: "Tidy names…", onClick: () => setTidyFor([it]) }]}
           actions={(!it.backed_up || it.changed) && (
             <Button disabled={busy.has(it.project_id)} onClick={() => backupOne(it)}>
               {busy.has(it.project_id) ? "Backing up…" : "Back up now"}
@@ -552,12 +599,16 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
             // missing samples first: it's the thing that needs a decision
             ...(it.missing_count > 0 ? [{ key: "missing", label: "Missing samples", count: it.missing_count,
               content: <MissingSamples item={it} onChanged={load} /> }] : []),
-            { key: "songs", label: "Songs", content: <ProjectExports item={it} onChanged={load} onOpenStems={(setId) => setDesk({ projectId: it.project_id, setId })} /> },
+            { key: "songs", label: stemsOnly(it.daw) ? "Stems" : "Songs", content: <ProjectExports item={it} onChanged={load} onOpenStems={(setId) => setDesk({ projectId: it.project_id, setId })} /> },
             { key: "backups", label: "Backups", count: it.snapshot_count, content: it.backed_up
               ? <ProjectBackups projectName={it.name} projectPath={it.path} onFixed={load} />
               : <EmptyState pose="napping" title="No backups of this project yet" say="Nothing to guard yet.">Press Back up now at the top and the first one shows here.</EmptyState> },
           ]} />
         {tidyFor && <TidyNames items={tidyFor} onClose={() => setTidyFor(null)} onDone={tidyDone} />}
+        {joinFor && <StemFolderJoin item={joinFor} items={items} stems={joinFor.tracks ?? 0}
+          onClose={() => setJoinFor(null)}
+          onDone={() => { setJoinFor(null); onClose(); load(); }}
+          onUndone={() => load()} />}
       </div>
     );
   }
@@ -569,10 +620,11 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   return (
     <>
       <PageHeader title="Library"
-        subtitle={items.length === 0 ? "Click a project for its details and backups."
-          : <>{fmtCount(items.length)} project{items.length === 1 ? "" : "s"}: {statusSummary(allCounts)}. Click one for its details and backups.</>}
-        actions={attentionCount > 0 || changedItems.length > 0 ? (
+        subtitle={items.length === 0 ? "Your projects show here once Backups has looked for them."
+          : <>{folder && <><span className="lib-head__folder" title={folder.name}><span>{folder.name}</span>:</span> </>}{fmtCount(pool.length)} project{pool.length === 1 ? "" : "s"}{pool.length ? `, ${statusSummary(allCounts)}` : ""}.</>}
+        actions={(
           <>
+            <ScanMenu scope={scope} scanning={scanning} onScan={(where) => { setScope(where); void runScan(where); }} />
             {changedItems.length > 0 && (
               <Button variant={attentionCount > 0 ? "ghost" : undefined} onClick={backupChanged} disabled={changedBusy}
                 title="Back up the projects you've saved since their last backup">
@@ -586,16 +638,9 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
               </Button>
             )}
           </>
-        ) : undefined} />
+        )} />
 
-      <div className="lib-scan">
-        <span className="faint" style={{ fontSize: 12 }}>Look for projects in</span>
-        <select value={scope} onChange={(e) => setScope(e.target.value)} disabled={scanning} aria-label="Look for projects in">
-          {SCOPES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-        </select>
-        <Button variant="ghost" size="sm" onClick={() => runScan()} disabled={scanning}>
-          {scanning ? "Scanning…" : "Scan now"}
-        </Button>
+      {(showProgress || ((skipped > 0 || !fdaOk) && !scanning) || err) && <div className="lib-scan">
         {showProgress && (
           <div style={{ flexBasis: "100%", marginTop: 4 }}>
             {scan.phase === "searching" || (!scan.phase && scanning) ? (
@@ -642,10 +687,14 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
           </div>
         )}
         {err && <div className="sub" style={{ color: "var(--danger)", flexBasis: "100%", margin: 0, fontSize: 12 }}>{err}</div>}
-      </div>
+      </div>}
 
       {!loading && items.length > 0 && (
-        <FolderShelf open={folder?.id ?? null} onOpen={setFolder} projects={shelfProjects} />
+        <FolderShelf open={folder?.id ?? null} onOpen={setFolder} projects={shelfProjects}
+          more={(f) => {
+            const inIt = items.filter((i) => f.project_ids.includes(i.project_id));
+            return [{ label: "Tidy names…", onClick: () => setTidyFor(inIt), disabled: inIt.length === 0 }];
+          }} />
       )}
 
       {!loading && items.length > 0 && (
@@ -775,7 +824,8 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
       ) : items.length === 0 ? (
         <EmptyState pose="searching" title="No projects here yet" say="Empty crate. Let’s go digging."
           action={<Button size="sm" onClick={() => runScan()} disabled={scanning}>{scanning ? "Scanning…" : "Scan now"}</Button>}>
-          Pick where to look above, then scan. Backups finds every Ableton, FL Studio, Logic Pro, Studio One, Reaper, Audacity, Bitwig and DAWproject project in those folders, with the songs you exported from each.
+          Scan now looks in {scope === "home" ? `your whole ${osWords().computer}` : scope === "volumes" ? `your whole ${osWords().computer} and external drives` : "your project folders"}.
+          To look somewhere else, use the Scan menu at the top. Backups finds every Ableton, FL Studio, Logic Pro, Studio One, Reaper, Audacity, Bitwig and DAWproject project there, with the songs you exported from each.
         </EmptyState>
       ) : columns ? (
         <ColumnBrowse genres={browse.genres} years={browse.years} total={browse.total} inGenre={browse.inGenre}
@@ -801,7 +851,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                   onClick={openFromRow(openIt)}
                   onContextMenu={(e: React.MouseEvent) => openMenu(e, [
                     { label: "Show backups & details", onClick: openIt },
-                    { label: `Open in ${DAW_NAMES[it.daw ?? ""] ?? "its DAW"}`, onClick: () => openInDaw(it.path) },
+                    { label: openWord(it.daw), onClick: () => openInDaw(it.path, it.daw) },
                     { label: isPin ? "Unpin" : "Pin to the top", onClick: () => togglePin(it.project_id) },
                     "-", ...ratingMenu([it.project_id], ratingOf(it.project_id)), "-",
                     { label: it.genre ? "Change genre…" : "Set genre…", onClick: () => changeGenre([it]) },
@@ -859,7 +909,6 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
           const ownerBacked = list.filter((i) => i.backed_up).length;
           const rowProps = (it: LibraryItem) => {
             const working = busy.has(it.project_id);
-            const dawName = DAW_NAMES[it.daw ?? ""] ?? "its DAW";
             const openIt = () => onOpen(it.project_id);
             const action = it.missing_count > 0 ? (
               <Button variant="ghost" size="sm" disabled={working} onClick={(e) => { e.stopPropagation(); findSamples(it); }}
@@ -869,10 +918,10 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                 {rowErr[it.project_id] ? "Try again" : "Back up"}
               </Button>
             ) : (
-              <Button variant="quiet" size="sm" onClick={(e) => { e.stopPropagation(); openInDaw(it.path); }}>Open in {dawName}</Button>
+              <Button variant="ghost" size="sm" className="lib-open" onClick={(e) => { e.stopPropagation(); openInDaw(it.path, it.daw); }}>{openWord(it.daw)}</Button>
             );
             const items = [
-              { label: `Open in ${dawName}`, onClick: () => openInDaw(it.path) },
+              { label: openWord(it.daw), onClick: () => openInDaw(it.path, it.daw) },
               { label: "Show backups & details", onClick: openIt },
               { label: it.backed_up ? "Back up again" : "Back up", onClick: () => backupOne(it), disabled: working },
               { label: pins.includes(it.project_id) ? "Unpin" : "Pin to the top", onClick: () => togglePin(it.project_id) },
@@ -1012,7 +1061,9 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                         <Rating id={it.project_id} name={it.name} />
                         {it.latest_export && meta
                           ? <SongWave path={it.latest_export.path} meta={meta} />
-                          : <span className="lib-status col-trunc" title="No song exported from this project yet">No song yet</span>}
+                          : stemsOnly(it.daw)
+                            ? <span className="lib-status col-trunc" title="A folder of stems, with no full mix">Stems, no mix</span>
+                            : <span className="lib-status col-trunc" title="No song exported from this project yet">No song yet</span>}
                         <span className="lib-status col-num">{it.bpm ? Math.round(it.bpm) : "—"}</span>
                         {failed && !working ? (
                           <span className="lib-state lib-status--error" title={failed}>
@@ -1049,7 +1100,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
           <Icon name="music" size={15} />Drop the song on its project to link them. The file stays where it is.
         </div>
       )}
-      {picking && (() => {
+      <Exit>{picking && (() => {
         const allPinned = pickedItems.every((i) => pins.includes(i.project_id));
         const missing = pickedItems.filter((i) => i.missing_count > 0);
         return (
@@ -1065,7 +1116,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
               </Button>
             )}
             <Button size="sm" variant="ghost" onClick={() => setTidyFor(pickedItems)}
-              title="Give each picked song's versions, folder and exported songs matching names">
+              title="Rename each picked song's versions, folder and exports so they match">
               <Icon name="edit" size={13} /> Tidy names
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setPins(pickedItems.map((i) => i.project_id), !allPinned)}>
@@ -1082,20 +1133,9 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
             <button type="button" className="linkbtn pickbar__clear" onClick={() => setPicked(new Set())}>Clear</button>
           </div>
         );
-      })()}
+      })()}</Exit>
       {tidyFor && <TidyNames items={tidyFor} onClose={() => setTidyFor(null)} onDone={tidyDone} />}
     </>
-  );
-}
-
-// The small seal a row's status wears for a moment when its backup has just finished
-// and checked out: a green disc stamps in and the tick draws itself.
-function DoneSeal() {
-  return (
-    <svg className="doneseal" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <circle className="doneseal__disc" cx="8" cy="8" r="7" />
-      <path className="doneseal__tick" d="M4.6 8.3 l2.3 2.3 l4.5 -4.9" />
-    </svg>
   );
 }
 
@@ -1141,7 +1181,7 @@ function TidyUndo({ projectId, tick, onUndone }: {
       const r = await api.tidyUndo(batch!.id);
       setBatch(null);
       onUndone(r.id_map);
-    } catch (e: any) { setErr(e.message || "Couldn't put the names back."); }
+    } catch (e: any) { setErr(e.message || "Couldn't put the old names back. Press Undo again. If it still fails, use Help > Report a problem."); }
     finally { setBusy(false); }
   }
   return (
@@ -1149,6 +1189,59 @@ function TidyUndo({ projectId, tick, onUndone }: {
       <Icon name="check" size={15} />
       <span className="grow">{err ?? <>Names tidied {when}: {batch.count} renamed. Changed your mind?</>}</span>
       <Button size="sm" variant="ghost" onClick={undo} disabled={busy}>{busy ? "Putting back…" : "Undo"}</Button>
+    </div>
+  );
+}
+
+// "Scan ▾" by the page title: where to look for projects, and scan now. The choice is
+// remembered, so the next "Scan now" (here or on an empty Library) looks in the same place.
+function ScanMenu({ scope, scanning, onScan }: { scope: string; scanning: boolean; onScan: (where: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const btn = useRef<HTMLButtonElement | null>(null);
+  const list = useRef<HTMLDivElement | null>(null);
+  // The menu hangs from the button's right edge; when the button sits at the left of the
+  // page (the header wrapped), that would run behind the side bar, so it opens rightwards.
+  const [toRight, setToRight] = useState(false);
+  useLayoutEffect(() => {
+    if (!open || !btn.current || !list.current) return;
+    const page = btn.current.closest("main")?.getBoundingClientRect().left ?? 0;
+    setToRight(btn.current.getBoundingClientRect().right - list.current.offsetWidth < page + 8);
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    list.current?.querySelector<HTMLButtonElement>("[aria-checked=true]")?.focus();
+    const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); btn.current?.focus(); return; }
+    if (e.key === "Tab") { setOpen(false); return; }
+    const all = Array.from(list.current?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+    const at = all.indexOf(document.activeElement as HTMLButtonElement);
+    const next = e.key === "ArrowDown" ? (at + 1) % all.length : e.key === "ArrowUp" ? (at - 1 + all.length) % all.length : -1;
+    if (next >= 0) { e.preventDefault(); all[next].focus(); }
+  };
+  const label = SCOPES.find((s) => s.key === scope)?.label ?? SCOPES[0].label;
+  return (
+    <div ref={ref} className={`lib-menu${open ? " lib-menu--open" : ""}`}>
+      <button ref={btn} type="button" className="btn btn--ghost scanmenu__btn" aria-haspopup="menu" aria-expanded={open}
+        disabled={scanning} title={`Look for new projects in: ${label}`} onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => { if (e.key === "ArrowDown" && !open) { e.preventDefault(); setOpen(true); } }}>
+        <Icon name="refresh" size={14} />{scanning ? "Scanning…" : "Scan"}<Icon name="chevronDown" size={13} />
+      </button>
+      {open && (
+        <div ref={list} className={`lib-menu__list scanmenu__list${toRight ? " scanmenu__list--right" : ""}`} role="menu" aria-label="Look for projects in" onKeyDown={onKey}>
+          <div className="scanmenu__head" aria-hidden>Look for projects in</div>
+          {SCOPES.map((s) => (
+            <button key={s.key} type="button" role="menuitemradio" aria-checked={s.key === scope} className="lib-menu__item scanmenu__item"
+              onClick={() => { setOpen(false); btn.current?.focus(); onScan(s.key); }}>
+              <span className="scanmenu__tick" aria-hidden>{s.key === scope && <Icon name="check" size={13} />}</span>{s.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

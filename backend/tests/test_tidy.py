@@ -68,6 +68,31 @@ def test_suggested_name_drops_version_words():
     assert tidy.suggest_base("v2") == "v2"  # never empty
 
 
+def test_suggested_name_drops_dates_tempos_keys_and_copy_numbers():
+    s = tidy.suggest_base
+    assert s("glasshouse_final_v3 (2)") == "Glasshouse"
+    assert s("Night Drive 124bpm Fmin 2026-10-03") == "Night Drive"
+    assert s("2026-10-03 Night Drive") == "Night Drive"
+    assert s("Night Drive 07.10.26 F#m") == "Night Drive"
+    assert s("dark_techno_idea_v12_FINAL_FINAL") == "Dark Techno Idea"
+    assert s("Basement Jam (Autosaved 4)") == "Basement Jam"
+    assert s("Song (copy)") == "Song"
+    assert s("Sunset mixdown") == "Sunset"
+    assert s("night.drive master") == "Night Drive"
+    assert s("Sunrise Project") == "Sunrise"
+    assert s("Project") == "Project"
+
+
+def test_capitals_only_fixed_when_all_small_or_all_capitals():
+    s = tidy.suggest_base
+    assert s("night drive") == "Night Drive"
+    assert s("NIGHT DRIVE") == "Night Drive"
+    assert s("DJ Shadow Tribute") == "DJ Shadow Tribute"
+    assert s("iPhone beat") == "iPhone beat"
+    assert s("Club Mix") == "Club Mix"
+    assert s("808 dreams") == "808 Dreams"
+
+
 def test_extra_words_keep_what_the_export_adds():
     assert tidy._extra_words("glasshouse final 3 master", "Glasshouse FINAL 3") == "master"
     assert tidy._extra_words("Glasshouse v2 - club edit", "Glasshouse v2") == "club edit"
@@ -87,11 +112,17 @@ def test_preview_lists_folder_versions_and_songs_and_changes_nothing(tmp_path):
     folder = _rows(plan, "folder")[0]
     assert folder["status"] == "same"  # "Glasshouse Project" is already right
     versions = {r["old_name"]: r["new_name"] for r in _rows(plan, "version")}
-    # the numbers people already wrote are kept
+    # counted from the oldest: v1 is the first one made
+    assert versions == {"Glasshouse v2.als": "Glasshouse v1.als",
+                        "Glasshouse FINAL 3.als": "Glasshouse v2.als"}
+    songs = {r["old_name"]: r["new_name"] for r in _rows(plan, "song")}
+    assert songs == {"glasshouse final 3 master.wav": "Glasshouse v2 (master).wav"}
+    # or the numbers people already wrote are kept
+    plan = c.post("/api/tidy/preview", json={"project_ids": [lib["Glasshouse v2"]["project_id"]],
+                                             "numbers": "keep"}).json()
+    versions = {r["old_name"]: r["new_name"] for r in _rows(plan, "version")}
     assert versions == {"Glasshouse v2.als": "Glasshouse v2.als",
                         "Glasshouse FINAL 3.als": "Glasshouse v3.als"}
-    songs = {r["old_name"]: r["new_name"] for r in _rows(plan, "song")}
-    assert songs == {"glasshouse final 3 master.wav": "Glasshouse v3 (master).wav"}
     assert sorted(p.name for p in proj.rglob("*")) == before
 
 
@@ -340,8 +371,8 @@ def test_versions_sort_naturally_with_ten_or_more(tmp_path):
                                              "names": {}}).json()
     new = [r["new_name"] for r in _rows(plan, "version")]
     gid = plan["groups"][0]["id"]
-    assert plan["groups"][0]["name"] == "loop"
-    assert new[0] == "loop v01.als" and new[-1] == "loop v11.als"
+    assert plan["groups"][0]["name"] == "Loop"
+    assert new[0] == "Loop v01.als" and new[-1] == "Loop v11.als"
     assert new == sorted(new)
     assert gid
 
@@ -374,4 +405,55 @@ def test_numbers_kept_or_counted():
 
 def test_suggestion_prefers_the_spelling_with_capitals():
     assert tidy._best_spelling(["freaky", "Freaky"]) == "Freaky"
-    assert tidy._best_spelling(["night drive"]) == "night drive"
+    assert tidy._best_spelling(["night drive"]) == "Night Drive"  # all small letters: fixed
+    assert tidy._best_spelling(["NIGHT DRIVE v2", "night drive"]) == "Night Drive"
+    assert tidy._best_spelling(["night drive", "Night drive"]) == "Night drive"  # theirs
+
+
+def test_song_titles_for_albums_and_soundcloud():
+    from ablebackup.names import song_title as t
+    assert t("glasshouse final 3 master") == "Glasshouse"
+    assert t("Glasshouse v2 (master)") == "Glasshouse"
+    assert t("Night Drive - master 2026-10-03") == "Night Drive"
+    assert t("Glasshouse (Club Edit)") == "Glasshouse (Club Edit)"
+    assert t("Episode 101") == "Episode 101"  # a number in the title stays
+    assert t("Freaky 3 master") == "Freaky 3"
+    assert t("Who I Am") == "Who I Am"
+    assert t("master") == "master"  # never empty
+
+
+def test_album_song_titles_are_clean_unless_you_typed_one(tmp_path):
+    from ablebackup.albums import Albums
+    store = Albums(tmp_path / "albums.db")
+    a = store.create("EP")
+    f = tmp_path / "glasshouse final 3 master.wav"
+    f.write_bytes(b"RIFF")
+    g = tmp_path / "night_drive 124bpm.wav"
+    g.write_bytes(b"RIFF")
+    store.add_songs(a["id"], [{"path": str(f), "title": f.stem}, {"path": str(g), "title": "My Night"}])
+    assert [s["title"] for s in store.get(a["id"])["songs"]] == ["Glasshouse", "My Night"]
+
+
+def test_folder_named_after_the_song_even_with_copy_words(tmp_path):
+    src = tmp_path / "music"
+    d = src / "Basement Jam"
+    write_als(d / "Basement Jam v2 copy.als", [])
+    c = _client(tmp_path)
+    lib = _scan(c, src)
+    plan = c.post("/api/tidy/preview", json={"project_ids": [lib["Basement Jam v2 copy"]["project_id"]]}).json()
+    folder = _rows(plan, "folder")[0]
+    assert folder["status"] == "same" and not folder["note"]
+    assert _rows(plan, "version")[0]["new_name"] == "Basement Jam.als"
+
+
+def test_clean_names_keep_real_words():
+    from ablebackup.names import song_base, song_title
+    assert song_title("Brand New") == "Brand New"
+    assert song_title("The New") == "The New"
+    assert song_title("Prelude in C Major") == "Prelude in C Major"
+    assert song_title("Concerto in D minor") == "Concerto in D minor"
+    assert song_title("DNA") == "DNA"
+    assert song_base("SOS_final") == "SOS"
+    assert song_title("Night Drive Amin") == "Night Drive"
+    assert song_title("Night Drive 124bpm C Major") == "Night Drive"
+    assert song_title("NIGHT DRIVE") == "Night Drive"

@@ -47,6 +47,11 @@
   display: flex; align-items: center; gap: 12px; padding: 12px 20px 8px; border-bottom: 1px solid var(--border);
 }
 .tidy__ghead input[type="text"] { flex: 0 1 280px; font-weight: 600; }
+.tidy__group--off .tidy__row { opacity: 0.5; }
+.tidy__already {
+  display: flex; align-items: center; gap: 8px; min-width: 0; padding: 12px 20px; font-size: 13px;
+}
+.tidy__already svg { flex-shrink: 0; color: var(--accent-2); }
 .tidy__empty { padding: 22px 20px; font-size: 13px; }
 .tidy__err {
   display: flex; align-items: center; gap: 8px; margin: 10px 20px 0; padding: 9px 12px; font-size: 13px;

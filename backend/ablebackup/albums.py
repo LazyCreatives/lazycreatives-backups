@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import songcheck
+from .names import song_title
 
 LOSSLESS = {".wav", ".aiff", ".aif", ".flac", ".aifc"}
 AUDIO = LOSSLESS | {".mp3", ".aac", ".m4a", ".ogg", ".wma", ".opus"}
@@ -122,6 +123,15 @@ class Albums:
             if "soundcloud" not in cols:
                 # where Uploader last put the album on SoundCloud (a playlist), as JSON
                 con.execute("ALTER TABLE albums ADD COLUMN soundcloud TEXT NOT NULL DEFAULT ''")
+            if not con.execute("SELECT 1 FROM meta WHERE key = 'titles_cleaned'").fetchone():
+                # Once: songs added before titles were cleaned get the clean title. Done
+                # here a single time, so a title later set to the file name stays.
+                for r in con.execute("SELECT rowid, title, path FROM album_songs").fetchall():
+                    if r["title"] == Path(r["path"]).stem and song_title(r["title"]) != r["title"]:
+                        con.execute("UPDATE album_songs SET title = ? WHERE rowid = ?",
+                                    (song_title(r["title"]), r["rowid"]))
+                con.execute("INSERT OR IGNORE INTO meta(key, value) VALUES ('titles_cleaned', '1')")
+                con.commit()
             if write:
                 con.execute("BEGIN IMMEDIATE")
             yield con
@@ -224,7 +234,7 @@ class Albums:
                 st = _stat(path)
                 con.execute("INSERT INTO album_songs(album_id, pos, path, title, project, genre, added_at, size, mtime) "
                             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            (album_id, pos, path, (s.get("title") or "").strip() or Path(path).stem,
+                            (album_id, pos, path, _title(s.get("title"), path),
                              (s.get("project") or "").strip(), (s.get("genre") or "").strip(), now,
                              st.st_size if st else None, st.st_mtime if st else None))
         return self.get(album_id)
@@ -254,7 +264,7 @@ class Albums:
         next song, or whether you've marked it ready yourself (None = let the app judge)."""
         sets, args = [], []
         if title is not None:
-            sets.append("title = ?"); args.append(title.strip() or Path(path).stem)
+            sets.append("title = ?"); args.append(title.strip() or song_title(Path(path).stem))
         if gapless_after is not None:
             sets.append("gapless_after = ?"); args.append(int(bool(gapless_after)))
         if ready != "keep":
@@ -387,14 +397,23 @@ def follow_renames(store: Albums, backups_db: Path | None,
             if con.execute("SELECT 1 FROM album_songs WHERE album_id = ? AND path = ?", (aid, new)).fetchone():
                 con.execute("DELETE FROM album_songs WHERE album_id = ? AND path = ?", (aid, old))
                 continue
-            # a title that was only the old file name follows the new name; your own stays
-            title = Path(new).stem if s["title"] == Path(old).stem else s["title"]
+            # a title that was only the old file name (or its clean name) follows the new
+            # name; your own stays
+            title = (song_title(Path(new).stem)
+                     if s["title"] in (Path(old).stem, song_title(Path(old).stem)) else s["title"])
             con.execute("UPDATE album_songs SET path = ?, title = ?, size = ?, mtime = ? "
                         "WHERE album_id = ? AND path = ?",
                         (new, title, nst.st_size if nst else None, nst.st_mtime if nst else None, aid, old))
             if not Path(old).exists():
                 con.execute("UPDATE OR IGNORE song_checks SET path = ? WHERE path = ?", (new, old))
     return True
+
+
+def _title(title: str | None, path: str) -> str:
+    """A song's title on an album: the one given, cleaned when it is only the file's
+    name ("glasshouse final 3 master" -> "Glasshouse"); your own title stays."""
+    t = (title or "").strip()
+    return song_title(Path(path).stem) if not t or t == Path(path).stem else t
 
 
 def _stat(path: str) -> os.stat_result | None:

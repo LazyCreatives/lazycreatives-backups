@@ -222,3 +222,28 @@ def test_format_folders_are_not_makers(tmp_path):
         (tmp_path / folder / f"Thing{folder[:2]}.vst3").mkdir()
     found = plugins.scan(folders=[tmp_path], daws={"paths": {}, "names": {}})
     assert [r["maker"] for r in found["plugins"]] == ["", "", ""]
+
+
+def test_api_counts_uses_again_only_when_something_changed(tmp_path, monkeypatch):
+    """Which projects use each plug-in is kept between visits, and worked out again
+    once a project's plug-ins change."""
+    plug = tmp_path / "plug"
+    (plug / "Vital.vst3").mkdir(parents=True)
+    monkeypatch.setattr(plugins, "standard_folders", lambda: [])
+    app = create_app(token="", db_path=tmp_path / "c.db")
+    c = TestClient(app)
+    c.put("/api/plugins/folders", json={"folders": [str(plug)]})
+    cat = app.state.catalog
+    cat.upsert_discovered([{"project_id": "p1", "name": "Night", "path": str(tmp_path / "Night.als"),
+                            "dir": str(tmp_path), "daw": "ableton", "owner": "me", "size": 1, "mtime": 1.0,
+                            "missing_count": 0, "plugins": '["Vital"]'}], "t")
+    calls = []
+    real = plugins.used_in
+    monkeypatch.setattr(plugins, "used_in", lambda rows, projects: (calls.append(1), real(rows, projects))[1])
+    first = c.get("/api/plugins").json()
+    assert first["plugins"][0]["used_in"] == 1
+    assert c.get("/api/plugins").json() == first and len(calls) == 1  # kept
+    cat.upsert_discovered([{"project_id": "p1", "name": "Night", "path": str(tmp_path / "Night.als"),
+                            "dir": str(tmp_path), "daw": "ableton", "owner": "me", "size": 1, "mtime": 2.0,
+                            "missing_count": 0, "plugins": '["Diva"]'}], "t")
+    assert c.get("/api/plugins").json()["plugins"][0]["used_in"] == 0 and len(calls) == 2

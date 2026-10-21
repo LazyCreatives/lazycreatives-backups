@@ -6,10 +6,12 @@ import { toProjectFromLibrary, SLOTH_BLUE } from "./types";
 import type { LibraryItem } from "../../types";
 import { NO_FILTERS, applyFilters, type LibFilters } from "../../libraryFilter";
 import { useSmartCrates } from "../../smart";
-import { inFolder, useFolders } from "../../projectFolders";
+import { useFolders } from "../../projectFolders";
 import { genreColor, genreColorsVersion } from "../../look";
 import { ratingOf, useRatings } from "../../marks";
-import { makeApi } from "../../api";
+import { lastLibrary, makeApi } from "../../api";
+import { fmtCount } from "../../format";
+import { Icon } from "../../components/Icon";
 import { useCrates } from "./hooks/useCrates";
 import { CrateControls } from "./CrateControls";
 import { CrateShelf } from "./CrateShelf";
@@ -18,6 +20,9 @@ import { EmptyCrate } from "./EmptyCrate";
 import "./crate.css";
 
 const api = makeApi();
+
+// Folder crates shown before the genre crates; the rest are behind "All folders…".
+const FOLDER_SHELF = 8;
 
 // Top-level crate-digger state machine (shelf ↔ dig). Sources your WHOLE scanned
 // collection (/api/library) so everything you've scanned is diggable, enriched with
@@ -45,9 +50,10 @@ export function CrateView({ openKey, onOpenKey, onCloseKey, onOpenProject }: {
   const [manualReduce, setManualReduce] = useState(false);
   const reduce = !!osReduce || manualReduce;
 
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [items, setItems] = useState<LibraryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const kept = lastLibrary();  // the last load, drawn at once while a fresh copy loads
+  const [projects, setProjects] = useState<Project[]>(() => kept?.projects.map(toProjectFromLibrary) ?? []);
+  const [items, setItems] = useState<LibraryItem[]>(() => kept?.projects ?? []);
+  const [loading, setLoading] = useState(kept === null);
   useEffect(() => {
     let alive = true;
     api.library()
@@ -78,13 +84,23 @@ export function CrateView({ openKey, onOpenKey, onCloseKey, onOpenProject }: {
 
   // Your folders (the app's own, made in the Library): one crate each
   const folders = useFolders();
-  const folderCrates: CrateGroup[] = useMemo(() => {
-    const q = search.trim().toLowerCase();
+  const everyFolder: CrateGroup[] = useMemo(() => {
+    // looked up by id: with thousands of folders, sifting every project for each was slow
+    const at = new Map(items.map((i, n) => [i.project_id, n]));
     return folders.map((f) => {
-      const list = inFolder(items, f).map(toProjectFromLibrary).filter((p) => !q || p.name.toLowerCase().includes(q));
+      const list = f.project_ids.flatMap((id) => at.get(id) ?? []).sort((a, b) => a - b).map((n) => toProjectFromLibrary(items[n]));
       return { key: `folder:${f.id}`, label: f.name, accent: SLOTH_BLUE, projects: list, count: list.length };
     }).filter((c) => c.count > 0);  // an empty folder has nothing to dig through
-  }, [folders, items, search]);
+  }, [folders, items]);
+  // on the shelf, the project search narrows each folder too
+  const folderCrates: CrateGroup[] = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return everyFolder;
+    return everyFolder.map((c) => {
+      const list = c.projects.filter((p) => p.name.toLowerCase().includes(q));
+      return { ...c, projects: list, count: list.length };
+    }).filter((c) => c.count > 0);
+  }, [everyFolder, search]);
 
   const [active, setActive] = useKept("active");
   const [digSort, setDigSort] = useKept("digSort");
@@ -95,15 +111,26 @@ export function CrateView({ openKey, onOpenKey, onCloseKey, onOpenProject }: {
     openKey === "__all__"
       ? { key: "__all__", label: "All records", accent: SLOTH_BLUE, projects, count: projects.length }
       : crates.find((c) => c.key === openKey) ?? smart.find((c) => c.key === openKey)
-        ?? folderCrates.find((c) => c.key === openKey) ?? null;
-  const level: "shelf" | "dig" = openGroup ? "dig" : "shelf";
+        ?? folderCrates.find((c) => c.key === openKey) ?? everyFolder.find((c) => c.key === openKey) ?? null;
+  const level: "shelf" | "folders" | "dig" = openGroup ? "dig" : openKey === "__folders__" ? "folders" : "shelf";
+  const [folderSearch, setFolderSearch] = useState("");
+  const allFolders = useMemo(() => {
+    const q = folderSearch.trim().toLowerCase();
+    return q ? everyFolder.filter((c) => c.label.toLowerCase().includes(q)) : everyFolder;
+  }, [everyFolder, folderSearch]);
+  const folderWord = (n: number) => `${fmtCount(n)} folder${n === 1 ? "" : "s"}`;
 
+  // a crate opened from "All folders…" goes back there, not to the shelf
+  const fromFolders = useRef(false);
   function open(key: string) {
     triggerRef.current = document.activeElement as HTMLElement;
+    fromFolders.current = openKey === "__folders__" && key !== "__folders__";
     setActive(0);
     onOpenKey(key);
   }
   function back() {
+    if (level === "dig" && fromFolders.current) { fromFolders.current = false; onOpenKey("__folders__"); return; }
+    if (level === "folders") setFolderSearch("");
     onCloseKey();
     const t = triggerRef.current;
     requestAnimationFrame(() => t?.focus?.());
@@ -130,17 +157,35 @@ export function CrateView({ openKey, onOpenKey, onCloseKey, onOpenProject }: {
               : <>
                   {folderCrates.length > 0 && <>
                     <div className="crate-section"><h2>Your folders</h2><span>Made in the Library. Your files stay where they are.</span></div>
-                    <CrateShelf groups={folderCrates} onOpen={open} reduce={reduce} label="Your folders" />
+                    <CrateShelf groups={folderCrates.slice(0, FOLDER_SHELF)} onOpen={open} reduce={reduce} label="Your folders"
+                      more={folderCrates.length > FOLDER_SHELF
+                        ? { title: "All folders…", count: folderWord(folderCrates.length), onOpen: () => open("__folders__") } : undefined} />
                   </>}
                   {smart.length > 0 && <>
                     <div className="crate-section"><h2>Smart crates</h2><span>Saved from the Library's filters. They fill themselves.</span></div>
                     <CrateShelf groups={smart} onOpen={open} reduce={reduce} label="Smart crates" />
                   </>}
                   {(smart.length > 0 || folderCrates.length > 0) && <>
-                    <div className="crate-section"><h2>{groupBy === "genre" ? "By genre" : groupBy === "daw" ? "By music app" : groupBy === "tempo" ? "By tempo" : "By recency"}</h2></div>
+                    <div className="crate-section"><h2>{groupBy === "genre" ? "By genre" : groupBy === "daw" ? "By DAW" : groupBy === "tempo" ? "By tempo" : "By recency"}</h2></div>
                   </>}
                   <CrateShelf groups={crates} onOpen={open} reduce={reduce} />
                 </>}
+          </motion.div>
+        ) : level === "folders" ? (
+          <motion.div key="folders" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduce ? 0.12 : DUR.base }}>
+            <div className="dig-header">
+              <button className="btn btn--ghost btn--sm" onClick={back} aria-label="Back to crates" autoFocus><Icon name="arrowLeft" size={14} />Crates</button>
+              <h2 className="dig-title">Your folders</h2>
+              <span className="faint mono">{folderWord(allFolders.length)}</span>
+              <input className="crate-search grow" type="text" placeholder="Search folders…" value={folderSearch}
+                onChange={(e) => setFolderSearch(e.target.value)} aria-label="Search folders" spellCheck={false} data-find
+                onKeyDown={(e) => { if (e.key === "Escape" && folderSearch) { e.stopPropagation(); setFolderSearch(""); } }} />
+            </div>
+            {allFolders.length === 0
+              ? <EmptyCrate searching title="No folders match">
+                  Try fewer letters, or <button className="linkbtn" onClick={() => setFolderSearch("")}>clear the search</button>.
+                </EmptyCrate>
+              : <CrateShelf groups={allFolders} onOpen={open} reduce={reduce} label="Your folders" />}
           </motion.div>
         ) : (
           <motion.div key="dig" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduce ? 0.12 : DUR.base }}>

@@ -9,9 +9,9 @@
 .welcome__head .lc-brand { padding: 0; }
 .welcome__count { color: var(--text-faint); font-size: 12px; white-space: nowrap; }
 .welcome__bar { display: flex; gap: 6px; margin-bottom: 24px; }
-.welcome__seg { height: 3px; flex: 1; border-radius: 2px; background: var(--surface-3); transition: background 0.2s; }
+.welcome__seg { height: 3px; flex: 1; border-radius: 2px; background: var(--surface-3); transition: background var(--dur-base); }
 .welcome__seg--on { background: var(--accent); }
-.welcome__body { min-height: 230px; animation: welcomeIn 0.18s ease-out; }
+.welcome__body { min-height: 230px; animation: welcomeIn var(--dur-base) var(--ease-glide); }
 .welcome__body > h1 { margin: 0 0 6px; }
 .welcome__sub { margin: 0 0 20px; line-height: 1.55; }
 .welcome__foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); }

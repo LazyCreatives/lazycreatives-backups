@@ -13,7 +13,15 @@ function token() {
   return (window as any).ablebackup?.token ?? "";
 }
 
+export type LibraryList = { projects: LibraryItem[]; owners: string[]; count: number; unmatched_songs?: number };
+let libraryAsk: Promise<LibraryList> | null = null;
+let lastLibraryList: LibraryList | null = null;
+/** The library as last loaded, to draw a screen straight away while a fresh copy
+ *  loads (null before the first load). */
+export function lastLibrary(): LibraryList | null { return lastLibraryList; }
+
 async function req(method: string, path: string, body?: unknown) {
+  if (method !== "GET") libraryAsk = null;  // a change: the next ask loads the library afresh
   let res: Response;
   try {
     res = await fetch(base() + path, {
@@ -92,8 +100,15 @@ export function makeApi() {
     async scanMac(scope: string, findMissing = false): Promise<{ projects: ProjectSummary[]; scope: string; full_disk_access: boolean; skipped_dirs: number; skipped_examples: string[] }> {
       return req("POST", "/api/scan", { scope, find_missing: findMissing });
     },
-    async library(): Promise<{ projects: LibraryItem[]; owners: string[]; count: number; unmatched_songs?: number }> {
-      return req("GET", "/api/library");
+    // Every screen that asks at the same moment shares one answer (the list is big
+    // with thousands of projects), and the last answer is kept: see lastLibrary.
+    async library(): Promise<LibraryList> {
+      if (!libraryAsk) {
+        libraryAsk = req("GET", "/api/library")
+          .then((r: LibraryList) => { lastLibraryList = r; return r; })
+          .finally(() => { libraryAsk = null; });
+      }
+      return libraryAsk;
     },
     // Correct projects' genre; null goes back to what the app guessed.
     async setGenre(projectIds: string[], genre: string | null): Promise<{ changed: number; relearned?: number }> {
@@ -173,6 +188,13 @@ export function makeApi() {
     },
     async stemPack(projectId: string, setId: string, target: string): Promise<{ job_id: string }> {
       return req("POST", "/api/stems/pack", { project_id: projectId, set_id: setId, target });
+    },
+    // A stems-only folder whose stems belong to a project after all (only links change).
+    async joinStemFolder(projectId: string, targetId: string): Promise<{ moved: number; project: string; token: string }> {
+      return req("POST", "/api/stem-folders/join", { project_id: projectId, target_id: targetId });
+    },
+    async undoJoinStemFolder(token: string): Promise<{ ok: boolean }> {
+      return req("POST", "/api/stem-folders/join/undo", { token });
     },
     async exportFolders(): Promise<{ folders: string[]; found_folders?: string[]; ignored?: string[]; uploader_folders: string[] }> {
       return req("GET", "/api/exports/folders");

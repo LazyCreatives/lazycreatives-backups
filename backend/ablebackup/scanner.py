@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from ablebackup.daws.base import empty_meta, parse_with_meta
-from ablebackup.daws.registry import (DAW_REGISTRY, adapter_for_path, ignored_file,
+from ablebackup.daws.registry import (DAW_REGISTRY, STEM_FOLDERS, adapter_for_path, ignored_file,
                                       package_extensions)
+from ablebackup.daws.stemfolder import StemFolderFinder, discover_stem_folders
 from ablebackup.models import FileRef, ProjectScan, plausible_bpm
 from ablebackup.resolver import resolve_refs
 
@@ -111,8 +112,11 @@ def find_projects(roots: list[Path]) -> list[Path]:
     out: list[Path] = []
     paths = [Path(r) for r in roots]
     for adapter in DAW_REGISTRY:
-        out.extend(adapter.discover_projects(paths))
-    return out
+        if adapter is not STEM_FOLDERS:
+            out.extend(adapter.discover_projects(paths))
+    exts = tuple(e.lower() for a in DAW_REGISTRY for e in a.extensions)
+    skip = set().union(*(a.skip_dirs() for a in DAW_REGISTRY))
+    return out + discover_stem_folders(paths, exts, package_extensions(), skip, out)
 
 
 def find_als(roots: list[Path]) -> list[Path]:
@@ -141,6 +145,7 @@ def find_projects_progress(roots: list[Path], progress: ProgressCb = None,
     for a in DAW_REGISTRY:
         skip |= a.skip_dirs()
     out: list[Path] = []
+    stem_folders = StemFolderFinder()  # folders of stems with no project file, picked at the end
     dirs_seen = 0
     skipped = 0
     denied: list[str] = []
@@ -160,12 +165,16 @@ def find_projects_progress(roots: list[Path], progress: ProgressCb = None,
             out.extend(Path(dirpath) / d for d in pkgs)
             dirnames[:] = _keep_dirs([d for d in dirnames if d not in pkgs], skip)
             dirs_seen += 1
+            found_here = 0
             for fn in filenames:
                 if fn.lower().endswith(exts) and not ignored_file(Path(dirpath) / fn):
                     out.append(Path(dirpath) / fn)
+                    found_here += 1
+            stem_folders.visit(dirpath, filenames, found_here)
             if progress and dirs_seen % 250 == 0:
                 progress({"type": "scan_searching", "dirs": dirs_seen,
                           "found": len(out), "skipped": skipped})
+    out += stem_folders.finish(out)
     if stats is not None:
         stats["skipped_dirs"] = skipped
         stats["skipped_examples"] = denied
@@ -229,7 +238,9 @@ def _resolve_parsed(project_path: Path, raw_refs: list[FileRef], locate,
     """Finish a project the parser already produced raw refs for: resolve against the
     filesystem and assemble the ProjectScan. This is the cheap, parent-side half."""
     adapter = adapter_for_path(project_path)
-    project_dir = project_path.parent
+    # A stems-only folder is its own project folder; every other project lives in
+    # the folder its file (or Logic package) sits in.
+    project_dir = project_path if getattr(adapter, "folder_is_project_dir", False) else project_path.parent
     stat = project_path.stat()
     refs = resolve_refs(raw_refs, project_dir, locate=locate, overrides=overrides)
     meta = meta or empty_meta()

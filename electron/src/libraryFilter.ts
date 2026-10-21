@@ -53,12 +53,12 @@ export function countStatuses(items: Pick<LibraryItem, "missing_count" | "change
   return c;
 }
 
-// One line for the Library heading: "28 safe · 3 changed · 3 missing samples · 2 not backed up yet".
+// One line for the Library heading: "28 safe · 3 changed · 3 with missing samples · 2 not backed up yet".
 export function statusSummary(c: StatusCounts): string {
   return [
     `${fmtCount(c.safe)} safe`,
     c.changed ? `${fmtCount(c.changed)} changed` : "",
-    c.missing ? `${fmtCount(c.missing)} missing samples` : "",
+    c.missing ? `${fmtCount(c.missing)} with missing samples` : "",
     c.none ? `${fmtCount(c.none)} not backed up yet` : "",
   ].filter(Boolean).join(" · ");
 }

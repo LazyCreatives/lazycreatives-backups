@@ -65,12 +65,12 @@ export function Nav({ tab, onNavigate, busy, flowActive, onOpenRecent, openId }:
   );
 }
 
-// Opens the narrow window that sits beside your music program (see companion.js).
+// Opens the narrow window that sits beside your DAW (see companion.js).
 // Same in Backups and Uploader.
 export function NarrowWindowButton() {
   return (
     <button type="button" className="nav__item nav__narrow" onClick={openCompanion} aria-label="Narrow window"
-      title={`A narrow window to keep beside your music program (${COMPANION_KEYS})`}>
+      title={`A narrow window to keep beside your DAW (${COMPANION_KEYS})`}>
       <Icon name="narrow" className="nav__icon" />
       <span className="nav__label">Narrow window</span>
     </button>

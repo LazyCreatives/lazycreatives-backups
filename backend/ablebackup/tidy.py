@@ -35,6 +35,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ablebackup import exports as ex
+from ablebackup import names as nm
 from ablebackup.daws.registry import adapter_for_path
 
 # How versions are numbered: "Glasshouse v2" or "Glasshouse v02".
@@ -42,10 +43,9 @@ VERSION_STYLES = {"v": "{base} v{n}", "v0": "{base} v{n:02d}"}
 # How an exported song's extra words are added: "Glasshouse v2 (master)".
 SONG_STYLES = {"paren": "{name} ({extra})", "dash": "{name} - {extra}"}
 
-# Words that only say "which save this was", dropped from a suggested song name and
-# from what an export adds to its project's name.
-_NOISE = re.compile(r"^(v\d+|\d+|final|finished|done|latest|new|copy|autosaved|"
-                    r"export(ed)?|render(ed)?|bounce[d]?|wip|draft|version)$", re.I)
+# Words that only say "which save this was" or "which render", and how names are
+# cleaned: the shared rules in names.py.
+_NOISE = nm.NOISE
 _BAD_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 _MAX_NAME = 180
 
@@ -55,20 +55,8 @@ class TidyError(Exception):
 
 
 # ---- names --------------------------------------------------------------------
-def _words(s: str) -> list[str]:
-    s = re.sub(r"\(autosaved[^)]*\)", " ", s, flags=re.I)
-    s = re.sub(r"[\[(]\s*\d{1,4}\s*(bpm)?\s*[\])]", " ", s, flags=re.I)
-    return [w for w in re.split(r"[\s_]+", s) if w]
-
-
-def suggest_base(name: str) -> str:
-    """The song's name without the version words on the end:
-    "Glasshouse FINAL 3" -> "Glasshouse", "Night Drive v2 copy" -> "Night Drive"."""
-    words = _words(name)
-    while words and (_NOISE.match(words[-1]) or words[-1] in ("-", "–")):
-        words.pop()
-    base = " ".join(words).strip(" -_–")
-    return base or name.strip()
+_words = nm.words
+suggest_base = nm.song_base  # "Glasshouse FINAL 3" -> "Glasshouse", "night drive" -> "Night Drive"
 
 
 def version_number(name: str) -> int | None:
@@ -100,12 +88,14 @@ def numbering(members: list[dict], keep: bool) -> list[int]:
 
 
 def _best_spelling(names: list[str]) -> str:
-    """Of the versions' names (newest first), the newest one written with capitals:
-    "freaky 3 final" and "Freaky 2" suggest "Freaky"."""
+    """Of the versions' names (newest first), the newest one written with the person's
+    own mix of capitals: "freaky 3 final" and "Freaky 2" suggest "Freaky". When none
+    has one, the newest with its capitals fixed."""
     for n in names:
-        if any(c.isupper() for c in n):
-            return n
-    return names[0]
+        base = nm.base_words(n)
+        if base and nm.has_own_capitals(base):
+            return base
+    return suggest_base(names[0])
 
 
 def song_key(name: str) -> str:
@@ -212,7 +202,7 @@ def _uploaded(catalog) -> set[str]:
 def _groups(catalog, project_ids: list[str]) -> list[dict]:
     """The songs the picked projects belong to: each picked project plus the other
     versions of it saved in the same folder."""
-    rows = [r for r in _discovered(catalog) if r.get("path")]
+    rows = [r for r in _discovered(catalog) if r.get("path") and r.get("daw") != "stems"]  # a stems folder keeps its name
     by_id = {r["project_id"]: r for r in rows}
     out: list[dict] = []
     seen: set[tuple] = set()
@@ -228,10 +218,26 @@ def _groups(catalog, project_ids: list[str]) -> list[dict]:
                    and os.path.exists(r["path"])]
         if not members:
             continue
-        members.sort(key=lambda r: (r.get("mtime") or 0, r["name"].lower()))
+        members.sort(key=lambda r: (_made(r), r["name"].lower()))
         out.append({"id": members[-1]["project_id"], "dir": p["dir"], "key": gk[1],
                     "members": members, "all": rows})
     return out
+
+
+def _made(row: dict) -> float:
+    """When a version was made: the file's birth date where the computer keeps one
+    (Mac, Windows), else its last save. The earlier of the two, so an old version
+    opened and saved again later still counts as old."""
+    when = row.get("mtime") or 0
+    try:
+        st = os.stat(row["path"])
+    except OSError:
+        return when
+    born = getattr(st, "st_birthtime", None)
+    if born is None and os.name == "nt":
+        born = st.st_ctime  # creation time on Windows
+    when = min(when or st.st_mtime, st.st_mtime)
+    return min(when, born) if born else when
 
 
 def _folder_reason(group: dict) -> str | None:
@@ -243,7 +249,8 @@ def _folder_reason(group: dict) -> str | None:
     if others:
         return "Other songs are saved in this folder too, so it keeps its name."
     folder_key = song_key(re.sub(r"\s+project$", "", Path(d).name, flags=re.I))
-    if folder_key != group["key"]:
+    named_after = {group["key"]} | {song_key(nm.song_base(m["name"])) for m in group["members"]}
+    if folder_key not in named_after and song_key(nm.song_base(Path(d).name)) not in named_after:
         return "This folder isn't named after the song, so it keeps its name."
     for m in group["members"]:
         if _holds_full_addresses(Path(m["path"]), Path(d)):
@@ -266,12 +273,12 @@ def _export_rows(catalog, member_ids: set[str]) -> list[dict]:
 
 def plan(catalog, project_ids: list[str], names: dict | None = None, style: str = "v",
          song_style: str = "paren", folder: bool = True, overrides: dict | None = None,
-         skip: list[str] | None = None, numbers: str = "keep") -> dict:
+         skip: list[str] | None = None, numbers: str = "order") -> dict:
     """What would be renamed, and to what. Changes nothing.
 
-    numbers: "keep" the version numbers already in the names (filling gaps), or
-    "order" to count 1, 2, 3 by save date. names: {group id: song name} to use
-    instead of the suggestion. overrides:
+    numbers: "order" (the usual) counts 1, 2, 3 by the date each version was made,
+    the oldest being v1; "keep" keeps the version numbers already in the names
+    (filling gaps). names: {group id: song name} to use instead of the suggestion. overrides:
     {current path: new name (no extension)} for single rows. skip: current paths
     to leave as they are."""
     names = names or {}
@@ -283,7 +290,7 @@ def plan(catalog, project_ids: list[str], names: dict | None = None, style: str 
     groups_out = []
     for g in _groups(catalog, project_ids):
         members = g["members"]
-        suggested = _best_spelling([suggest_base(m["name"]) for m in reversed(members)])
+        suggested = _best_spelling([m["name"] for m in reversed(members)])
         base = clean_name(names.get(g["id"]) or suggested) or suggested
         d = Path(g["dir"])
 

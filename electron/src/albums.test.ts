@@ -162,3 +162,41 @@ describe("long lists and names in the album plan", () => {
     expect(shortTitle("🔥".repeat(50), 10)).toBe(`${"🔥".repeat(9)}…`);
   });
 });
+
+describe("numbers on the album pages", () => {
+  it("counts far-off release dates in months and years, not thousands of days", async () => {
+    const { daysToGo } = await import("./albums");
+    const now = new Date(2026, 9, 21, 9, 0);
+    expect(daysToGo("2026-11-14", now)).toBe("24 days to go");
+    expect(daysToGo("2026-12-20", now)).toBe("60 days to go");
+    expect(daysToGo("2027-04-21", now)).toBe("6 months to go");
+    expect(daysToGo("2099-12-31", now)).toBe("73 years to go");
+    expect(daysToGo("2026-10-22", now)).toBe("Out tomorrow");
+    expect(daysToGo("2026-10-18", now)).toBe("Came out 3 days ago");
+    expect(daysToGo("2020-01-01", now)).toBe("Came out 7 years ago");
+    expect(daysToGo("2026-10-21", now)).toBe("Out today");
+  });
+  it("reads a long song as hours, minutes and seconds", async () => {
+    const { fmtClock } = await import("./albums");
+    expect(fmtClock(187)).toBe("3:07");
+    expect(fmtClock(5)).toBe("0:05");
+    expect(fmtClock(3600)).toBe("1:00:00");
+    expect(fmtClock(14523)).toBe("4:02:03");   // was "242:03"
+  });
+  it("rounds tempos to whole beats", async () => {
+    const { fmtBpm } = await import("./albums");
+    expect(fmtBpm(89.999)).toBe("90");
+    expect(fmtBpm(174.5)).toBe("175");
+    expect(fmtBpm(128.004)).toBe("128");
+    expect(fmtBpm(null)).toBe("");
+  });
+  it("shows the first 24 tempos of a long album, then how many more", async () => {
+    const { tempoLine, TEMPO_SHOWN } = await import("./albums");
+    const many = Array.from({ length: 400 }, (_, i) => 120 + (i % 10));
+    expect(TEMPO_SHOWN).toBe(24);
+    expect(tempoLine(many).shown).toHaveLength(24);
+    expect(tempoLine(many).more).toBe(376);
+    expect(tempoLine(many.slice(0, 24))).toEqual({ shown: many.slice(0, 24), more: 0 });
+    expect(tempoLine([])).toEqual({ shown: [], more: 0 });
+  });
+});

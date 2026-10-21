@@ -70,12 +70,17 @@ def build_app_from_env():
 
 def main() -> None:  # pragma: no cover - exercised manually / by Electron
     import uvicorn
+    from ablebackup import crashreports
+    crashreports.start()
     cfg = read_config()
     if cfg["parent_pid"]:
         install_parent_watchdog(cfg["parent_pid"])
     app = create_app(token=cfg["token"], db_path=Path(cfg["db_path"]))
     uvicorn.run(
         app, host="127.0.0.1", port=cfg["port"],
+        # Audio and picture addresses carry the engine's key (?t=, ?token=), so no access
+        # log and no per-connection lines.
+        access_log=False, log_level="warning",
         timeout_graceful_shutdown=_GRACEFUL_SHUTDOWN_SECS,
     )
 

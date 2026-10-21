@@ -551,6 +551,22 @@ class Catalog:
                               (count, project_id))
             self.conn.commit()
 
+    def plugin_uses(self) -> list[dict]:
+        """Each discovered project's name, DAW and plug-ins (a list), for the Plugins
+        page: just these columns, so it's quick with a big library."""
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT project_id, name, daw, plugins FROM discovered ORDER BY owner, name").fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["plugins"] = json.loads(d["plugins"]) if d.get("plugins") else []
+            except (TypeError, ValueError):
+                d["plugins"] = []
+            out.append(d)
+        return out
+
     def library(self) -> list[dict]:
         """Every discovered project + its backed-up status (latest backup time and
         snapshot count), derived by matching snapshots on project_id OR name so both
@@ -629,6 +645,24 @@ class Catalog:
                 "SELECT COUNT(*) FROM exports WHERE match IN ('folder', 'name') AND hidden = 0"
             ).fetchone()[0]
         return n
+
+    def forget_discovered(self, project_id: str) -> dict | None:
+        """Take a found project off the list (a stems folder joined to a project);
+        returns its row so Undo can put it back with ``restore_discovered``."""
+        row = self.discovered_one(project_id)
+        if row:
+            with self._lock:
+                self.conn.execute("DELETE FROM discovered WHERE project_id = ?", (project_id,))
+                self.conn.commit()
+        return row
+
+    def restore_discovered(self, row: dict) -> None:
+        cols = [c for c in row if c.isidentifier()]
+        with self._lock:
+            self.conn.execute(
+                f"INSERT OR REPLACE INTO discovered ({', '.join(cols)}) "
+                f"VALUES ({', '.join(':' + c for c in cols)})", {c: row[c] for c in cols})
+            self.conn.commit()
 
     def discovered_one(self, project_id: str) -> dict | None:
         """One found project (name, BPM, key, genre…), or None."""

@@ -109,7 +109,8 @@ def test_tidy_names_rename_and_swap(tmp_path):
                                       (str(final3), str(v2), "file", "b1", _later())])
     assert follow_renames(store, db) is True
     assert [Path(s["path"]).name for s in store.get(aid)["songs"]] == ["Glasshouse v1.wav", "Glasshouse v2.wav"]
-    assert [s["title"] for s in store.get(aid)["songs"]] == ["Glasshouse v1", "Glasshouse v2"]
+    # titles that were only file names read as the song's clean name
+    assert [s["title"] for s in store.get(aid)["songs"]] == ["Glasshouse", "Glasshouse"]
     assert follow_renames(store, db) is False
 
 
@@ -221,10 +222,10 @@ def test_tidy_names_in_backups_then_undo_keeps_the_album_playing(tmp_path, monke
     done = c.post("/api/tidy/apply", json={"project_ids": [pid], "numbers": "order"}).json()
     s = c.get("/api/albums").json()["albums"][0]["songs"][0]
     assert Path(s["path"]).name == "Glasshouse v2 (master).wav"
-    assert s["title"] == "Glasshouse v2 (master)" and "File moved or deleted" not in s["needs"]
+    assert s["title"] == "Glasshouse" and "File moved or deleted" not in s["needs"]
     assert c.get("/api/exports/audio", params={"path": s["path"]}).status_code == 200
 
     last = c.get("/api/tidy/last", params={"project_id": done["id_map"][pid]}).json()["batch"]
     assert c.post("/api/tidy/undo", json={"batch_id": last["id"]}).status_code == 200
     s = c.get("/api/albums").json()["albums"][0]["songs"][0]
-    assert s["path"] == str(song) and s["title"] == "glasshouse final 3 master"
+    assert s["path"] == str(song) and s["title"] == "Glasshouse"

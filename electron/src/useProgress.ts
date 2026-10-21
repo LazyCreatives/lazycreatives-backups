@@ -26,6 +26,23 @@ export interface BackupProgress {
   items: BackupItem[];   // one per project this run has reached, in order
 }
 export interface BackupItem { name: string; state: "working" | "done" | "skipped" | "error"; detail?: string }
+
+// Every project a run has dealt with so far: backed up, already safe (skipped) or failed.
+// A run of 300 unchanged projects and 3 changed ones moves its bar for all 303.
+export const runDoneCount = (b: Pick<BackupProgress, "completed" | "skipped" | "errors">) => b.completed + b.skipped + b.errors;
+// How far through the run, 0-100.
+export function runPct(b: Pick<BackupProgress, "total" | "completed" | "skipped" | "errors">): number {
+  return b.total > 0 ? Math.min(100, Math.round((runDoneCount(b) / b.total) * 100)) : 0;
+}
+// Home's headline when a run ends. A project whose save time moved but whose contents
+// didn't (opened and saved again with no change) is checked, not copied a second time:
+// say that, instead of "Backed up and checked 0 projects."
+export function runDoneTitle(b: Pick<BackupProgress, "completed" | "skipped" | "errors">): string {
+  const n = (k: number) => `${k} ${k === 1 ? "project" : "projects"}`;
+  if (b.errors > 0) return `Backed up ${b.completed}, ${b.errors} failed.`;
+  if (b.completed === 0 && b.skipped > 0) return `Checked ${n(b.skipped)}. Nothing had changed, so ${b.skipped === 1 ? "it was" : "they were"} already safe.`;
+  return `Backed up and checked ${n(b.completed)}.`;
+}
 export interface LiveProgress {
   scan: ScanProgress;
   backup: BackupProgress;
@@ -60,11 +77,11 @@ export function reduceProgress(s: LiveProgress, ev: ProgressEvent): LiveProgress
     case "scan_done":
       return { ...s, scan: { active: false, phase: null, done: 0, total: 0, current: null, dirs: 0, found: 0, startedAt: null } };
     case "backup_preparing":
-      return { ...s, backup: { active: true, preparing: true, total: 0, completed: 0, skipped: 0, errors: 0, current: null, done: false, cancelled: false, mirrorFailed: 0, log: ["Preparing… resolving projects"], items: [] } };
+      return { ...s, backup: { active: true, preparing: true, total: 0, completed: 0, skipped: 0, errors: 0, current: null, done: false, cancelled: false, mirrorFailed: 0, log: ["Getting ready…"], items: [] } };
     case "backup_start":
       return {
         ...s,
-        backup: { ...s.backup, active: true, preparing: false, total: ev.project_count, completed: 0, skipped: 0, errors: 0, current: null, done: false, cancelled: false, mirrorFailed: 0, log: [`Backing up ${ev.project_count} project(s)…`], items: [] },
+        backup: { ...s.backup, active: true, preparing: false, total: ev.project_count, completed: 0, skipped: 0, errors: 0, current: null, done: false, cancelled: false, mirrorFailed: 0, log: [`Backing up ${ev.project_count} ${ev.project_count === 1 ? "project" : "projects"}…`], items: [] },
       };
     case "project_start":
       return { ...s, backup: { ...s.backup, current: ev.project_name, log: [...s.backup.log, `→ ${ev.project_name}`],
@@ -88,8 +105,8 @@ export function reduceProgress(s: LiveProgress, ev: ProgressEvent): LiveProgress
     case "backup_done": {
       const mf = ev.mirror_failed || 0;
       const log = [...s.backup.log, ev.cancelled
-        ? `Cancelled — ${ev.ok_count} backed up, ${ev.skipped_count} unchanged so far.`
-        : `Done — ${ev.ok_count} backed up, ${ev.skipped_count} unchanged, ${ev.error_count} error(s).`];
+        ? `Stopped. ${ev.ok_count} backed up, ${ev.skipped_count} had nothing new.`
+        : `Done. ${ev.ok_count} backed up, ${ev.skipped_count} had nothing new, ${ev.error_count} couldn't be backed up.`];
       if (mf > 0) log.push(`⚠ Offsite/cloud mirror failed for ${mf} copy(ies) — your primary backup is safe, but check that destination.`);
       return { ...s, backup: { ...s.backup, active: false, preparing: false, done: true, cancelled: !!ev.cancelled, mirrorFailed: mf, log } };
     }

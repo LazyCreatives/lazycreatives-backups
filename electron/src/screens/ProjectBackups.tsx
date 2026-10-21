@@ -96,7 +96,7 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
       onFixed?.();
     } catch (e: any) {
       if (e?.message === "__cancelled__") { setFixing(null); return; }  // user closed the picker
-      setFixMsg({ err: e.message || "Couldn't fix it — check a backup destination is set in Settings." });
+      setFixMsg({ err: e.message || "Couldn't back it up. Check a backup drive is chosen in Settings > Backups." });
     } finally {
       setFixing(null);
     }
@@ -160,7 +160,7 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
       setRestored((m) => ({ ...m, [id]:
         res.state === "done" ? { path: res.result?.path }
         : res.state === "error" ? { error: res.error || "restore failed" }
-        : { note: "Still copying in the background — check the destination folder shortly." } }));
+        : { note: "Still copying. It will be in the folder you picked in a minute or two." } }));
     } catch (e: any) {
       setRestored((m) => ({ ...m, [id]: { error: e.message } }));
     } finally {
@@ -182,8 +182,8 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
       }
       setShared((m) => ({ ...m, [id]:
         res.state === "done" ? { path: res.result?.path }
-        : res.state === "error" ? { error: res.error || "couldn't create the zip" }
-        : { note: "Still zipping in the background — check the folder shortly." } }));
+        : res.state === "error" ? { error: res.error || "Couldn't make the zip. Try again." }
+        : { note: "Still making the zip. It will be in the folder you picked in a minute or two." } }));
     } catch (e: any) {
       setShared((m) => ({ ...m, [id]: { error: e.message } }));
     } finally {

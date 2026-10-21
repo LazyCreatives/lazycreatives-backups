@@ -131,9 +131,10 @@
 .proj-hero__sleeve { display: flex; align-items: stretch; box-shadow: 0 18px 48px rgb(var(--shade-rgb) / calc(0.5 * var(--shade-k))); }
 .proj-hero__sleeve .worn { flex: 1; min-width: 0; }
 .proj-hero__cover { width: 100%; height: auto; aspect-ratio: 1; border-radius: 0 2px 2px 0; display: block; }
-/* the record's spine down the left edge: catalogue number, then the title */
+/* the record's spine down the left edge: catalogue number, then the title. contain: size
+   keeps a long title from making the spine (and so the whole sleeve) taller than the cover */
 .proj-hero__spine {
-  width: 24px; flex: none; writing-mode: vertical-rl; transform: rotate(180deg); display: flex; align-items: center; gap: 10px;
+  width: 24px; flex: none; contain: size; writing-mode: vertical-rl; transform: rotate(180deg); display: flex; align-items: center; gap: 10px;
   padding: 12px 0; overflow: hidden; white-space: nowrap; background: var(--spine-bg, #E9E4D8); color: var(--spine-ink, #1A1D21); border-radius: 0 2px 2px 0;
   font: 600 11px var(--font); text-transform: uppercase; letter-spacing: .1em;
 }

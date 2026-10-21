@@ -7,6 +7,7 @@ const { createCompanion } = require("./companion");
 const { isOpenAtLogin, setOpenAtLogin, initOpenAtLogin } = require("./startup");
 const { startUpdater } = require("./updater");
 const report = require("./report");
+const crash = require("./sentry");
 const { windowMaterial, windowChromeOptions, installTextMenu, windowStateOptions, installAppMenu, registerDesktopIpc, sendWindowMinimized, showWindow } = require("./desktop");
 
 const isDev = !!process.env.ABLEBACKUP_DEV;
@@ -19,6 +20,8 @@ let stopping = null; // set to the shutdown promise once a quit begins
 
 // Crashes are noted on this computer only; the app then offers a filled-in report
 // the person reads and sends themselves (report.js). Must start before "ready".
+// Crash reports to Sentry, when Settings > Privacy allows it (sentry.js). Before "ready" too.
+crash.startCrashReports({ dsn: "https://a07de96c81183d00cb46263d9b5c9b89@o4512288615366656.ingest.de.sentry.io/4512288623165520", slug: "backups" });
 report.startCrashCatcher({ appName: "LazyCreatives Backups", repo: "lazycreatives-backups" });
 
 // Never ask the Mac's Keychain for anything. The window's own storage would
@@ -57,8 +60,9 @@ function webPreferences(material) {
   return {
     preload: path.join(__dirname, "preload.js"),
     contextIsolation: true, nodeIntegration: false,
+    // The engine's key is handed over by ipc (sidecar-token below), not on the command
+    // line, where other programs on the computer could read it.
     additionalArguments: [
-      `--ablebackup-token=${sidecar.token}`,
       `--ablebackup-port=${sidecar.port}`,
       `--lc-material=${material}`,
     ],
@@ -104,6 +108,7 @@ function createWindow() {
     console.error("[renderer GONE]", JSON.stringify(details));
     if (isQuitting || details.reason === "clean-exit") return;
     report.recordProblem("window", `The window stopped (${details.reason}, exit code ${details.exitCode}).`);
+    crash.reportStopped("window", `The window stopped (${details.reason}, exit code ${details.exitCode}).`);
     // Bring the window back once, then offer the report.
     if (!win.__reloaded) { win.__reloaded = true; loadPage(win); }
     report.offerReport(win);
@@ -201,9 +206,16 @@ function watchSidecar(sc) {
   sc.proc.on("exit", (code, signal) => {
     if (isQuitting || stopping) return;
     report.recordProblem("engine", `The engine stopped (${signal ? `signal ${signal}` : `exit code ${code}`}).\n${tail.trim()}`);
+    crash.reportStopped("engine", `The engine stopped (${signal ? `signal ${signal}` : `exit code ${code}`}).\n${tail.trim()}`);
     report.offerReport(win);
   });
 }
+
+ipcMain.on("sidecar-token", (e) => {
+  // Only our own windows get the engine's key (they can't navigate anywhere else).
+  const ours = BrowserWindow.getAllWindows().some((w) => w.webContents === e.sender);
+  e.returnValue = ours && sidecar ? sidecar.token : "";
+});
 
 ipcMain.handle("open-external", (_e, url) => {
   if (typeof url === "string" && /^https?:\/\//.test(url)) shell.openExternal(url);

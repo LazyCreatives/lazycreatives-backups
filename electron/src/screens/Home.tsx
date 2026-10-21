@@ -1,16 +1,16 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { pickCover } from "../components/CoverPick";
-import { makeApi } from "../api";
+import { lastLibrary, makeApi } from "../api";
 import type { Overview, LibraryItem } from "../types";
-import type { BackupProgress } from "../useProgress";
+import { runDoneCount, runDoneTitle, runPct, type BackupProgress } from "../useProgress";
 import { countStatuses, itemStatus, yearOf, type LibFilters, type StatusFilter } from "../libraryFilter";
 import { Collection, tally, type CollectionData } from "../components/Collection";
 import { rowKey } from "../components/a11y";
 import { backupAndWait } from "../runBackup";
-import { openMenu, toast, toastWarn } from "../components/Desktop";
+import { Exit, openMenu, toast, toastWarn } from "../components/Desktop";
 import { copyText } from "../desktop";
 import { osWords } from "../platform";
-import { fmtSize, fmtDate, fmtInterval, fmtNext, shortPath, dawLabel, fmtCount, fmtCap } from "../format";
+import { fmtSize, fmtDate, fmtInterval, fmtNext, shortPath, dawLabel, fmtCount, fmtCap, openWord, stemsOnly } from "../format";
 import { Icon } from "../components/Icon";
 import { Cover } from "../components/Cover";
 import { Rolling } from "../components/Rolling";
@@ -18,6 +18,10 @@ import { PlayButton, SongWave, type SongMeta } from "../components/Player";
 import { genreColor, useLook } from "../look";
 import { togglePin, usePins } from "../pins";
 import { EmptyState, SlothSpot } from "../components/SlothSpot";
+import { DoneSeal } from "../components/DoneSeal";
+import { useFlip } from "../glide";
+import { announce, reached, type Milestone } from "../milestones";
+import { onThisDay } from "../onThisDay";
 import "../home.css";
 import "../label.css";  // the printed numbers (.proj-spec), shared with the project page
 
@@ -38,11 +42,23 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
   onOpenProject: (name: string) => void;
 }) {
   const [ov, setOv] = useState<Overview | null>(null);
-  const [items, setItems] = useState<LibraryItem[]>([]);
+  const [items, setItems] = useState<LibraryItem[]>(() => lastLibrary()?.projects ?? []);
   const [err, setErr] = useState(false);
-  const [kick, setKick] = useState(false);        // scanning before the backup starts
+  const [kick, setKick] = useState(false);
+  const [spineAt, setSpineAt] = useState(0);  // the shelf spine that Tab lands on        // scanning before the backup starts
   const [doneFlash, setDoneFlash] = useState(false);
+  const [barHold, setBarHold] = useState(false);  // the bar stays full a moment after a run, then fades
   const [fixing, setFixing] = useState<Set<string>>(new Set());
+  // A Changed card backed up from here says "Safe" for a moment, then glides out of the
+  // list while the others close up. settled: its phase ("safe", then "out" as it leaves).
+  const [settled, setSettled] = useState<Record<string, "safe" | "out">>({});
+  const [allSafe, setAllSafe] = useState(false);  // the last change just went: the sloth says so
+  const changedBox = useRef<HTMLDivElement | null>(null);
+  const noteFlip = useFlip(changedBox);
+  const timers = useRef<number[]>([]);
+  useEffect(() => () => timers.current.forEach((t) => clearTimeout(t)), []);
+  const [mile, setMile] = useState<Milestone | null>(null);  // a milestone reached just now (said once)
+  const [driveBack, setDriveBack] = useState(false);         // the backup drive was just plugged back in
   const [look] = useLook();
   const pins = usePins();
 
@@ -58,14 +74,48 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
     }
   }, [ov]);
 
+  // The first time the Safe count reaches 100, 250, 500 or 1,000, one line says so (once).
+  const safeNow = items.length ? countStatuses(items).safe : 0;
+  useEffect(() => {
+    const m = announce(safeNow);
+    if (m) setMile(m);
+  }, [safeNow]);
+  // The last Changed card glided out: "All safe. Back to my nap."
+  const realChanged = items.filter((i) => itemStatus(i) === "changed").length;
+  const settledCount = Object.keys(settled).length;
+  const hadChanged = useRef(false);
+  useEffect(() => {
+    if (realChanged > 0 || settledCount > 0) { hadChanged.current = true; setAllSafe(false); return; }
+    if (hadChanged.current && settledCount === 0) setAllSafe(true);
+  }, [realChanged, settledCount]);
+
+  // While the backup drive can't be found, look for it every few seconds; when it comes
+  // back, its dot rings once and a note says so (the Back up button wakes up too).
+  const missingDrive = !!ov?.nas.path && !ov.nas.reachable;
+  useEffect(() => {
+    if (!missingDrive) return;
+    const t = window.setInterval(() => {
+      api.overview().then((o) => {
+        if (!o.nas.reachable) return;
+        setOv(o);
+        setDriveBack(true);
+        toast("Your backup drive is back.");
+        timers.current.push(window.setTimeout(() => setDriveBack(false), 1600));
+      }).catch(() => {});
+    }, 5000);
+    return () => window.clearInterval(t);
+  }, [missingDrive]);
+
   // backup run state machine: idle → working → done (5.2s) → idle
   const working = kick || backup.active;
   const prevActive = useRef(false);
   useEffect(() => {
     if (prevActive.current && !backup.active && backup.done && !backup.cancelled) {
       setDoneFlash(true);
+      setBarHold(true);
       const t = setTimeout(() => setDoneFlash(false), 5200);
-      return () => clearTimeout(t);
+      const h = setTimeout(() => setBarHold(false), 1400);
+      return () => { clearTimeout(t); clearTimeout(h); setBarHold(false); };
     }
     prevActive.current = backup.active;
   }, [backup.active, backup.done, backup.cancelled]);
@@ -93,7 +143,16 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
   // searched this run in addition to the saved sample libraries.
   // If it doesn't work, a message says why and offers to try again; if samples are
   // still missing afterwards, it offers the project page to point to them.
+  function settle(id: string) {
+    setSettled((s) => ({ ...s, [id]: "safe" }));
+    timers.current.push(window.setTimeout(() => setSettled((s) => (s[id] ? { ...s, [id]: "out" } : s)), 1500));
+    timers.current.push(window.setTimeout(() => {
+      noteFlip();
+      setSettled((s) => { const n = { ...s }; delete n[id]; return n; });
+    }, 1500 + 400));
+  }
   async function fixOne(it: LibraryItem, extraLib?: string) {
+    const wasChanged = itemStatus(it) === "changed";
     setFixing((s) => new Set(s).add(it.project_id));
     const res = await backupAndWait({
       als_paths: [it.path], find_missing: true, portable: true, layout: "project_date",
@@ -101,6 +160,7 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
     });
     setFixing((s) => { const n = new Set(s); n.delete(it.project_id); return n; });
     load();
+    if (res.ok && wasChanged) settle(it.project_id);
     if (!res.ok) {
       toastWarn(`${it.name} couldn't be backed up. ${res.reason}`, { label: "Try again", onClick: () => { fixOne(it, extraLib); } });
       return;
@@ -109,7 +169,7 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
       const now = (await api.library().catch(() => null))?.projects.find((i) => i.project_id === it.project_id);
       if (now && now.missing_count > 0) {
         toastWarn(`${now.missing_count} of ${it.name}'s samples are still missing.`,
-          { label: "Point me to them", onClick: () => onOpenProject(it.name) });
+          { label: "Point to them", onClick: () => onOpenProject(it.name) });
       } else if (now) toast(`Found every missing sample in ${it.name} and backed it up.`);
     }
   }
@@ -159,8 +219,8 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
   const title = off
     ? (items.length === 0 ? "Let's find your projects." : `${fmtCount(items.length)} ${items.length === 1 ? "project" : "projects"}, ready to browse.`)
     : doneFlash
-    ? (backup.errors > 0 ? `Backed up ${backup.completed}, ${backup.errors} failed.` : `Backed up and checked ${backup.completed} ${backup.completed === 1 ? "project" : "projects"}.`)
-    : working ? (kick && !backup.active ? "Looking for projects…" : `Backing up ${backup.completed} of ${backup.total || "…"}…`)
+    ? runDoneTitle(backup)
+    : working ? (kick && !backup.active ? "Looking for projects…" : `Backing up ${runDoneCount(backup)} of ${backup.total || "…"}…`)
     : items.length === 0 ? "Let's find your projects."
     : `${fmtCount(okCount)} of ${fmtCount(items.length)} projects are safe.`;
   const sub = off
@@ -178,11 +238,13 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
       ].filter(Boolean).join(", ")} below.`
     : "Every backed-up project was re-opened and loads without errors.";
   const schedLine = off ? "Backups off" : ov.last_run
-    ? `Last backup ${fmtDate(ov.last_run)} · ${ov.schedule.enabled
+    ? `Last backup ${fmtDate(ov.last_run).replace(/^(Today|Yesterday)\b/, (w) => w.toLowerCase())} · ${ov.schedule.enabled
         ? `next ${ov.schedule.next_run ? fmtNext(ov.schedule.next_run) : fmtInterval(ov.schedule.interval_minutes)}`
         : "next: when you say so"}`
     : "No backups yet";
-  const pct = backup.total > 0 ? Math.round((backup.completed / backup.total) * 100) : 0;
+  // The bar counts every project the run has dealt with (backed up, already safe or failed),
+  // like the Backup screen. When the run ends it holds full for a moment, then fades out.
+  const pct = !working ? 100 : backup.active ? runPct(backup) : 0;
   const total = counts.all;
   const spaceSaved = ov.pool_known ? fmtSize(ov.saved_bytes) + (savedPct > 0 ? ` · ${savedPct}%` : "") : "…";
   const meta = (it: LibraryItem): SongMeta | undefined =>
@@ -221,12 +283,12 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
           <button className="btn btn--primary" onClick={onOpenSettings}>Turn on backups</button>
         </>) : firstFind ? <>
           <button className="btn" onClick={backItUp} disabled={!ov.nas.reachable}
-            title={ov.nas.reachable ? "Find every project and back it up, checked" : "Your backup drive isn't connected. Plug it in and try again."}>Back up now</button>
+            title={ov.nas.reachable ? "Find every project, back it up and check each copy" : "Your backup drive isn't connected. Plug it in and try again."}>Back up now</button>
           <button className="btn btn--primary" onClick={onFindProjects}>Find my projects</button>
         </> : <>
         {look === "crate" && !ov.schedule.enabled && <button className="btn" onClick={onOpenSettings}>Set a schedule</button>}
         <button className="btn btn--primary" onClick={backItUp} disabled={working || !ov.nas.reachable}
-          title={ov.nas.reachable ? "Find every project in your folders and back it up, checked" : "Your backup drive isn't connected. Plug it in and try again."}>
+          title={ov.nas.reachable ? "Find every project in your folders, back it up and check each copy" : "Your backup drive isn't connected. Plug it in and try again."}>
           {working ? "Backing up…"
             : folderWaiting > 0 && folderNew === 0 ? `Back up the ${fmtCount(folderWaiting)} changed`
             : folderWaiting > 0 ? `Back up ${fmtCount(folderWaiting)} ${folderWaiting === 1 ? "project" : "projects"}` : "Back up now"}
@@ -236,10 +298,12 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
       </div>
     </>
   );
-  const progress = working && (
-    <div className="progress" style={{ marginBottom: 22 }} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-      <div className="progress__fill" style={{ "--pct": Math.max(3, pct) } as CSSProperties} />
-    </div>
+  const progress = (
+    <Exit>{(working || barHold) && (
+      <div className="progress" style={{ marginBottom: 22 }} role="progressbar" aria-label="Backing up" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <div className="progress__fill" style={{ "--pct": Math.max(3, pct) } as CSSProperties} />
+      </div>
+    )}</Exit>
   );
   const fixButtons = (it: LibraryItem, label: string) => {
     const busy = fixing.has(it.project_id);
@@ -257,7 +321,7 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
   // right-click on a project anywhere on Home: the same everyday actions as the library
   const projectMenu = (it: LibraryItem) => (e: React.MouseEvent) => openMenu(e, [
     { label: "Show backups & details", onClick: () => onOpenProject(it.name) },
-    { label: `Open in ${dawLabel(it.daw)}`, onClick: () => { if (it.path) bridge()?.openProject?.(it.path); } },
+    { label: openWord(it.daw), onClick: () => { if (it.path) bridge()?.[stemsOnly(it.daw) ? "revealPath" : "openProject"]?.(it.path); } },
     { label: it.backed_up && !it.changed ? "Back up again" : "Back up now", onClick: () => { fixOne(it); }, disabled: fixing.has(it.project_id) },
     { label: pins.includes(it.project_id) ? "Unpin" : "Pin to the top", onClick: () => togglePin(it.project_id) },
     { label: "Change cover…", onClick: () => { pickCover({ title: it.name, name: it.name, genre: it.genre }); } },
@@ -286,16 +350,19 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
       <h2>Changed since last backup<span className="faint section__n"> {fmtCount(changedItems.length)}</span></h2>
     </div>
   );
-  const hasNeeds = changedItems.length > 0 || lookItems.length > 0 || failed.length > 0;
+  // The Changed list also keeps the ones just backed up from here while they say "Safe"
+  // and glide out (settled); the counts above are the real ones.
+  const changedList = items.filter((i) => itemStatus(i) === "changed" || settled[i.project_id]);
+  const hasNeeds = changedList.length > 0 || lookItems.length > 0 || failed.length > 0;
   // Big libraries can have hundreds waiting: Home shows the first few of each list
   // and hands the rest to the Library, filtered to them.
-  const changedShown = changedItems.slice(0, HOME_ROWS);
+  const changedShown = changedList.slice(0, HOME_ROWS);
   const lookShown = lookItems.slice(0, HOME_ROWS);
   const failedShown = failed.slice(0, Math.max(0, HOME_ROWS - lookShown.length));
   const more = (total: number, shown: number, status: StatusFilter) => total > shown && (
     <button className="linkbtn home-more" onClick={() => onOpenStatus(status)}>Show all {fmtCount(total)} in the Library</button>
   );
-  const changedMore = more(changedItems.length, changedShown.length, "changed");
+  const changedMore = more(changedItems.length, changedShown.filter((i) => !settled[i.project_id]).length, "changed");
   const lookMore = more(lookRows, lookShown.length + failedShown.length, "missing");
   const edited = (it: LibraryItem) => {
     return `Saved ${savedWhen(it)}, after its last backup`;
@@ -303,10 +370,40 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
 
   const collection = items.length > 0 ? <Collection data={collectionOf(items, onOpenFilters)} /> : null;
 
+  // A Changed card or row that was just backed up: "Safe" with the small seal, then out.
+  const settledClass = (it: LibraryItem) => settled[it.project_id] === "out" ? " home-out" : "";
+  const safeLine = <span className="warn-line warn-line--safe" role="status"><DoneSeal />Safe</span>;
+  // The last change went: the sloth's line, for this visit.
+  const allSafeLine = allSafe && changedItems.length === 0 && (
+    <div className="allgood allgood--in" role="status"><SlothSpot pose="thumbs-up" size={40} />
+      <span><b>Every change is backed up.</b></span><span className="allgood__say">All safe. Back to my nap.</span></div>
+  );
+  // Gold, platinum or diamond, by the Safe count (milestones.ts), pressed in when just reached.
+  const tier = reached(okCount);
+  const disc = tier && (
+    <span className={`mdisc mdisc--${tier.tier}${mile?.at === tier.at ? " mdisc--new" : ""}`} role="img" aria-label={tier.title} title={tier.title} />
+  );
+  const mileLine = mile && (
+    <p className="home-mile" role="status"><span className={`mdisc mdisc--${mile.tier} mdisc--new`} aria-hidden="true" />{mile.line}</p>
+  );
+  // "On this day": a project last saved on today's date in an earlier year (onThisDay.ts).
+  const otd = onThisDay(items);
+  const otdLine = otd && (
+    <button type="button" className="otd" onClick={() => onOpenProject(otd.item.name)} onContextMenu={projectMenu(otd.item)}
+      data-nav-key={otd.item.name} aria-label={`On this day in ${otd.year} you last saved ${otd.item.name}. Open it`}>
+      <Cover name={otd.item.name} genre={otd.item.genre} size={36} label={false} />
+      <span className="otd__text">
+        <span className="otd__when">On this day in {otd.year}, last saved</span>
+        <span className="otd__name" title={otd.item.name}>{otd.item.name}</span>
+      </span>
+      <Icon name="chevronRight" size={14} />
+    </button>
+  );
+
   const foot = (
     <footer className="home-foot">
       <span title={ov.nas.path} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-        <span className={`dot${off ? "" : ov.nas.reachable ? " dot--ok" : " dot--error"}`} />
+        <span className={`dot${off ? "" : ov.nas.reachable ? " dot--ok" : " dot--error"}${driveBack ? " dot--back" : ""}`} />
         {off ? <>Backups off. <button className="linkbtn" onClick={onOpenSettings}>Choose where they go</button></>
           : ov.nas.reachable ? "Backup drive connected" : "Backup drive not found"}
         {ov.nas.path ? <span className="faint mono" style={{ fontSize: 12 }}>{shortPath(ov.nas.path)}</span> : null}
@@ -330,7 +427,7 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
       {items.length > 0 && (
         <div className="home-print">
           <dl className="proj-spec home-spec" aria-label="Where your projects stand">
-            <div><dt><span className="dot dot--ok" />Safe</dt>
+            <div><dt><span className="dot dot--ok" />Safe{disc}</dt>
               <dd><button className="home-spec__n" onClick={() => onOpenStatus("safe")} aria-label={`${fmtCount(okCount)} safe: show them`}><Rolling value={okCount} /></button></dd></div>
             {changedItems.length > 0 && <div><dt><span className="dot dot--accent" />Changed</dt>
               <dd><button className="home-spec__n" onClick={() => onOpenStatus("changed")} aria-label={`${fmtCount(changedItems.length)} changed: show them`}><Rolling value={changedItems.length} /></button></dd></div>}
@@ -339,10 +436,12 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
             <div><dt><span className="dot" />Not backed up</dt>
               <dd><button className="home-spec__n" onClick={() => onOpenStatus("none")} aria-label={`${fmtCount(notYet)} not backed up: show them`}><Rolling value={notYet} /></button></dd></div>
           </dl>
-          <p className="home-print__saved">Space saved by sharing files <span className="mono">{spaceSaved}</span></p>
+          <p className="home-print__saved">Space saved by not copying twice <span className="mono">{spaceSaved}</span></p>
         </div>
       )}
+      {mileLine}
       {progress}
+      {otdLine}
 
       {recent.length > 0 && (
         <section className="section">
@@ -372,24 +471,27 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
         </section>
       )}
 
-      {changedItems.length > 0 && (
+      {changedList.length > 0 ? (
         <section className="section">
           {changedHead}
-          <div className="needcards">
+          <div className="needcards" ref={changedBox}>
             {changedShown.map((it) => (
-              <div key={"c" + it.project_id} className="needcard" data-nav-key={it.name} onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}>
+              <div key={"c" + it.project_id} className={`needcard${settledClass(it)}`} data-nav-key={it.name} data-flip={it.project_id}
+                onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}>
                 <Cover name={it.name} genre={it.genre} label={false} />
                 <div className="needcard__body">
                   <button type="button" className="rowopen"><span className="sleeve__name" title={it.name}>{it.name}</span></button>
-                  <div className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Changed</div>
-                  {backupButton(it)}
+                  {settled[it.project_id] ? safeLine : <>
+                    <div className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Changed</div>
+                    {backupButton(it)}
+                  </>}
                 </div>
               </div>
             ))}
           </div>
           {changedMore}
         </section>
-      )}
+      ) : allSafeLine && <section className="section">{allSafeLine}</section>}
       {lookRows > 0 && (
         <section className="section">
           {needsHead}
@@ -445,23 +547,38 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
     if (last && last.tone === sp.tone && last.names.length < per) last.names.push(sp.names[0]);
     else spines.push({ names: [...sp.names], tone: sp.tone });
   }
+  // One Tab stop for the whole shelf; the arrow keys walk along it (Home and End jump to the ends).
+  const spineKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const last = spines.length - 1;
+    const at = Math.min(spineAt, last);
+    const to = e.key === "ArrowRight" || e.key === "ArrowDown" ? Math.min(last, at + 1)
+      : e.key === "ArrowLeft" || e.key === "ArrowUp" ? Math.max(0, at - 1)
+      : e.key === "Home" ? 0 : e.key === "End" ? last : -1;
+    if (to < 0) return;
+    e.preventDefault();
+    setSpineAt(to);
+    e.currentTarget.querySelector<HTMLElement>(`[data-spine="${to}"]`)?.focus();
+  };
   const toneWord = { ok: "safe", changed: "saved since its last backup", look: "missing samples", new: "not backed up yet" };
   return (
     <div className="home home--crate">
       <header className="page-head">{head}</header>
+      {mileLine}
       {progress}
 
       {items.length > 0 && (
         <div className="home-deck">
           <section className="deckcard" aria-label="Where your projects stand">
             <div className="deckcard__screen">
-              <span className="deckcard__lbl">Safe</span>
+              <span className="deckcard__lbl">Safe{disc}</span>
               <span className={`deckcard__big${total >= 1000 ? " deckcard__big--long" : ""}`}><Rolling value={okCount} /><small>/<Rolling value={total} /></small></span>
               <span className="deckcard__lbl deckcard__lbl--r">{changedItems.length + lookCount > 0 ? `${fmtCount(changedItems.length + lookCount)} to do` : "All good"}</span>
             </div>
-            <div className={`spines${spines.length > 40 ? " spines--tight" : ""}`} role="group" aria-label="One line per project">
+            <div className={`spines${spines.length > 40 ? " spines--tight" : ""}`} role="group"
+              aria-label="One line per project. Left and right arrows move along" onKeyDown={spineKey}>
               {spines.map((sp, i) => (
-                <button key={i} type="button" className={`spine spine--${sp.tone}`}
+                <button key={i} type="button" className={`spine spine--${sp.tone}`} data-spine={i}
+                  tabIndex={i === Math.min(spineAt, spines.length - 1) ? 0 : -1} onFocus={() => setSpineAt(i)}
                   title={sp.names.length === 1 ? `${sp.names[0]}: ${toneWord[sp.tone]}` : `${sp.names.length} projects ${toneWord[sp.tone]}`}
                   aria-label={sp.names.length === 1 ? `${sp.names[0]}, ${toneWord[sp.tone]}` : `${sp.names.length} projects ${toneWord[sp.tone]}`}
                   onClick={() => sp.names.length === 1 ? onOpenProject(sp.names[0]) : onOpenHistory()} />
@@ -472,16 +589,16 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
               {changedItems.length > 0 && <button className="deckcard__row" onClick={onOpenHistory}><span className="dot dot--accent" />Changed since last backup<b>{fmtCount(changedItems.length)}</b></button>}
               <button className="deckcard__row" onClick={onOpenHistory}><span className="dot dot--warn" />Need a look<b>{fmtCount(lookCount)}</b></button>
               <button className="deckcard__row" onClick={onOpenHistory}><span className="dot" />Not backed up<b>{fmtCount(notYet)}</b></button>
-              <div className="deckcard__row deckcard__row--quiet">Space saved by sharing files<b>{spaceSaved}</b></div>
+              <div className="deckcard__row deckcard__row--quiet">Space saved by not copying twice<b>{spaceSaved}</b></div>
             </div>
           </section>
 
           <div className="home-deck__main">
             <section className="section">
               {hasNeeds ? (<>
-                {changedItems.length > 0 && <>{changedHead}<div className="table table--crate">
+                {changedList.length > 0 ? <>{changedHead}<div className="table table--crate" ref={changedBox}>
                   {changedShown.map((it) => (
-                    <div key={"c" + it.project_id} data-nav-key={it.name} className="row cols needs-cols"
+                    <div key={"c" + it.project_id} data-nav-key={it.name} data-flip={it.project_id} className={`row cols needs-cols${settledClass(it)}`}
                       onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}>
                       <span className="stripe" style={{ background: genreColor(it.genre) }} />
                       <Cover name={it.name} genre={it.genre} size={36} />
@@ -489,12 +606,14 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
                         <button type="button" className="rowopen"><span className="col-trunc" style={{ fontWeight: 500 }} title={it.name}>{it.name}</span></button>
                         <div className="lib-sub">{subLine(it)}</div>
                       </span>
-                      <span className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Changed</span>
-                      {backupButton(it)}
+                      {settled[it.project_id] ? <>{safeLine}<span className="col-act" /></> : <>
+                        <span className="warn-line warn-line--changed" title={edited(it)}><span className="dot dot--accent" />Changed</span>
+                        {backupButton(it)}
+                      </>}
                     </div>
                   ))}
-                </div>{changedMore}</>}
-                {lookRows > 0 && <div style={changedItems.length > 0 ? { marginTop: 22 } : undefined}>{needsHead}<div className="table table--crate">
+                </div>{changedMore}</> : allSafeLine && <div style={{ marginBottom: 22 }}>{allSafeLine}</div>}
+                {lookRows > 0 && <div style={changedList.length > 0 ? { marginTop: 22 } : undefined}>{needsHead}<div className="table table--crate">
                   {lookShown.map((it) => (
                     <div key={it.project_id} data-nav-key={it.name} className="row cols needs-cols"
                       onClick={() => onOpenProject(it.name)} onContextMenu={projectMenu(it)}>
@@ -527,6 +646,7 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
               </>)}
             </section>
 
+            {otdLine}
             {recentRows.length > 0 && (
               <section className="section">
                 <div className="section__head">
@@ -616,7 +736,7 @@ function collectionOf(items: LibraryItem[], open: (f: Partial<LibFilters>) => vo
     ],
     lists: [
       { title: "Genres", rows: genres.map(([g, n]) => ({ label: g, n, colour: genreColor(g), onClick: () => open({ genre: g }) })) },
-      { title: "Music apps", rows: daws.map(([d, n]) => ({ label: dawLabel(d), n, onClick: () => open({ daw: d }) })) },
+      { title: "DAWs", rows: daws.map(([d, n]) => ({ label: dawLabel(d), n, onClick: () => open({ daw: d }) })) },
       { title: "Year last saved", rows: years.map(([y, n]) => ({ label: y, n, onClick: () => open({ year: y }) })) },
     ],
   };

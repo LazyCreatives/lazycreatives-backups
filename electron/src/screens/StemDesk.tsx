@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { glideAcross } from "../glide";
 import { openMenu, toast, toastWarn } from "../components/Desktop";
-import { copyText } from "../desktop";
+import { copyText, keep, recall } from "../desktop";
 import { makeApi } from "../api";
 import type { StemGroup, StemPart, StemSet } from "../types";
 import { Button } from "../components/Button";
@@ -12,6 +13,7 @@ import {
   toggleGroupMute, toggleGroupSolo, toggleMute, toggleSolo, useStemMix, type Mix,
 } from "../stemMixer";
 import { clock, makeStemPack } from "./StemSets";
+import { stemLabels, withoutExt } from "../stemNames";
 
 const api = makeApi();
 const bridge = () => (window as any).ablebackup;
@@ -21,7 +23,9 @@ const DRAG = "text/x-lc-stem";
 // (Drums, Bass, Vocals, Keys and synths, FX, Other), each group with its own strip.
 // Every strip has a level meter, a fader, mute and solo. Drag a stem onto another
 // group to move it; Backups remembers. Made for sets of a hundred stems or more:
-// the desk scrolls sideways and each strip stays narrow.
+// each group is a row of its own (scrolling sideways when it's long), a group folds
+// shut to one line with its mute and solo, and the list of groups at the top jumps
+// to one. Which groups are folded is remembered.
 export function StemDesk({ projectId, projectName, setId, onBack }: {
   projectId: string; projectName: string; setId: string | null; onBack: () => void;
 }) {
@@ -33,6 +37,15 @@ export function StemDesk({ projectId, projectName, setId, onBack }: {
   const mix = useStemMix();
   const player = usePlayerState();
   const desk = useRef<HTMLDivElement>(null);
+  const [folded, setFoldedState] = useState<string[]>(() => recall("lc-desk-folded", [] as string[], Array.isArray));
+  const setFolded = (f: (now: string[]) => string[]) => setFoldedState((now) => { const n = f(now); keep("lc-desk-folded", n); return n; });
+  const fold = (id: string, shut: boolean) => setFolded((now) => (shut ? [...new Set([...now, id])] : now.filter((g) => g !== id)));
+  function jump(id: string) {
+    fold(id, false);
+    // a smooth glide, or straight there when the computer asks for less motion (a JS scroll isn't covered by the CSS guard)
+    const behavior: ScrollBehavior = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+    requestAnimationFrame(() => desk.current?.querySelector(`[data-group="${id}"]`)?.scrollIntoView({ block: "start", behavior }));
+  }
 
   function load() {
     api.stemSets(projectId).then((r) => setData({ sets: r.sets, groups: r.groups }))
@@ -46,6 +59,12 @@ export function StemDesk({ projectId, projectName, setId, onBack }: {
     ...g, parts: (set?.parts ?? []).filter((p) => p.group === g.id),
   })), [data, set]);
   const live = !!set && mix.setId === set.id;
+  // each strip's short name: the words every stem in the set shares are left off
+  const labels = useMemo(() => {
+    const parts = set?.parts ?? [];
+    const short = stemLabels(parts);
+    return new Map(parts.map((p, i) => [p.path, short[i]]));
+  }, [set]);
   const arm = () => { if (set) armStems(set.id); };
 
   // Meters: read every part's level each frame and draw it straight onto its bar.
@@ -80,11 +99,33 @@ export function StemDesk({ projectId, projectName, setId, onBack }: {
     };
   }, [live, mix.playing, set]);
 
+  // A moved stem glides from its old group to its new one (when the new group is open).
+  const glideFrom = useRef<Map<string, DOMRect> | null>(null);
+  useLayoutEffect(() => {
+    const from = glideFrom.current;
+    if (!from || !desk.current) return;
+    glideFrom.current = null;
+    from.forEach((r, path) => {
+      const el = desk.current!.querySelector<HTMLElement>(`[data-strip="${CSS.escape(path)}"]`);
+      if (!el) return;
+      // it lands out of sight in a long row: no glide to a place you can't see
+      const row = el.closest(".desk-strips")?.getBoundingClientRect(), at = el.getBoundingClientRect();
+      if (row && (at.left < row.left - 1 || at.right > row.right + 1)) return;
+      glideAcross(el, r, desk.current!);
+    });
+  }, [data, folded]);
+
   async function move(paths: string[], to: string, undo = true) {
     if (!set || !data) return;
     const before = new Map(set.parts.map((p) => [p.path, p]));
     const moved = paths.filter((p) => before.get(p) && before.get(p)!.group !== to);
     if (!moved.length) return;
+    const from = new Map<string, DOMRect>();
+    moved.forEach((p) => {
+      const el = desk.current?.querySelector<HTMLElement>(`[data-strip="${CSS.escape(p)}"]`);
+      if (el) from.set(p, el.getBoundingClientRect());
+    });
+    glideFrom.current = from.size ? from : null;
     const parts = set.parts.map((p) => moved.includes(p.path) ? { ...p, group: to } : p);
     setData({ ...data, sets: data.sets.map((s) => s.id === set.id ? { ...s, parts } : s) });
     moved.forEach((p) => regroup(p, to));
@@ -153,7 +194,7 @@ export function StemDesk({ projectId, projectName, setId, onBack }: {
           value={live && mix.duration ? Math.round((mix.time / mix.duration) * 1000) : 0}
           onChange={(e) => seekStems(Number(e.target.value) / 1000)} />
         {c.ok
-          ? <span className="pill pill--ok">Lines up</span>
+          ? <span className="pill pill--ok" title="Every stem is the same length and starts at the same time, so they play together">All stems in sync</span>
           : <span className="pill pill--partial" title={c.problems.join("\n")}>Check these</span>}
         <Button size="sm" variant="ghost" onClick={resetMix} disabled={!live}
           title="Every fader back to 0 dB, nothing muted or soloed">Reset mix</Button>
@@ -165,30 +206,72 @@ export function StemDesk({ projectId, projectName, setId, onBack }: {
       </div>
       {!c.ok && <ul className="stemset-problems">{c.problems.map((p) => <li key={p}>{p}</li>)}</ul>}
       {live && mix.error && <div className="stemset-problems">{mix.error}</div>}
-      <p className="faint desk-hint">Sorted by name. Drag a stem onto another group to move it, or right-click it. Backups remembers.</p>
+      {(() => {
+        const used = groups.filter((g) => g.parts.length > 0);
+        const allShut = used.length > 0 && used.every((g) => folded.includes(g.id));
+        return (
+          <div className="desk-jump">
+            <nav className="desk-jump__groups" aria-label="Go to a group">
+              {used.map((g) => (
+                <button key={g.id} type="button" className={`desk-jump__g stem-g--${g.id}`} onClick={() => jump(g.id)}
+                  title={`Go to ${g.name}`}>
+                  {g.name} <span className="mono">{g.parts.length}</span>
+                </button>
+              ))}
+            </nav>
+            <Button size="sm" variant="ghost" onClick={() => setFolded(() => (allShut ? [] : used.map((g) => g.id)))}>
+              {allShut ? "Open every group" : "Fold every group"}</Button>
+          </div>
+        );
+      })()}
+      <p className="faint desk-hint">Sorted by name. Drag a stem onto another group to move it, right-click it, or press Alt and the up or down arrow. Backups remembers.</p>
 
-      <div className={`desk${dragging ? " desk--dragging" : ""}`} ref={desk} role="region" aria-label="Mixing desk" tabIndex={0}>
-        {groups.filter((g) => g.parts.length > 0 || dragging).map((g) => (
-          <section key={g.id} className={`desk-group stem-g--${g.id}${over === g.id ? " desk-group--over" : ""}`}
+      <div className={`desk${dragging ? " desk--dragging" : ""}`} ref={desk} role="region" aria-label="Mixing desk">
+        {groups.filter((g) => g.parts.length > 0 || dragging).map((g) => {
+          const shut = folded.includes(g.id) && g.parts.length > 0;
+          return (
+          <section key={g.id} data-group={g.id}
+            className={`desk-group stem-g--${g.id}${over === g.id ? " desk-group--over" : ""}${shut ? " desk-group--shut" : ""}`}
             aria-label={`${g.name}, ${g.parts.length} stem${g.parts.length === 1 ? "" : "s"}`}
             onDragOver={(e) => { if (dragging) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setOver(g.id); } }}
             onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver((o) => (o === g.id ? null : o)); }}
             onDrop={(e) => onDrop(e, g.id)}>
-            <header className="desk-group__name"><span>{g.name}</span><span className="mono">{g.parts.length}</span></header>
-            <div className="desk-strips">
-              {g.parts.length === 0
-                ? <div className="desk-drop faint">Drop here</div>
-                : <>
-                  <GroupStrip id={g.id} name={g.name} mix={mix} live={live} arm={arm} />
-                  {g.parts.map((p) => (
-                    <Strip key={p.path} p={p} mix={mix} live={live} arm={arm} groups={data.groups}
-                      onDrag={(on) => { setDragging(on ? p.path : null); if (!on) setOver(null); }}
-                      onMove={(to) => move([p.path], to)} />
-                  ))}
-                </>}
-            </div>
+            <header className="desk-group__name">
+              <button type="button" className="desk-group__fold" aria-expanded={!shut} disabled={g.parts.length === 0}
+                title={shut ? `Open ${g.name}` : `Fold ${g.name} shut`} onClick={() => fold(g.id, !shut)}>
+                <Icon name={shut ? "chevronRight" : "chevronDown"} size={14} />
+                <span>{g.name}</span><span className="mono">{g.parts.length}</span>
+              </button>
+              {shut && <GroupMs id={g.id} name={g.name} mix={mix} live={live} arm={arm} />}
+            </header>
+            {!shut && (
+              <div className="desk-strips" tabIndex={0} role="group" aria-label={`${g.name} strips`}>
+                {g.parts.length === 0
+                  ? <div className="desk-drop faint">Drop here</div>
+                  : <>
+                    <GroupStrip id={g.id} name={g.name} mix={mix} live={live} arm={arm} />
+                    {g.parts.map((p) => (
+                      <Strip key={p.path} p={p} label={labels.get(p.path) ?? p.part} mix={mix} live={live} arm={arm} groups={data.groups}
+                        onDrag={(on) => { setDragging(on ? p.path : null); if (!on) setOver(null); }}
+                        onMove={(to) => move([p.path], to)}
+                        onStep={(dir) => {
+                          // Alt + up/down: the group before or after this one (opened if folded), then keep focus on the same control
+                          const i = data.groups.findIndex((x) => x.id === p.group);
+                          const to = data.groups[i + dir];
+                          if (!to) return;
+                          const cls = (document.activeElement as HTMLElement | null)?.className.split(" ")[0];
+                          fold(to.id, false);
+                          void move([p.path], to.id);
+                          requestAnimationFrame(() => desk.current?.querySelector<HTMLElement>(
+                            `[data-strip="${CSS.escape(p.path)}"] ${cls ? "." + cls : ""}`)?.focus());
+                        }} />
+                    ))}
+                  </>}
+              </div>
+            )}
           </section>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -199,6 +282,22 @@ function Fader({ value, label, onChange }: { value: number; label: string; onCha
     <input type="range" className="strip__fader" min={0} max={1} step={0.01} value={value}
       aria-label={label} aria-valuetext={`${faderDb(value)} dB`} title={`${faderDb(value)} dB · double-click for 0 dB`}
       onChange={(e) => onChange(Number(e.target.value))} onDoubleClick={() => onChange(1)} />
+  );
+}
+
+// A folded group's own mute and solo, on its one line
+function GroupMs({ id, name, mix, live, arm }: { id: string; name: string; mix: Mix; live: boolean; arm: () => void }) {
+  const muted = live && mix.groupMuted.includes(id);
+  const soloed = live && mix.groupSoloed.includes(id);
+  const v = live ? mix.groupFaders[id] ?? 1 : 1;
+  return (
+    <div className="strip__ms desk-group__ms">
+      <span className="mono desk-group__db">{faderDb(v)} dB</span>
+      <button type="button" className={`msbtn${muted ? " msbtn--on" : ""}`} aria-pressed={muted}
+        aria-label={`Mute all ${name}`} title={`Mute all ${name}`} onClick={() => { arm(); toggleGroupMute(id); }}>M</button>
+      <button type="button" className={`msbtn msbtn--solo${soloed ? " msbtn--on" : ""}`} aria-pressed={soloed}
+        aria-label={`Solo all ${name}`} title={`Hear only ${name}`} onClick={() => { arm(); toggleGroupSolo(id); }}>S</button>
+    </div>
   );
 }
 
@@ -214,7 +313,7 @@ function GroupStrip({ id, name, mix, live, arm }: { id: string; name: string; mi
         <div className="strip__meter"><i data-meter={`group:${id}`} /></div>
         <Fader value={v} label={`All ${name} volume`} onChange={(x) => { arm(); setGroupFader(id, x); }} />
       </div>
-      <div className="strip__db mono">{faderDb(v)}</div>
+      <div className="strip__db mono">{faderDb(v)} dB</div>
       <div className="strip__ms">
         <button type="button" className={`msbtn${muted ? " msbtn--on" : ""}`} aria-pressed={muted}
           aria-label={`Mute all ${name}`} title={`Mute all ${name}`} onClick={() => { arm(); toggleGroupMute(id); }}>M</button>
@@ -225,17 +324,24 @@ function GroupStrip({ id, name, mix, live, arm }: { id: string; name: string; mi
   );
 }
 
-function Strip({ p, mix, live, arm, groups, onDrag, onMove }: {
-  p: StemPart; mix: Mix; live: boolean; arm: () => void; groups: StemGroup[];
-  onDrag: (on: boolean) => void; onMove: (to: string) => void;
+function Strip({ p, label, mix, live, arm, groups, onDrag, onMove, onStep }: {
+  p: StemPart; label: string; mix: Mix; live: boolean; arm: () => void; groups: StemGroup[];
+  onDrag: (on: boolean) => void; onMove: (to: string) => void; onStep: (dir: -1 | 1) => void;
 }) {
   const v = live ? mix.faders[p.path] ?? 1 : 1;
   const muted = live && mix.muted.includes(p.path);
   const soloed = live && mix.soloed.includes(p.path);
   const heard = !live || partHeard(p.path, p.group, mix);
+  const full = withoutExt(p.name);
   return (
-    <div className={`strip${heard ? "" : " strip--off"}`} draggable
-      title={`${p.part}\n${p.name}${p.seconds != null ? ` · ${clock(p.seconds)}` : ""}`}
+    <div className={`strip${heard ? "" : " strip--off"}`} draggable data-strip={p.path}
+      role="group" aria-label={`${full}. Alt and up or down arrow moves it to another group`}
+      onKeyDown={(e) => {
+        if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+        e.preventDefault(); e.stopPropagation();
+        onStep(e.key === "ArrowUp" ? -1 : 1);
+      }}
+      title={`${full}${p.seconds != null ? ` · ${clock(p.seconds)}` : ""}`}
       onDragStart={(e) => { e.dataTransfer.setData(DRAG, p.path); e.dataTransfer.effectAllowed = "move"; onDrag(true); }}
       onDragEnd={() => onDrag(false)}
       onContextMenu={(e) => openMenu(e, [
@@ -246,18 +352,32 @@ function Strip({ p, mix, live, arm, groups, onDrag, onMove }: {
         { label: "Copy file path", onClick: () => { copyText(p.path); } },
       ])}>
       <div className="strip__cap" />
-      <div className="strip__name" lang="en">{p.part}</div>
+      <StripName label={label} />
       <div className="strip__body">
         <div className="strip__meter"><i data-meter={p.path} /></div>
-        <Fader value={v} label={`${p.part} volume`} onChange={(x) => { arm(); setFader(p.path, x); }} />
+        <Fader value={v} label={`${label} volume`} onChange={(x) => { arm(); setFader(p.path, x); }} />
       </div>
-      <div className="strip__db mono">{faderDb(v)}</div>
+      <div className="strip__db mono">{faderDb(v)} dB</div>
       <div className="strip__ms">
         <button type="button" className={`msbtn${muted ? " msbtn--on" : ""}`} aria-pressed={muted}
-          aria-label={`Mute ${p.part}`} title="Mute" onClick={() => { arm(); toggleMute(p.path); }}>M</button>
+          aria-label={`Mute ${label}`} title="Mute" onClick={() => { arm(); toggleMute(p.path); }}>M</button>
         <button type="button" className={`msbtn msbtn--solo${soloed ? " msbtn--on" : ""}`} aria-pressed={soloed}
-          aria-label={`Solo ${p.part}`} title="Solo" onClick={() => { arm(); toggleSolo(p.path); }}>S</button>
+          aria-label={`Solo ${label}`} title="Solo" onClick={() => { arm(); toggleSolo(p.path); }}>S</button>
       </div>
+    </div>
+  );
+}
+
+// A strip's name on one line. When it is too long the "…" goes before its last word,
+// as long as that word is short ("Vox C… 091"): that's usually the number or take that
+// tells the stems apart. The full name is in the strip's tooltip.
+function StripName({ label }: { label: string }) {
+  const cut = label.lastIndexOf(" ");
+  const last = cut > 0 ? label.slice(cut + 1) : "";
+  if (!last || last.length > 5) return <div className="strip__name" lang="en"><span className="strip__name-a">{label}</span></div>;
+  return (
+    <div className="strip__name" lang="en">
+      <span className="strip__name-a">{label.slice(0, cut)}</span>&nbsp;<span className="strip__name-b">{last}</span>
     </div>
   );
 }

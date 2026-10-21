@@ -146,7 +146,7 @@ function CoverBox({ s, done: close }: { s: NonNullable<PickState>; done: (saved:
             )}
             <p className="gpick__note">
               {own && shown ? "Drag the cover to move the picture. " : ""}
-              {pick === DEFAULT ? "Follows Settings, Covers: change a default there and this cover follows. " : ""}
+              {pick === DEFAULT ? "Follows Settings > Look > Your pictures: change a default there and this cover follows. " : ""}
               {s.note ?? ""}
             </p>
           </div>

@@ -1,14 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { showSettingsTab } from "./components/SetRow";
 import { Nav } from "./components/Nav";
-import { Setup } from "./screens/Setup";
 import { Home } from "./screens/Home";
-import { Sources } from "./screens/Sources";
 import { BackupFlow } from "./screens/BackupFlow";
 import { Library } from "./screens/Library";
-import { Dig } from "./screens/Dig";
-import { Plugins } from "./screens/Plugins";
-import { Albums } from "./components/Albums";
 import { albumSync } from "./albumSync";
 import { LcBrand } from "./components/LcBrand";
 import { FirstBackupModal } from "./components/FirstBackupModal";
@@ -37,6 +32,23 @@ import { dawLabel } from "./format";
 import { getRecents, openedWhen } from "./recents";
 import { SONG_FILE, claimedBySong, useSongDragActive } from "./songDrop";
 import type { LibraryItem } from "./types";
+
+// Screens most visits never open load when first wanted, so the app starts with
+// less to read. They're fetched quietly a few seconds after start, so opening one
+// later is still instant.
+const screens = {
+  Setup: () => import("./screens/Setup"),
+  Sources: () => import("./screens/Sources"),
+  Dig: () => import("./screens/Dig"),
+  Plugins: () => import("./screens/Plugins"),
+  Albums: () => import("./components/Albums"),
+};
+const Setup = lazy(() => screens.Setup().then((m) => ({ default: m.Setup })));
+const Sources = lazy(() => screens.Sources().then((m) => ({ default: m.Sources })));
+const Dig = lazy(() => screens.Dig().then((m) => ({ default: m.Dig })));
+const Plugins = lazy(() => screens.Plugins().then((m) => ({ default: m.Plugins })));
+const Albums = lazy(() => screens.Albums().then((m) => ({ default: m.Albums })));
+setTimeout(() => { for (const load of Object.values(screens)) void load(); }, 4000);
 
 const api = makeApi();
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -194,7 +206,7 @@ export default function App() {
       toast(fresh.length === 1 ? `Added ${baseName(fresh[0])} to your project folders.` : `Added ${fresh.length} project folders.`,
         { label: "Scan now", onClick: () => setFlow("scan") });
     } catch {
-      toastWarn("Couldn't add that folder. Try Add folder in Settings.");
+      toastWarn("Couldn't add that folder. Try Add folder in Settings > Folders.");
     }
   }
   const songDrag = useSongDragActive();
@@ -224,10 +236,10 @@ export default function App() {
   const prevDone = useRef(false);
   useEffect(() => {
     if (live.backup.done && !prevDone.current && "Notification" in window && Notification.permission === "granted") {
-      new Notification("LazyCreatives Backups", {
+      new Notification("Lazy Creatives Backups", {
         body: live.backup.cancelled
-          ? `Backup cancelled — ${live.backup.completed} done.`
-          : `Backup finished — ${live.backup.completed} ok, ${live.backup.errors} error(s).`,
+          ? `Backup stopped. ${live.backup.completed} ${live.backup.completed === 1 ? "project" : "projects"} done.`
+          : `Backup finished. ${live.backup.completed} backed up, ${live.backup.errors} couldn't be.`,
       });
     }
     // One-time onboarding: explain the payoff after the very first successful backup.
@@ -267,18 +279,18 @@ export default function App() {
       <div className="splash">
         <EmptyState pose="tangled" title="Backups couldn't start its engine"
           action={<button className="btn btn--primary" onClick={() => (window as any).ablebackup?.relaunch?.()}>Restart the app</button>}>
-          The part of the app that does the backing up didn't answer. Restarting the app usually fixes it; your backups are safe. If it keeps happening, use Help, Report a problem.
+          The part of the app that does the backing up didn't answer. Restarting the app usually fixes it; your backups are safe. If it keeps happening, use Help {'>'} Report a problem.
         </EmptyState>
       </div>
     );
   }
   if (!isConfigured(cfg)) {
-    return <Setup onDone={(c, skipped) => {
+    return <Suspense fallback={null}><Setup onDone={(c, skipped) => {
       setCfg(c);
       // Skipped backups: straight to the Library, finding projects to browse.
       if (skipped) { setScanLibraryNow(true); nav.go({ tab: "library" }, { replace: true }); }
       else nav.go({ tab: "home", flow: "scan" }, { replace: true });
-    }} />;
+    }} /></Suspense>;
   }
 
   const busy = live.scan.active || live.backup.active;
@@ -291,6 +303,7 @@ export default function App() {
       <main className="main">
         <div className="content">
           <div key={flow ?? (tab === "settings" ? `settings-${settingsKey}` : tab)} className="view-enter">
+          <Suspense fallback={null}>
           {flow ? (
             <BackupFlow
               step={flow}
@@ -336,6 +349,7 @@ export default function App() {
           ) : (
             <Sources />
           )}
+          </Suspense>
           </div>
         </div>
       </main>

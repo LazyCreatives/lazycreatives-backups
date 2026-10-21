@@ -10,20 +10,28 @@ from ablebackup.daws.dawproject import DawprojectAdapter
 from ablebackup.daws.flstudio import FlStudioAdapter
 from ablebackup.daws.logic import LogicAdapter
 from ablebackup.daws.reaper import ReaperAdapter
+from ablebackup.daws.stemfolder import StemFolderAdapter
 from ablebackup.daws.studioone import StudioOneAdapter
 
 # New DAWs register by adding one adapter and one entry here — nothing else changes.
 DAW_REGISTRY: list[DawAdapter] = [
     AbletonAdapter(), FlStudioAdapter(), ReaperAdapter(), DawprojectAdapter(),
     AudacityAdapter(), LogicAdapter(), StudioOneAdapter(), BitwigAdapter(),
+    # Folders of stems with no project file. Last: it is found from what the others
+    # leave over, and owns no file type.
+    StemFolderAdapter(),
 ]
+STEM_FOLDERS = DAW_REGISTRY[-1]
 
 _BY_EXT = {ext.lower(): a for a in DAW_REGISTRY for ext in a.extensions}
 _BY_ID = {a.daw_id: a for a in DAW_REGISTRY}
 
 
 def adapter_for_path(path) -> Optional[DawAdapter]:
-    return _BY_EXT.get(Path(path).suffix.lower())
+    a = _BY_EXT.get(Path(path).suffix.lower())
+    if a is None and Path(path).is_dir():
+        return STEM_FOLDERS  # a folder that isn't a package: a stems-only folder
+    return a
 
 
 def adapter_for_id(daw_id: str) -> Optional[DawAdapter]:

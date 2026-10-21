@@ -1,5 +1,5 @@
-// "Tidy names": rename one song's project versions, its folder and its exported songs
-// together, with a side-by-side preview. Nothing changes until Rename, and the
+// "Tidy names": rename a song's project versions, its folder and its exported songs
+// together (one song, the picked ones, or a whole folder), with a side-by-side preview. Nothing changes until Rename, and the
 // project page offers Undo afterwards.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { makeApi } from "../api";
@@ -31,7 +31,7 @@ export function TidyNames({ items, onClose: close, onDone }: {
   const [leaving, onClose] = useLeave(close);
   const [names, setNames] = useState<Record<string, string>>({});
   const [style, setStyle] = useState<"v" | "v0">("v");
-  const [numbers, setNumbers] = useState<"keep" | "order">("keep");
+  const [numbers, setNumbers] = useState<"keep" | "order">("order");
   const [songStyle, setSongStyle] = useState<"paren" | "dash">("paren");
   const [folder, setFolder] = useState(true);
   const [overrides, setOverrides] = useState<Record<string, string>>({});
@@ -49,7 +49,7 @@ export function TidyNames({ items, onClose: close, onDone }: {
     let alive = true;
     const t = setTimeout(() => {
       api.tidyPreview(opts()).then((p) => { if (alive) { setPlan(p); setErr(null); } })
-        .catch((e) => { if (alive) setErr(e.message || "Couldn't work out the new names."); });
+        .catch((e) => { if (alive) setErr(e.message || "Couldn't work out the new names. Close this and open Tidy names again."); });
     }, plan ? 220 : 0);
     return () => { alive = false; clearTimeout(t); };
   }, [ids.join(","), JSON.stringify(names), style, numbers, songStyle, folder, JSON.stringify(overrides), [...skip].join("|")]);
@@ -63,12 +63,26 @@ export function TidyNames({ items, onClose: close, onDone }: {
   async function rename() {
     setBusy(true); setErr(null);
     try { onDone(await api.tidyApply(opts())); }
-    catch (e: any) { setErr(e.message || "Rename failed. Nothing was changed."); }
+    catch (e: any) { setErr(e.message || "Couldn't rename them, so every name is as it was. Try again."); }
     finally { setBusy(false); }
   }
 
   const toggle = (p: string) => setSkip((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; });
+  // a whole song in or out: every row of it that could change
+  const toggleAll = (g: TidyGroup, on: boolean) => setSkip((s) => {
+    const n = new Set(s);
+    for (const r of g.rows) {
+      if (!["rename", "skipped", "blocked"].includes(r.status)) continue;
+      if (on) n.delete(r.old); else n.add(r.old);
+    }
+    return n;
+  });
   const groups = plan?.groups ?? [];
+  // with many songs, the ones already tidy fold into one line at the end
+  const isTidy = (g: TidyGroup) => g.rows.every((r) => r.status !== "rename" && r.status !== "blocked"
+    && !(r.status === "skipped" && skip.has(r.old)));
+  const toDo = groups.filter((g) => !isTidy(g));
+  const tidyAlready = groups.filter(isTidy);
   const count = plan?.count ?? 0;
   const many = groups.length > 1;
   const title = many ? `${groups.length} songs` : groups[0]?.name ?? items[0]?.name ?? "";
@@ -98,10 +112,10 @@ export function TidyNames({ items, onClose: close, onDone }: {
           <div className="field">
             <span>Numbers</span>
             <div className="seg" role="group" aria-label="Which number each version gets">
+              <button type="button" className={`seg__opt${numbers === "order" ? " seg__opt--on" : ""}`} onClick={() => setNumbers("order")}
+                title="Number them 1, 2, 3 by the date each version was made">Oldest is v1</button>
               <button type="button" className={`seg__opt${numbers === "keep" ? " seg__opt--on" : ""}`} onClick={() => setNumbers("keep")}
                 title="Keep the version numbers already in the names, and fill in the rest">Keep yours</button>
-              <button type="button" className={`seg__opt${numbers === "order" ? " seg__opt--on" : ""}`} onClick={() => setNumbers("order")}
-                title="Number them 1, 2, 3 from the oldest save">Count from 1</button>
             </div>
           </div>
           <div className="field">
@@ -129,12 +143,20 @@ export function TidyNames({ items, onClose: close, onDone }: {
             <span /><span>What</span><span>Now</span><span>After</span>
           </div>
           {!plan && !err && <div className="tidy__empty faint">Working out the new names…</div>}
-          {groups.map((g) => (
+          {(many ? toDo : groups).map((g) => (
             <Group key={g.id} g={g} many={many} name={names[g.id] ?? g.name}
               onName={(v) => setNames({ ...names, [g.id]: v })}
               overrides={overrides} onOverride={(p, v) => setOverrides({ ...overrides, [p]: v })}
-              skip={skip} onToggle={toggle} />
+              skip={skip} onToggle={toggle} onToggleAll={toggleAll} />
           ))}
+          {many && tidyAlready.length > 0 && (
+            <div className="tidy__already faint">
+              <Icon name="check" size={13} />
+              <span className="col-trunc" title={tidyAlready.map((g) => g.name).join(", ")}>
+                {tidyAlready.length === 1 ? `${tidyAlready[0].name} is` : `${tidyAlready.length.toLocaleString()} more songs are`} already tidy
+              </span>
+            </div>
+          )}
         </div>
 
         {err && <div className="tidy__err" role="alert"><Icon name="alert" size={14} /> {err}</div>}
@@ -155,15 +177,18 @@ export function TidyNames({ items, onClose: close, onDone }: {
   );
 }
 
-function Group({ g, many, name, onName, overrides, onOverride, skip, onToggle }: {
+function Group({ g, many, name, onName, overrides, onOverride, skip, onToggle, onToggleAll }: {
   g: TidyGroup; many: boolean; name: string; onName: (v: string) => void;
   overrides: Record<string, string>; onOverride: (path: string, v: string) => void;
-  skip: Set<string>; onToggle: (path: string) => void;
+  skip: Set<string>; onToggle: (path: string) => void; onToggleAll: (g: TidyGroup, on: boolean) => void;
 }) {
+  const can = g.rows.filter((r) => r.status === "rename" || r.status === "skipped" || r.status === "blocked");
+  const on = can.some((r) => !skip.has(r.old));
   return (
-    <section className="tidy__group">
+    <section className={`tidy__group${many && !on ? " tidy__group--off" : ""}`}>
       {many && (
         <div className="tidy__ghead">
+          <input type="checkbox" checked={on} aria-label={`Rename ${name}`} onChange={(e) => onToggleAll(g, e.target.checked)} />
           <input type="text" aria-label="Song name" value={name} spellCheck={false} onChange={(e) => onName(e.target.value)} />
           <span className="faint">{g.versions} version{g.versions === 1 ? "" : "s"} · {g.songs} song{g.songs === 1 ? "" : "s"}</span>
         </div>

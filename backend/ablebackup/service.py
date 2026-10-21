@@ -66,6 +66,25 @@ def project_signature(scan: ProjectScan, portable: bool = False, layout: str = "
     return h.hexdigest()
 
 
+def joined_stem_folders(catalog: Catalog) -> dict[str, str]:
+    """Stems-only folders you said belong to a project: {folder: project id}. They
+    aren't projects of their own any more; their stems are that project's."""
+    return dict(catalog.get_setting("joined_stem_folders") or {})
+
+
+def _key(path) -> str:
+    return os.path.normcase(os.path.realpath(str(path)))
+
+
+def drop_joined(catalog: Catalog, projects: list, folder=lambda p: p.project_dir) -> list:
+    """``projects`` without the stems folders joined to a project."""
+    joined = {_key(d) for d in joined_stem_folders(catalog)}
+    if not joined:
+        return projects
+    return [p for p in projects
+            if (p.get("daw") if isinstance(p, dict) else p.daw_id) != "stems" or _key(folder(p)) not in joined]
+
+
 def exports_to_back_up(catalog: Catalog, project_id: str) -> list[dict]:
     """The songs exported from a project that go into its backup: every version,
     and its stems unless Settings says to leave them out."""
@@ -995,7 +1014,8 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
         for p in projects:
             catalog.set_missing_count(p.project_id, len(p.missing))
     else:
-        projects = scan_projects([Path(s) for s in sources], locate=locate, pointed=pointed)
+        projects = drop_joined(catalog, scan_projects([Path(s) for s in sources], locate=locate,
+                                                      pointed=pointed))
 
     last_sigs = catalog.latest_signatures()
     ok_count = 0

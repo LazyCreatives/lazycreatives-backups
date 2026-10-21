@@ -83,6 +83,8 @@ html[data-read-space]:not([data-read-space="normal"]) p + p { margin-top: 0.9em;
 html[data-reading] .page-head { flex-wrap: wrap; }
 html[data-reading] .page-head > :first-child { flex: 1 1 340px; }
 html[data-reading] .seg { flex-wrap: wrap; max-width: 100%; }
+/* a search box's hint ends in "…" when the bigger text doesn't fit */
+html[data-reading] input { text-overflow: ellipsis; }
 html[data-reading] .seg__opt { white-space: nowrap; }
 
 /* Big counts stay on one line (Home's "24 / 34"), and the version row in Settings > App

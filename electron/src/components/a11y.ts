@@ -13,14 +13,26 @@ export function rowKey(open: () => void) {
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+// The last thing that had focus outside any pop-up. A pop-up that focuses its own box as it
+// opens (autoFocus) has already taken focus when its effect runs, so this is where it goes back.
+const POPUP = '[role="dialog"], [role="alertdialog"]';
+let lastOutside: HTMLElement | null = null;
+if (typeof document !== "undefined") {
+  document.addEventListener("focusin", (e) => {
+    const t = e.target;
+    if (t instanceof HTMLElement && !t.closest(POPUP)) lastOutside = t;
+  }, true);
+}
+
 // While a pop-up is open: Tab and Shift+Tab stay inside it, focus moves in when it
 // opens (unless something inside already has it), and goes back to where it was
 // when it closes, so a keyboard user keeps their place in a long list.
 export function useDialogFocus(ref: RefObject<HTMLElement | null>, open = true) {
   useEffect(() => {
     if (!open) return;
-    const before = document.activeElement as HTMLElement | null;
     const box = ref.current;
+    const active = document.activeElement as HTMLElement | null;
+    const before = active && box?.contains(active) ? lastOutside : active;
     if (box && !box.contains(document.activeElement)) {
       const first = box.querySelector<HTMLElement>(FOCUSABLE);
       (first ?? box).focus({ preventScroll: true });

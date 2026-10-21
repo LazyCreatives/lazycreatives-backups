@@ -15,6 +15,7 @@ import type { BackupItem } from "../useProgress";
 import { EmptyState, SlothSpot } from "../components/SlothSpot";
 import { useGenres } from "../useGenres";
 import { plainReason } from "../runBackup";
+import { DoneSeal } from "../components/DoneSeal";
 
 const STATE_TEXT: Record<BackupItem["state"], string> = {
   working: "Backing up…", done: "Safe", skipped: "Already safe", error: "Failed",
@@ -68,6 +69,14 @@ export function Backup({ progress: p, jobId, onRetry }: { progress: BackupProgre
   const [look] = useLook();
   const genreOf = useGenres();
   const nowName = p.current ?? p.items[p.items.length - 1]?.name ?? "Your projects";
+  // Each project keeps its place number as its key, so a new one arriving (or the failed
+  // ones moving to the top at the end) never redraws the others. While the run is live a
+  // project that becomes safe stamps its mark in (flow.css, .run--live); once it's over
+  // nothing replays.
+  const numbered = p.items.map((it, n) => ({ it, n }));
+  const failedFirstN = (list: { it: BackupItem; n: number }[]) =>
+    [...list.filter((x) => x.it.state === "error"), ...list.filter((x) => x.it.state !== "error")];
+  const live = p.done ? "" : " run--live";
 
   return (
     <>
@@ -161,22 +170,22 @@ export function Backup({ progress: p, jobId, onRetry }: { progress: BackupProgre
           </div>}
 
           {p.items.length > 0 && look === "crate" && (
-            <div className="table table--crate">
-              {(p.done ? failedFirst([...p.items].reverse()) : [...p.items].reverse()).map((it, i) => (
-                <div key={`${it.name}-${i}`} className="row cols run-cols">
+            <div className={`table table--crate${live}`}>
+              {(p.done ? failedFirstN([...numbered].reverse()) : [...numbered].reverse()).map(({ it, n }) => (
+                <div key={n} className="row cols run-cols">
                   <span className="stripe" style={{ background: coverColor(genreOf(it.name), it.name) }} />
                   <Cover name={it.name} genre={genreOf(it.name)} size={32} label={false} />
                   <span className="lib-name">{it.name}</span>
-                  <span className={`run-state run-state--${it.state}`}><span className="dot" />{STATE_TEXT[it.state]}</span>
+                  <span className={`run-state run-state--${it.state}`}>{it.state === "done" ? <DoneSeal size={13} /> : <span className="dot" />}{STATE_TEXT[it.state]}</span>
                   <span className={`col-trunc${it.state === "error" ? " run-why" : " faint"}`} title={it.detail}>{it.state === "error" ? plainReason(it.detail) : it.detail ?? ""}</span>
                 </div>
               ))}
             </div>
           )}
           {p.items.length > 0 && look === "sleeve" && (
-            <div className="run-wall">
-              {(p.done ? failedFirst(p.items) : p.items).map((it, i) => (
-                <div key={`${it.name}-${i}`} className={`run-tile run-tile--${it.state}`} title={`${it.name}: ${STATE_TEXT[it.state]}${it.detail ? `, ${it.detail}` : ""}`}>
+            <div className={`run-wall${live}`}>
+              {(p.done ? failedFirstN(numbered) : numbered).map(({ it, n }) => (
+                <div key={n} className={`run-tile run-tile--${it.state}`} title={`${it.name}: ${STATE_TEXT[it.state]}${it.detail ? `, ${it.detail}` : ""}`}>
                   <Cover name={it.name} genre={genreOf(it.name)} label={false} />
                   <span className="run-tile__mark" aria-hidden>
                     {it.state === "done" ? <Icon name="check" size={14} /> : it.state === "error" ? <Icon name="alert" size={14} /> : it.state === "skipped" ? <Icon name="check" size={14} /> : null}
@@ -198,9 +207,4 @@ export function Backup({ progress: p, jobId, onRetry }: { progress: BackupProgre
       )}
     </>
   );
-}
-
-// When a run is over, the projects that failed go to the top of the list.
-function failedFirst(items: BackupItem[]): BackupItem[] {
-  return [...items.filter((it) => it.state === "error"), ...items.filter((it) => it.state !== "error")];
 }
