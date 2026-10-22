@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { pickCover } from "../components/CoverPick";
 import { lastLibrary, makeApi } from "../api";
+import { openProjectFile } from "../openProject";
 import type { Overview, LibraryItem } from "../types";
 import { runDoneCount, runDoneTitle, runPct, type BackupProgress } from "../useProgress";
 import { countStatuses, itemStatus, yearOf, type LibFilters, type StatusFilter } from "../libraryFilter";
@@ -326,7 +327,7 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
   // right-click on a project anywhere on Home: the same everyday actions as the library
   const projectMenu = (it: LibraryItem) => (e: React.MouseEvent) => openMenu(e, [
     { label: "Show backups & details", onClick: () => onOpenProject(it.name) },
-    { label: openWord(it.daw), onClick: () => { if (it.path) bridge()?.[stemsOnly(it.daw) ? "revealPath" : "openProject"]?.(it.path); } },
+    { label: openWord(it.daw), onClick: () => { void openProjectFile(it.path, stemsOnly(it.daw)); } },
     { label: it.backed_up && !it.changed ? "Back up again" : "Back up now", onClick: () => { fixOne(it); }, disabled: fixing.has(it.project_id) },
     { label: pins.includes(it.project_id) ? "Unpin" : "Pin to the top", onClick: () => togglePin(it.project_id) },
     { label: "Change cover…", onClick: () => { pickCover({ title: it.name, name: it.name, genre: it.genre }); } },

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { openMenu, CopyButton, toast, toastWarn } from "../components/Desktop";
 import { plainReason } from "../runBackup";
+import { openProjectFile } from "../openProject";
 import { makeApi } from "../api";
 import type { Snapshot, VerifyResult, SnapshotFile, SnapshotFilesResult, SnapshotDiff } from "../types";
 import { Button } from "../components/Button";
@@ -12,7 +13,7 @@ import { osWords } from "../platform";
 
 const api = makeApi();
 function reveal(p?: string) { if (p) (window as any).ablebackup?.revealPath?.(p); }
-function openInDaw(p?: string) { if (p) (window as any).ablebackup?.openProject?.(p); }
+function openInDaw(p?: string) { void openProjectFile(p); }
 const PROJECT_EXT = /\.(als|flp|rpp|dawproject|aup3|aup|song|bwproject)$/i;
 // A Logic project is a folder (package) at the top of the backup: "Song.logicx/…".
 const PACKAGE_TOP = /^([^/]+\.(logicx|logic))\//i;

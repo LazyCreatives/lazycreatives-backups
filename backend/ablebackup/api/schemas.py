@@ -36,6 +36,18 @@ class NasRemote(BaseModel):
     folder: str = Field("", max_length=500)                 # shared folder on the NAS
 
 
+class NasShare(BaseModel):
+    share: str = Field(..., max_length=300)
+
+
+class NasReady(BaseModel):
+    path: str = Field(..., max_length=4096)
+
+
+class DoublesRemove(BaseModel):
+    ids: list[int] | None = Field(None, max_length=10000)  # None: every extra copy
+
+
 class SortRequest(BaseModel):
     # up to three of: program, year, month, genre, folder (cleaned on the way in)
     levels: list[str] = Field(default_factory=list, max_length=8)

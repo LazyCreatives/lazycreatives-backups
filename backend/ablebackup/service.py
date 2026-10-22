@@ -23,7 +23,7 @@ from ablebackup.locator import daw_data_folders, default_libraries, make_locator
 from ablebackup.models import ProjectScan
 from ablebackup.scanner import scan_one, scan_projects
 from ablebackup.sorting import (all_pools, dest_parent, get_sort, is_default, made_time,
-                                pool_for, project_folder_name)
+                                pool_for, project_folder_name, project_path)
 from ablebackup.verifier import verify_snapshot
 
 ProgressCb = Optional[Callable[[dict], None]]
@@ -993,7 +993,7 @@ def _back_up_one(p, base: Path, adapter, levels, found_genres, sort_info, timest
     dest_root = base / (adapter.backup_root if adapter else "AbletonBackups")
     parent = None if is_default(levels) else dest_parent(
         base, levels, daw=p.daw_id, made=sort_info["made"],
-        genre=(found_genres.get(p.project_id)), folder=sort_info["folder"])
+        genre=(found_genres.get(p.project_id)), folder=sort_info["folder"], path=sort_info.get("path"))
     return backup_project(p, dest_root, timestamp, portable=portable, layout=layout,
                           exports=exports, project_parent=parent,
                           pool=pool_for(base, p.daw_id, levels), sort_info=sort_info)
@@ -1017,6 +1017,9 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
         _emit(progress, {"type": "nas_waking"})
         nas.ensure_connected(catalog, dest)
         dest = nas.catalog_dest(catalog) or dest  # it may have come back at a new path
+    # Project folders kept on the NAS too: connect those as well.
+    if any(nas.on_nas_path(catalog, s) for s in sources):
+        nas.ensure_folders(catalog, sources)
     # Never back up to a drive that isn't there: making the folder again would put
     # the "backup" on the computer's own disk (or fail with a misleading error).
     base = prepare_dest(catalog, dest)
@@ -1076,7 +1079,8 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
                    default=None)
         if made and p.project_id:
             catalog.remember_made(p.project_id, made)
-        sort_info = {"made": made, "folder": project_folder_name(p.project_dir, p.name)}
+        sort_info = {"made": made, "folder": project_folder_name(p.project_dir, p.name),
+                     "path": project_path(sources, p.project_dir, p.name)}
         try:
             try:
                 result = _back_up_one(p, base, adapter, levels, found_genres, sort_info,

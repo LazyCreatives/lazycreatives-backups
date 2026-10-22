@@ -25,6 +25,8 @@ import { fmtCount, fmtInterval, fmtNext, fmtDay, fmtSize } from "../format";
 import { osWords } from "../platform";
 import { useCloudFolders } from "../components/DestChoices";
 import { BackupSort } from "../components/BackupSort";
+import { Doubles } from "../components/Doubles";
+import { NasFolders } from "../components/NasFolders";
 import { EXPORT_FOLDER_FROM, SHORT_EXPORTS_DEFAULT, exportFolderRows, setShortExportSeconds, shortExportSeconds } from "../exportFolders";
 
 const api = makeApi();
@@ -70,6 +72,7 @@ export function Sources() {
   const cloud = useCloudFolders();
   const [findNas, setFindNas] = useState(false);
   const [nasInfo, setNasInfo] = useState<NasInfo | null>(null);
+  const [nasFolders, setNasFolders] = useState(false);
   useEffect(() => { api.nasStatus().then((r) => setNasInfo(r.nas)).catch(() => {}); }, []);
 
   function refreshNextRun() {
@@ -241,7 +244,17 @@ export function Sources() {
       {tab === "folders" && <>
       <SetRow title="Project folders" help="Where your projects live. Backups looks in these folders, and the folders inside them.">
         <FolderTable paths={cfg.sources} loaded={loaded} empty="No folders yet." onRemove={removeSource} />
-        <Button variant="ghost" size="sm" onClick={addSource} disabled={!loaded}><Icon name="plus" size={14} />Add folder</Button>
+        <div className="set-inline">
+          <Button variant="ghost" size="sm" onClick={addSource} disabled={!loaded}><Icon name="plus" size={14} />Add folder</Button>
+          {nasInfo && <Button variant="ghost" size="sm" onClick={() => setNasFolders(true)} disabled={!loaded}>
+            <Icon name="nas" size={14} /><span className="col-trunc set-nasbtn" title={`Add a folder on ${nasInfo.name}`}>Add a folder on <bdi>{nasInfo.name}</bdi></span></Button>}
+        </div>
+        {nasFolders && nasInfo && <NasFolders nas={nasInfo} onClose={() => setNasFolders(false)}
+          onPicked={(dir, label) => {
+            setNasFolders(false);
+            if (!cfg.sources.includes(dir)) setCfg((c) => ({ ...c, sources: [...c.sources, dir] }));
+            toast(`Backups will find your projects in ${label}.`);
+          }} />}
       </SetRow>
 
       <SetRow title="Export folders"
@@ -320,6 +333,12 @@ export function Sources() {
         help="The folders your backups go in on the backup drive. Pick up to three. Your own projects never move."
         info="Year and month are when the project was started. Your project folder is the folder you keep the project in, like Album ideas. Changing the sort moves the backups already on the drive to match, which is quick because nothing is copied. Copies in a second place keep their old folders.">
         <BackupSort dest={cfg.dest} loaded={loaded} />
+      </SetRow>
+
+      <SetRow title="Same backup twice"
+        help="Backups of a project that hold exactly the same thing. The newest stays; the others go when you press Remove."
+        info="These were made when a project that hadn't changed was backed up again with another option, like Copy as-is or another folder layout. Backups you gave a name always stay. Only backup copies are removed, never your projects.">
+        <Doubles dest={cfg.dest} loaded={loaded} />
       </SetRow>
 
       <SetRow title={<>Second copy{!canCloud && <ProBadge label="STUDIO" />}</>}

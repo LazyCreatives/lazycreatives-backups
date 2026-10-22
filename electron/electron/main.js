@@ -141,7 +141,9 @@ async function pick(options) {
 
 registerDesktopIpc(() => win);
 
-ipcMain.handle("pick-folder", () => pick({ properties: ["openDirectory"] }));
+// `start`: open the picker there (a NAS shared folder just connected), not where it last was.
+ipcMain.handle("pick-folder", (_e, start) => pick({ properties: ["openDirectory"],
+  ...(typeof start === "string" && start ? { defaultPath: start } : {}) }));
 
 // Pick a single audio file — used by "Point to file…" to hand-map one missing sample
 // to its exact replacement. Filtered to audio so the relink stays a media file.

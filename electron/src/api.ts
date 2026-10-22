@@ -16,8 +16,11 @@ function token() {
 export type FoundNas = { name: string; host: string; address: string; maker: string; away?: boolean; via?: string };
 export type NasShare = { name: string; comment: string };
 export type NasInfo = { name: string; host: string; share: string; user: string; path: string };
+export type SortMatch = { levels: SortLevel[]; kinds: SortLevel[]; where: "backups" | "projects"; example: string[] };
+export type DoubleCopy = { id: number; timestamp: string; dir: string; size: number; frees?: number };
+export type Doubles = { groups: { project_name: string; keep: DoubleCopy; extras: DoubleCopy[] }[]; count: number; size: number };
 
-export type SortLevel = "program" | "year" | "month" | "genre" | "folder";
+export type SortLevel = "program" | "year" | "month" | "genre" | "folder" | "path";
 export type BackupSort = { levels: SortLevel[]; example: string[]; moves: number; undo?: boolean };
 export type SortDone = { levels: SortLevel[]; moved: number; failed: number; undo: boolean };
 
@@ -180,6 +183,18 @@ export function makeApi() {
       return req("POST", "/api/nas/connect", b);
     },
     async forgetNas(): Promise<{ ok: boolean }> { return req("POST", "/api/nas/forget"); },
+    // Project folders kept on the NAS (Settings, Project folders): its shared folders
+    // with the saved login, connect one, and connect it again before opening a project.
+    async nasMyShares(): Promise<{ shares: string[]; listed: boolean }> { return req("POST", "/api/nas/my-shares"); },
+    async nasOpenShare(share: string): Promise<{ path: string }> { return req("POST", "/api/nas/open-share", { share }); },
+    async nasReady(path: string): Promise<{ ok: boolean }> { return req("POST", "/api/nas/ready", { path }); },
+    // "Sort like this?": how the folders already there are arranged, when it's clear.
+    async backupSortDetect(): Promise<{ match: SortMatch | null }> { return req("GET", "/api/backup-sort/detect"); },
+    // Same backup twice (Settings, Backups): copies that hold exactly the same thing.
+    async doubles(): Promise<Doubles> { return req("GET", "/api/doubles"); },
+    async removeDoubles(ids?: number[]): Promise<{ removed: number; failed: number; freed: number }> {
+      return req("POST", "/api/doubles/remove", { ids: ids ?? null });
+    },
     // How backups are sorted into folders on the backup drive (Settings, Backups).
     async backupSort(): Promise<BackupSort> { return req("GET", "/api/backup-sort"); },
     async backupSortPreview(levels: SortLevel[]): Promise<BackupSort> {

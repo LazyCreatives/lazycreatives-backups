@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { pickCover } from "../components/CoverPick";
 import { lastLibrary, makeApi } from "../api";
+import { openProjectFile } from "../openProject";
 import type { LibraryItem } from "../types";
 import type { ScanProgress } from "../useProgress";
 import { Button } from "../components/Button";
@@ -70,9 +71,7 @@ function ownerLabel(owner: string): string {
 }
 
 const bridge = () => (window as any).ablebackup;
-const openInDaw = (p?: string, daw?: string) => {
-  if (p) { if (stemsOnly(daw)) bridge()?.revealPath?.(p); else bridge()?.openProject?.(p); }
-};
+const openInDaw = (p?: string, daw?: string) => { void openProjectFile(p, stemsOnly(daw)); };
 const revealPath = (p?: string) => { if (p) bridge()?.revealPath?.(p); };
 
 // One plain line that says the truth about a project: missing samples beat

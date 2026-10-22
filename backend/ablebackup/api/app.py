@@ -22,6 +22,7 @@ from ablebackup.folders_api import make_router as folders_router
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
 from ablebackup.api.schemas import (
+    DoublesRemove, NasReady, NasShare,
     ActivateRequest, BackupRequest, CloudConnectRequest, CloudDisconnectRequest,
     Config, ExportFoldersRequest, ExportDropRequest, ExportIgnoreRequest, ExportLinkRequest,
     ExportUndoRequest, GenreRequest,
@@ -40,8 +41,8 @@ from ablebackup.service import (
     share_snapshot, snapshot_diff, BackupDriveMissing, prepare_dest, remember_dest, drop_joined,
     joined_stem_folders, _backup_lock as backup_lock,
 )
-from ablebackup import nas
-from ablebackup.sorting import UNDO_KEY as SORT_UNDO_KEY, apply_sort, get_sort, preview as sort_preview, undo_sort
+from ablebackup import doubles, nas
+from ablebackup.sorting import UNDO_KEY as SORT_UNDO_KEY, apply_sort, detect as sort_detect, get_sort, preview as sort_preview, undo_sort
 from ablebackup.resolver import _allowed_external_file
 from ablebackup.scanner import ParseCache, scan_one
 from ablebackup.songmatch import is_stem
@@ -305,6 +306,27 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         except nas.NasError as e:
             raise HTTPException(400, str(e)) from None
 
+    # Project folders on the NAS (Settings, Project folders, Add a folder on the NAS).
+    @app.post("/api/nas/my-shares", dependencies=[Depends(require_token)])
+    async def nas_my_shares():
+        def go():
+            found = nas.my_shares(app.state.catalog)
+            return {"shares": found or [], "listed": found is not None}
+        return await asyncio.to_thread(_nas_call, go)
+
+    @app.post("/api/nas/open-share", dependencies=[Depends(require_token)])
+    async def nas_open_share(req: NasShare):
+        return await asyncio.to_thread(_nas_call, lambda: {"path": str(nas.open_share(app.state.catalog, req.share))})
+
+    @app.post("/api/nas/ready", dependencies=[Depends(require_token)])
+    async def nas_ready(req: NasReady):
+        """Before opening a project kept on the NAS: connect it if it dropped off."""
+        cat = app.state.catalog
+        if not nas.on_nas_path(cat, req.path):
+            return {"ok": True}
+        missing = await asyncio.to_thread(nas.ensure_folders, cat, [str(Path(req.path).parent)], 30.0)
+        return {"ok": not missing and Path(req.path).exists()}
+
     @app.post("/api/nas/shares", dependencies=[Depends(require_token)])
     async def nas_shares(req: NasLogin):
         def go():
@@ -385,6 +407,22 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         return await asyncio.to_thread(_with_backups_held,
                                        lambda: apply_sort(cat, _sort_base(), req.levels))
 
+    @app.get("/api/backup-sort/detect", dependencies=[Depends(require_token)])
+    async def backup_sort_detect():
+        """The sort the folders already in the backup place (or the project folders)
+        follow, when it's clear and different from now: offered as "Sort like this?"."""
+        return {"match": await asyncio.to_thread(sort_detect, app.state.catalog, _sort_base())}
+
+    # ---- Same backup twice (Settings, Backups) ----
+    @app.get("/api/doubles", dependencies=[Depends(require_token)])
+    async def doubles_find():
+        return await asyncio.to_thread(doubles.find, app.state.catalog)
+
+    @app.post("/api/doubles/remove", dependencies=[Depends(require_token)])
+    async def doubles_remove(req: DoublesRemove):
+        cat = app.state.catalog
+        return await asyncio.to_thread(_with_backups_held, lambda: doubles.remove(cat, req.ids))
+
     @app.post("/api/backup-sort/undo", dependencies=[Depends(require_token)])
     async def undo_backup_sort():
         cat = app.state.catalog
@@ -435,6 +473,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
                 pass  # no event loop bound (e.g. bare TestClient) — skip live ticks
 
         find_missing = req.find_missing and _allows("auto_relink")
+        nas.ensure_folders(app.state.catalog, sources, 20.0)  # project folders on a sleeping NAS
         stats: dict = {}
         projects = scan_summary(
             sources, progress=progress, find_missing=find_missing,

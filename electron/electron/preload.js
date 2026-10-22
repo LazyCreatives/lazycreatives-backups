@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld("ablebackup", {
   port: argValue("--ablebackup-port"),
   // "vibrancy" (Mac), "mica" (Windows 11) or "none": see windowMaterial in desktop.js.
   material: argValue("--lc-material") || "none",
-  pickFolder: () => ipcRenderer.invoke("pick-folder"),
+  pickFolder: (start) => ipcRenderer.invoke("pick-folder", start),
   pickFile: () => ipcRenderer.invoke("pick-file"),
   pickImage: () => ipcRenderer.invoke("pick-image"),
   readImage: (p) => ipcRenderer.invoke("read-image", p),

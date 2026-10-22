@@ -21,7 +21,9 @@ from ablebackup.daws.base import BACKUP_ROOTS, STAMP_RE
 from ablebackup.daws.registry import DAW_REGISTRY, adapter_for_id
 from ablebackup.exports import normalize
 
-LEVELS = ("program", "year", "month", "genre", "folder")
+# "path": the same folders the project is kept in under its project folder
+# ("2024/House"), so backups match a library the producer already sorted by hand.
+LEVELS = ("program", "year", "month", "genre", "folder", "path")
 DEFAULT_SORT = ["program"]
 MAX_LEVELS = 3
 SORT_KEY = "backup_sort"
@@ -47,6 +49,8 @@ def clean_levels(levels) -> list[str]:
     for lv in levels or []:
         if lv in LEVELS and lv not in out:
             out.append(lv)
+    if "path" in out:
+        return ["path"]  # the producer's own folders already say everything
     return out[:MAX_LEVELS] or list(DEFAULT_SORT)
 
 
@@ -86,6 +90,16 @@ def made_time(project_path: Path | str | None, fallback: float | None = None) ->
     return fallback
 
 
+def _own_folder(dirname: str, project_name: str) -> bool:
+    """Is this the project's own folder ("Night Drive Project" for "Night Drive")?
+    Names in any script count (a Japanese or emoji name normalises to nothing)."""
+    bare = re.sub(r"\s*project$", "", dirname, flags=re.I)
+    a, b = normalize(bare), normalize(project_name)
+    if a and b:
+        return a == b
+    return bool(bare.strip()) and bare.strip().casefold() == project_name.strip().casefold()
+
+
 def project_folder_name(project_dir: Path | str | None, project_name: str) -> str:
     """The folder the producer keeps this project in. A project folder of its own
     ("Night Drive Project" for "Night Drive") counts as the project itself, so the
@@ -93,16 +107,31 @@ def project_folder_name(project_dir: Path | str | None, project_name: str) -> st
     if not project_dir:
         return NO_FOLDER
     d = Path(project_dir)
-    own = normalize(re.sub(r"\s*project$", "", d.name, flags=re.I))
-    if own and own == normalize(project_name):
+    if _own_folder(d.name, project_name):
         d = d.parent
     if d == d.parent or not d.name:
         return NO_FOLDER
     return safe_folder(d.name, NO_FOLDER)
 
 
+def project_path(roots, project_dir, project_name: str) -> list[str]:
+    """The folders between the project folder it was found in and the project
+    ("2024", "House" for <Projects>/2024/House/Night Drive Project/Night Drive.als)."""
+    if not project_dir:
+        return []
+    d = Path(project_dir)
+    root = max((Path(r) for r in roots or [] if r and (Path(r) == d or Path(r) in d.parents)),
+               key=lambda r: len(r.parts), default=None)
+    if root is None:
+        return []
+    parts = list(d.relative_to(root).parts)
+    if parts and _own_folder(d.name, project_name):
+        parts = parts[:-1]
+    return parts
+
+
 def level_folders(levels, *, daw: str | None, made: float | None, genre: str | None,
-                  folder: str | None) -> list[str]:
+                  folder: str | None, path: list[str] | None = None) -> list[str]:
     """The folder names above the project folder, for one project."""
     when = datetime.fromtimestamp(made) if made else datetime.now()
     out: list[str] = []
@@ -118,6 +147,8 @@ def level_folders(levels, *, daw: str | None, made: float | None, genre: str | N
             out.append(safe_folder(genre or "", NO_GENRE))
         elif lv == "folder":
             out.append(folder or NO_FOLDER)
+        elif lv == "path":
+            out.extend([safe_folder(x, NO_FOLDER) for x in path or []] or [NO_FOLDER])
     return out
 
 
@@ -129,13 +160,13 @@ def out_levels(levels, upto: str) -> list[str]:
 
 
 def dest_parent(base: Path, levels, *, daw: str | None, made: float | None,
-                genre: str | None, folder: str | None) -> Path:
+                genre: str | None, folder: str | None, path: list[str] | None = None) -> Path:
     """Where a project's own folder goes. The default keeps the program's backup
     folder exactly as it always was (<drive>/AbletonBackups/projects)."""
     if is_default(levels):
         adapter = adapter_for_id(daw or "")
         return base / (adapter.backup_root if adapter else "AbletonBackups") / "projects"
-    return base.joinpath(*level_folders(levels, daw=daw, made=made, genre=genre, folder=folder))
+    return base.joinpath(*level_folders(levels, daw=daw, made=made, genre=genre, folder=folder, path=path))
 
 
 def pool_for(base: Path, daw: str | None, levels) -> Path:
@@ -191,9 +222,10 @@ def _example_project(catalog: Catalog) -> dict:
     if found:
         d = next(iter(found.values()))
         info = {"daw": d["daw"], "made": d.get("made") or made_time(d["path"], d["mtime"]),
-                "genre": d["genre"], "folder": project_folder_name(d["dir"], d["name"])}
+                "genre": d["genre"], "folder": project_folder_name(d["dir"], d["name"]),
+                "path": project_path(_roots(catalog), d["dir"], d["name"])}
         return {"name": d["name"], "stamp": now, "info": info}
-    info = {"daw": "ableton", "made": None, "genre": "House", "folder": "Album ideas"}
+    info = {"daw": "ableton", "made": None, "genre": "House", "folder": "Album ideas", "path": ["2026", "House"]}
     return {"name": "Night Drive", "stamp": now, "info": info}
 
 
@@ -217,7 +249,14 @@ def _snapshot_info(catalog: Catalog, snap: dict, manifest: dict, found: dict) ->
                     if f.get("inside_project") and "/" not in f.get("logical_path", "/")), None)
         folder = project_folder_name(Path(src).parent, snap["project_name"]) if src else NO_FOLDER
     genre = (d or {}).get("genre") or snap.get("genre")
-    return {"daw": daw, "made": made, "genre": genre, "folder": folder}
+    path = sort_info.get("path")
+    if path is None:
+        path = project_path(_roots(catalog), d["dir"], d["name"]) if d else []
+    return {"daw": daw, "made": made, "genre": genre, "folder": folder, "path": path}
+
+
+def _roots(catalog: Catalog) -> list[str]:
+    return (catalog.get_setting("config") or {}).get("sources") or []
 
 
 def _read_manifest(d: Path) -> dict:
@@ -418,4 +457,151 @@ def is_backup_stamp(name: str) -> bool:
 
 __all__ = ["LEVELS", "DEFAULT_SORT", "BACKUP_ROOTS", "clean_levels", "get_sort", "is_default",
            "dest_parent", "pool_for", "all_pools", "preview", "plan_moves", "apply_sort",
-           "undo_sort", "made_time", "project_folder_name", "safe_folder", "is_backup_stamp"]
+           "undo_sort", "made_time", "project_folder_name", "project_path", "safe_folder", "is_backup_stamp"]
+
+
+# ---- matching folders that are already there ------------------------------------
+# A NAS (or drive) often has folders of its own before Backups is pointed at it:
+# backups made some other way, or the producer's projects kept by year or genre.
+# Backups reads how they are arranged and offers the same sort, so new backups land
+# in the same kind of folders. It only looks; nothing is moved until the producer
+# says yes (and then only Backups' own copies move, as for any change of sort).
+_YEAR = re.compile(r"^(19|20)\d{2}$")
+_MONTH = re.compile(r"^(?:(?:19|20)\d{2}[-_ ])?(?:0?[1-9]|1[0-2])?[-_ .]*(" +
+                    "|".join(m[:3] for m in MONTHS) + r")[a-z]*$", re.I)
+_MONTH_NUM = re.compile(r"^(?:(?:19|20)\d{2}[-_ ])?(0[1-9]|1[0-2])$")
+_PROGRAM_WORDS = {w.lower() for w in PROGRAM_FOLDERS.values()} | {
+    "ableton live", "live", "fl", "fruity loops", "logic", "studio one", "bitwig studio",
+    "reaper projects", "ableton projects", "fl projects", "logic projects"}
+_WALK_DEPTH = 5
+_WALK_MOST = 4000  # folders: enough to read the pattern, quick even over Wi-Fi
+
+
+def _kind_of(names: list[str]) -> str | None:
+    """What one level of folders is sorted by, if most of them agree."""
+    def share(test):
+        return sum(1 for n in names if test(n)) / len(names)
+    if share(lambda n: bool(_YEAR.match(n))) >= 0.7:
+        return "year"
+    if share(lambda n: bool(_MONTH.match(n) or _MONTH_NUM.match(n))) >= 0.7:
+        return "month"
+    if share(lambda n: n.lower() in _PROGRAM_WORDS or n in BACKUP_ROOTS) >= 0.7:
+        return "program"
+    from ablebackup.genre import _hits
+    if share(lambda n: n == NO_GENRE or bool(_hits(n.lower()))) >= 0.5:
+        return "genre"
+    return None
+
+
+def _levels_from(paths: list[tuple[str, ...]]) -> list[str] | None:
+    """The sort that explains the folders above each project, or None when there's
+    no clear pattern (projects at many depths, or the folders mean nothing)."""
+    if len(paths) < 2:
+        return None
+    depths: dict[int, int] = {}
+    for p in paths:
+        depths[len(p)] = depths.get(len(p), 0) + 1
+    depth, count = max(depths.items(), key=lambda kv: (kv[1], kv[0]))
+    if depth == 0 or count / len(paths) < 0.6:
+        return None
+    same = [p for p in paths if len(p) == depth]
+    if depth > MAX_LEVELS + 1:
+        same = [p[-MAX_LEVELS:] for p in same]  # a deep share: only the last few count
+        depth = MAX_LEVELS
+    levels: list[str] = []
+    for i in range(depth):
+        names = [p[i] for p in same]
+        kind = _kind_of(names)
+        if kind is None:
+            # The folder each project sits in, like "Album ideas" (only right next
+            # to the project, and only once); anything else unclear: no match.
+            if i == depth - 1 and "folder" not in levels and len(set(names)) > 1:
+                kind = "folder"
+            elif i == 0 and depth > 1:
+                continue  # a top folder that holds everything ("Music Projects")
+            else:
+                return None
+        if kind in levels:
+            return None
+        levels.append(kind)
+    return clean_levels(levels) if levels else None
+
+
+def _walk_projects(base: Path) -> list[tuple[str, ...]]:
+    """The folders above each project or backed-up project under base."""
+    from ablebackup.daws.registry import all_extensions, package_extensions
+    exts = tuple(all_extensions())
+    pkgs = tuple(package_extensions())
+    out: list[tuple[str, ...]] = []
+    seen = 0
+    stack = [(base, ())]
+    while stack and seen < _WALK_MOST:
+        d, rel = stack.pop()
+        seen += 1
+        try:
+            entries = list(os.scandir(d))
+        except OSError:
+            continue
+        dirs = []
+        is_project = False
+        for e in entries:
+            name = e.name
+            if name.startswith(".") or name in (POOL_DIR, "_pool"):
+                continue
+            try:
+                is_dir = e.is_dir(follow_symlinks=False)
+            except OSError:
+                continue
+            if is_dir and STAMP_RE.match(name):
+                is_project = True  # a project's backups: <project>/<date>
+            elif is_dir and name.lower().endswith(pkgs):
+                out.append(rel)     # a Logic project is a folder of its own
+            elif is_dir:
+                dirs.append(name)
+            elif name.lower().endswith(exts):
+                is_project = True
+        if is_project and rel:
+            out.append(rel[:-1])
+            continue  # nothing to learn inside a project
+        if len(rel) < _WALK_DEPTH:
+            stack.extend((Path(d) / n, rel + (n,)) for n in dirs)
+    return out
+
+
+def detect(catalog: Catalog, base: Path | None) -> dict | None:
+    """{levels, where: "backups" | "projects", example}: how the folders already in
+    the backup place (else the producer's project folders) are arranged, when that
+    is clear and isn't how backups are sorted now. None otherwise."""
+    current = get_sort(catalog)
+    if current == ["path"]:
+        return None  # already in the same folders as the projects: the closest match there is
+    tries: list[tuple[str, list[tuple[str, ...]]]] = []
+    if base and base.is_dir():
+        # Backups' own plain folders (AbletonBackups/projects, by-date) say nothing
+        # about how the producer likes things sorted: leave them out.
+        found = [p for p in _walk_projects(base) if p and p[0] not in BACKUP_ROOTS and p != ("program",)]
+        tries.append(("backups", found))
+    roots = [Path(s) for s in (catalog.get_setting("config") or {}).get("sources", [])]
+    rels = []
+    for p in catalog.discovered_projects():
+        d = Path(p.get("dir") or "")
+        root = next((r for r in roots if r in d.parents), None)
+        if root is None:
+            continue
+        rel = d.relative_to(root).parts
+        rels.append(rel[:-1] if _own_folder(d.name, p.get("name") or "") else rel)
+    tries.append(("projects", rels))
+    for where, paths in tries:
+        kinds = _levels_from(paths)
+        if not kinds:
+            continue
+        # Your own project folders: the backups go in exactly the same folders (their
+        # year or genre is what the folder says, not a guess). Folders already in the
+        # backup place: sorted the same way, from each project's details.
+        levels = ["path"] if where == "projects" else kinds
+        if levels == current:
+            return None  # already sorted like this
+        ex = _example_project(catalog)
+        return {"levels": levels, "kinds": kinds, "where": where,
+                "example": level_folders(levels, **ex["info"]) + [ex["name"], ex["stamp"]]}
+    return None

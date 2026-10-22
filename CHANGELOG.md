@@ -15,6 +15,13 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.4.0 (22 October 2026)
+
+### New
+- **Keep projects on your NAS.** Settings, Project folders, "Add a folder on" your NAS: pick the shared folder and the folder in it. Backups lists those projects like any others and opens them in your music app straight from the NAS, connecting it by itself if it went to sleep. It only reads them.
+- **Backups in the same folders as your projects.** When your projects are already sorted into folders, like Year then Genre, Settings offers "Put backups in the same folders?" with an example before anything moves. A backup of 2024/House/Night Drive then goes in 2024/House on the backup drive. If the backup drive itself is already sorted, it offers to sort backups that way too.
+- **Same backup twice.** Settings, Backups finds backups of a project that hold exactly the same thing, keeps the newest, and removes the extra copies when you press Remove. Named backups always stay.
+
 ## 0.3.7 (22 October 2026)
 
 ### Fixed

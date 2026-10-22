@@ -414,6 +414,26 @@ class Catalog:
         return (f"({alias}.dir IS NULL OR {alias}.dir = '' OR {alias}.dir = ? OR substr({alias}.dir, 1, ?) = ?)",
                 (place, len(prefix), prefix))
 
+    def snapshots_here(self) -> list[dict]:
+        """Every good backup in the current backup place that has a folder."""
+        here, args = self._here("s")
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT s.id, s.project_id, s.project_name, s.timestamp, s.total_size, s.dir, "
+                f"s.status, s.label FROM snapshots s WHERE {here} AND s.status IN ('ok', 'partial') "
+                "AND s.dir IS NOT NULL AND s.dir != '' ORDER BY s.timestamp DESC, s.id DESC", args).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_snapshots(self, ids: list[int]) -> None:
+        """Forget backups whose folders were removed (Same backup twice)."""
+        if not ids:
+            return
+        marks = ",".join("?" * len(ids))
+        with self._lock:
+            self.conn.execute(f"DELETE FROM missing_refs WHERE snapshot_id IN ({marks})", ids)
+            self.conn.execute(f"DELETE FROM snapshots WHERE id IN ({marks})", ids)
+            self.conn.commit()
+
     def move_dirs(self, old: str, new: str) -> None:
         """The backup place came back at a new path ("/Volumes/Music-1"): follow it."""
         old, new = os.path.normpath(old).rstrip("\\/"), os.path.normpath(new).rstrip("\\/")

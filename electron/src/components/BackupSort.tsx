@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { makeApi, type BackupSort as Sort, type SortLevel } from "../api";
+import { makeApi, type BackupSort as Sort, type SortLevel, type SortMatch } from "../api";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { toast } from "./Desktop";
@@ -12,13 +12,16 @@ const api = makeApi();
 
 export const SORT_LEVELS: readonly (readonly [SortLevel, string])[] = [
   ["program", "Program"], ["year", "Year started"], ["month", "Month started"],
-  ["genre", "Genre"], ["folder", "Folder it's kept in"],
+  ["genre", "Genre"], ["folder", "Folder it's kept in"], ["path", "Same folders as your projects"],
 ];
 const NAME: Record<SortLevel, string> = Object.fromEntries(SORT_LEVELS) as Record<SortLevel, string>;
 const SLOTS = ["First", "Second", "Third"] as const;
+const NO_THANKS = "lc.sortMatch.noThanks";
+const KIND: Partial<Record<SortLevel, string>> = { year: "year", month: "month", folder: "folder" };
+const byWords = (levels: SortLevel[]) => levels.map((l) => KIND[l] ?? NAME[l].toLowerCase()).join(", then ");
 
 // "2026-10-20_0900" -> "20 Oct 2026, 09:00": the backup's own folder, as people read dates.
-function stampWords(s: string): string {
+export function stampWords(s: string): string {
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})/);
   if (!m) return s;
   const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][+m[2] - 1];
@@ -36,6 +39,9 @@ export function BackupSort({ dest, loaded }: { dest: string; loaded: boolean }) 
   const [busy, setBusy] = useState<"sort" | "undo" | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  // "Sort like this?": the folders already on the drive (or your project folders) follow a pattern.
+  const [match, setMatch] = useState<SortMatch | null>(null);
+  const [noThanks, setNoThanks] = useState<string | null>(() => { try { return localStorage.getItem(NO_THANKS); } catch { return null; } });
 
   useEffect(() => {
     api.backupSort().then((s) => { setSaved(s.levels); setLevels(s.levels); setCanUndo(!!s.undo); })
@@ -51,7 +57,21 @@ export function BackupSort({ dest, loaded }: { dest: string; loaded: boolean }) 
     return () => { alive = false; window.clearTimeout(t); };
   }, [levels, saved, dest]);
 
+  useEffect(() => {
+    let alive = true;
+    api.backupSortDetect().then((r) => { if (alive) setMatch(r.match); }).catch(() => {});
+    return () => { alive = false; };
+  }, [dest, saved]);
+  function decline() {
+    if (!match) return;
+    const key = `${dest}|${match.levels.join()}`;
+    setNoThanks(key);
+    try { localStorage.setItem(NO_THANKS, key); } catch { /* still hidden for now */ }
+  }
+
   const changed = !!saved && saved.join() !== levels.join();
+  const offer = match && !changed && saved && saved.join() !== match.levels.join()
+    && noThanks !== `${dest}|${match.levels.join()}` ? match : null;
   function pick(slot: number, v: SortLevel | "") {
     setDone(null); setErr(null);
     const next = [...levels];
@@ -91,9 +111,23 @@ export function BackupSort({ dest, loaded }: { dest: string; loaded: boolean }) 
 
   return (
     <div className="bsort">
+      {offer && (
+        <div className="bsort__match" role="group" aria-label="Sort like the folders already there">
+          <Icon name="folder" size={15} className="bsort__icon" />
+          <p className="bsort__match-text">
+            {offer.where === "backups"
+              ? <>The folders already on <bdi>{drive}</bdi> are sorted by {byWords(offer.levels)}.</>
+              : <>Your project folders are sorted by {byWords(offer.kinds)}. Put backups in the same folders?</>}{offer.where === "backups" && " Sort backups the same way?"}
+          </p>
+          <span className="bsort__match-btns">
+            <Button size="sm" disabled={off} onClick={() => { setLevels(offer.levels); setDone(null); setErr(null); }}>Sort like this</Button>
+            <Button size="sm" variant="quiet" disabled={off} onClick={decline}>No thanks</Button>
+          </span>
+        </div>
+      )}
       <div className="bsort__levels" role="group" aria-label="Sort backups by">
         {SLOTS.map((word, i) => {
-          if (i > levels.length) return null;
+          if (i > levels.length || (i > 0 && levels[0] === "path")) return null;
           const here = levels[i] ?? "";
           return (
             <label key={i} className="bsort__level">
@@ -102,7 +136,7 @@ export function BackupSort({ dest, loaded }: { dest: string; loaded: boolean }) 
                 onChange={(e) => pick(i, e.target.value as SortLevel | "")}>
                 {i > 0 && <option value="">Nothing more</option>}
                 {SORT_LEVELS.map(([k, name]) => (
-                  <option key={k} value={k} disabled={k !== here && levels.includes(k)}>{name}</option>
+                  <option key={k} value={k} disabled={(k !== here && levels.includes(k)) || (i > 0 && k === "path")}>{name}</option>
                 ))}
               </select>
             </label>
@@ -145,7 +179,8 @@ export function BackupSort({ dest, loaded }: { dest: string; loaded: boolean }) 
         <div className="set-inline">
           <p className="set-note">{levels.join() === "program"
             ? "One folder per program, as Backups has always done it."
-            : `Sorted by ${levels.map((l) => NAME[l].toLowerCase()).join(", then ")}.`}</p>
+            : levels[0] === "path" ? "In the same folders as your projects."
+            : `Sorted by ${byWords(levels)}.`}</p>
           {canUndo && <Button size="sm" variant="quiet" disabled={off} onClick={undo}>{busy === "undo" ? "Putting back…" : "Undo last sort"}</Button>}
         </div>
       )}

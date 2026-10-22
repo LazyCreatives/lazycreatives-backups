@@ -350,6 +350,16 @@ html[data-theme="light"] .table--crate.plug-table > .plug-item > .row:hover {
 .bsort__node--own { color: var(--text-dim); }
 .bsort__icon { flex: none; margin-top: 3px; color: var(--text-faint); }
 .bsort__go { display: grid; gap: 8px; }
+.bsort__match { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; min-width: 0;
+  border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface-2); }
+.bsort__match > .bsort__icon { margin-top: 0; }
+.bsort__match-text { flex: 1 1 260px; min-width: 0; margin: 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.bsort__match-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.doubles { display: grid; gap: 10px; min-width: 0; }
+.doubles-cols .row { display: grid; align-items: center; gap: 10px; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1.4fr); }
+.doubles-cols .row > span:not(:first-child) { font-size: 12px; }
+.doubles__rows { max-height: 260px; overflow-y: auto; }
+@container (max-width: 520px) { .doubles-cols .row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .doubles-cols .row > :nth-child(2) { display: none; } }
 
 /* "Find my NAS": a wider pop-up of rows (NAS · maker · address · Use), then a login,
    then the NAS's shared folders in the same columns. Its columns follow the pop-up's
@@ -373,6 +383,7 @@ html[data-theme="light"] .table--crate.plug-table > .plug-item > .row:hover {
 .nasp-cols .row { grid-template-columns: 18px minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) auto; }
 .nasp-share-cols .row { grid-template-columns: 18px minmax(0, 1fr) minmax(0, 1.4fr) auto; }
 .nasp__maker, .nasp__addr, .nasp__comment { font-size: 12px; }
+.nasf-cols .row { display: grid; align-items: center; gap: 10px; grid-template-columns: 18px minmax(0, 1fr) auto; }
 .nasp__rows { max-height: 240px; overflow-y: auto; }
 @container (max-width: 520px) {
   .nasp-cols .row { grid-template-columns: 18px minmax(0, 1.3fr) minmax(0, 1fr) auto; }
@@ -401,3 +412,4 @@ html[data-theme="light"] .table--crate.plug-table > .plug-item > .row:hover {
 .nasp__n { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--surface-3); color: var(--text-dim); font-size: 12px; font-variant-numeric: tabular-nums; }
 .nasp__after { grid-column: 2; justify-self: start; }
 .drive__btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.set-nasbtn { min-width: 0; max-width: 34ch; }

@@ -321,7 +321,9 @@ def share_order(shares: list[dict]) -> list[str]:
             if re.search(pat, low):
                 return i
         return len(_SHARE_LIKES) + (1 if re.search(_SHARE_DISLIKES, low) else 0)
-    return [s["name"] for s in sorted(shares, key=lambda s: (rank(s["name"]), s["name"].lower()))]
+    def natural(name: str):  # "Share 2" before "Share 10"
+        return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", name.casefold())]
+    return [s["name"] for s in sorted(shares, key=lambda s: (rank(s["name"]), natural(s["name"])))]
 
 
 # ---- connecting --------------------------------------------------------------
@@ -446,8 +448,10 @@ def _key_dir(catalog: Catalog) -> Path:
 
 def remember(catalog: Catalog, *, host: str, address: str, share: str, user: str,
              password: str, path: Path, name: str = "") -> None:
+    before = remembered(catalog) or {}
+    shares = before.get("shares", {}) if before.get("host") == host else {}
     catalog.set_setting(NAS_KEY, {"host": host, "address": address, "share": share, "user": user,
-                                  "path": str(path), "name": name or host})
+                                  "path": str(path), "name": name or host, "shares": shares})
     catalog.set_setting(SECRET_KEY, secretbox.lock(password, _key_dir(catalog)) if password else None)
 
 
@@ -495,6 +499,119 @@ def ensure_connected(catalog: Catalog, dest, wait: float = 75.0, step: float = 5
         if time.monotonic() >= deadline:
             return False
         time.sleep(step)
+
+
+# ---- project folders on the NAS ----------------------------------------------------
+# The producer can keep projects on the NAS too (Settings, Project folders, Add a
+# folder on the NAS). Backups connects that shared folder with the saved login,
+# before a scan or backup and before opening a project from it, exactly as it does
+# for the backup folder. It only ever reads them.
+def _password(catalog: Catalog) -> str:
+    return secretbox.unlock(catalog.get_setting(SECRET_KEY), _key_dir(catalog)) or ""
+
+
+def my_shares(catalog: Catalog) -> list[str] | None:
+    """The remembered NAS's shared folders, music ones first (None: couldn't ask)."""
+    n = remembered(catalog)
+    if not n:
+        return None
+    found = list_shares(n["host"], n.get("user", ""), _password(catalog))
+    return None if found is None else share_order(found)
+
+
+def open_share(catalog: Catalog, share: str) -> Path:
+    """Connect one of the NAS's shared folders and remember it for project folders."""
+    n = remembered(catalog)
+    if not n:
+        raise NasError("Connect your NAS first: Settings, Backups, Find my NAS.")
+    share = share.strip().strip("/\\")
+    if not share:
+        raise NasError("Pick a shared folder.")
+    path = connect(n["host"], share, n.get("user", ""), _password(catalog))
+    n = remembered(catalog) or n
+    catalog.set_setting(NAS_KEY, {**n, "shares": {**n.get("shares", {}), share: str(path)}})
+    return path
+
+
+def _share_for(n: dict, path: str) -> tuple[str, str] | None:
+    """(shared folder, where it's connected) that holds this path."""
+    places = {n.get("share", ""): n.get("path", ""), **(n.get("shares") or {})}
+    for share, mount in places.items():
+        if not share or not mount:
+            continue
+        try:
+            Path(path).relative_to(mount)
+        except ValueError:
+            continue
+        return share, mount
+    return None
+
+
+def on_nas_path(catalog: Catalog, path) -> bool:
+    n = remembered(catalog)
+    return bool(n and path and _share_for(n, str(path)))
+
+
+def ensure_folders(catalog: Catalog, paths, wait: float = 45.0, step: float = 5.0) -> list[str]:
+    """Connect the NAS shared folders these folders are on, if they aren't there,
+    waiting while the NAS wakes. Folders that came back at a new path ("Music-1")
+    are followed in Settings. Returns the folders (as they are now) still missing."""
+    n = remembered(catalog)
+    paths = [str(p) for p in paths if p]
+    if not n:
+        return []
+    need: dict[str, str] = {}
+    for p in paths:
+        hit = _share_for(n, p)
+        if hit and not _quick_isdir(Path(p)):
+            need[hit[0]] = hit[1]
+    if not need:
+        return []
+    password = _password(catalog)
+    deadline = time.monotonic() + wait
+    left = dict(need)
+    moved: dict[str, str] = {}
+    while left:
+        for share, mount in list(left.items()):
+            try:
+                new = connect(n["host"], share, n.get("user", ""), password)
+            except NasError:
+                continue
+            del left[share]
+            if str(new) != mount:
+                _share_moved(catalog, share, mount, str(new))
+                moved[mount] = str(new)
+        if not left or time.monotonic() >= deadline:
+            break
+        time.sleep(step)
+
+    def now(p: str) -> str:
+        for old, new in moved.items():
+            try:
+                return str(Path(new) / Path(p).relative_to(old))
+            except ValueError:
+                pass
+        return p
+    return [now(p) for p in paths if _share_for(n, p) and not _quick_isdir(Path(now(p)))]
+
+
+def _share_moved(catalog: Catalog, share: str, old: str, new: str) -> None:
+    n = remembered(catalog) or {}
+    if share == n.get("share"):
+        _moved(catalog, n, Path(new))
+        n = remembered(catalog) or n
+    if share in (n.get("shares") or {}):
+        n = {**n, "shares": {**n["shares"], share: new}}
+    catalog.set_setting(NAS_KEY, n)
+    cfg = catalog.get_setting("config") or {}
+
+    def follow(p: str) -> str:
+        try:
+            return str(Path(new) / Path(p).relative_to(old))
+        except ValueError:
+            return p
+    cfg["sources"] = [follow(p) for p in cfg.get("sources") or []]
+    catalog.set_setting("config", cfg)
 
 
 def catalog_dest(catalog: Catalog) -> str:
