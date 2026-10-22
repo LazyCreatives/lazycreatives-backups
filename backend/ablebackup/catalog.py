@@ -168,6 +168,7 @@ def _natural(s: str) -> list:
 class Catalog:
     def __init__(self, db_path: Path):
         db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.path = db_path
         # check_same_thread=False: the connection is shared across FastAPI's
         # threadpool + the backup worker thread; the lock serializes access.
         self.conn = sqlite3.connect(str(db_path), check_same_thread=False)
@@ -199,7 +200,9 @@ class Catalog:
                          "backed_mtime": "REAL",
                          # genre correction: the latest guess, and whether the
                          # producer set the genre themselves
-                         "genre_guess": "TEXT", "genre_by_you": "INTEGER DEFAULT 0"}.items():
+                         "genre_guess": "TEXT", "genre_by_you": "INTEGER DEFAULT 0",
+                         # when the project was started, the earliest seen (sorts backups by year)
+                         "made": "REAL"}.items():
             if col not in dcols:
                 self.conn.execute(f"ALTER TABLE discovered ADD COLUMN {col} {typ}")
         if "genre_guess" not in dcols:  # until the next scan, the stored genre is the guess
@@ -603,6 +606,25 @@ class Catalog:
         return out
 
     # ---- exports (song renders linked to projects) ------------------------------
+    def project_genre_map(self) -> dict[str, str | None]:
+        with self._lock:
+            rows = self.conn.execute("SELECT project_id, genre FROM discovered").fetchall()
+        return {r["project_id"]: r["genre"] for r in rows}
+
+    def made_map(self) -> dict[str, float]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT project_id, made FROM discovered WHERE made IS NOT NULL").fetchall()
+        return {r["project_id"]: r["made"] for r in rows}
+
+    def remember_made(self, project_id: str, made: float) -> None:
+        """Keep the earliest start time seen, so a project re-saved in a new year
+        (Linux keeps no birth time) stays sorted under the year it was started."""
+        with self._lock:
+            self.conn.execute("UPDATE discovered SET made = MIN(COALESCE(made, ?), ?) "
+                              "WHERE project_id = ?", (made, made, project_id))
+            self.conn.commit()
+
     def discovered_projects(self) -> list[dict]:
         with self._lock:
             rows = self.conn.execute(

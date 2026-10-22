@@ -3,6 +3,7 @@ import { makeApi } from "../api";
 import type { CloudFolder } from "../types";
 import { currentOs, osWords } from "../platform";
 import { Icon } from "./Icon";
+import { NasPicker } from "./NasPicker";
 
 const api = makeApi();
 
@@ -37,7 +38,7 @@ export function useCloudFolders() {
   return { folders: shown, destFor };
 }
 
-export type DestChoice = { kind: "drive" } | { kind: "cloud"; key: string };
+export type DestChoice = { kind: "drive" } | { kind: "nas" } | { kind: "cloud"; key: string };
 
 const CLOUD_ICON: Record<string, string> = { dropbox: "DB", gdrive: "GD", icloud: "iC", onedrive: "OD" };
 
@@ -60,19 +61,33 @@ export function DestChoices({ dest, choice, onPick }: {
     const dir = f.path ?? await pick();
     if (dir) onPick(destFor(dir), { kind: "cloud", key: f.key });
   }
-  const on = (c: DestChoice) => choice?.kind === c.kind && (c.kind === "drive" || (choice as any).key === (c as any).key);
+  const on = (c: DestChoice) => choice?.kind === c.kind && (c.kind !== "cloud" || (choice as any).key === (c as any).key);
+  const [finding, setFinding] = useState(false);
+  const [nasName, setNasName] = useState("");
 
   const driveOn = on({ kind: "drive" });
+  const nasOn = on({ kind: "nas" });
   return (
     <div className="dest-list" role="radiogroup" aria-label="Where backups go">
       <div className={`dest-row${driveOn ? " dest-row--on" : ""}`} role="radio" aria-checked={driveOn}>
         <span className="dest-row__mark"><Icon name="disc" size={17} /></span>
-        <span className="dest-row__name">Your own drive or NAS</span>
+        <span className="dest-row__name">Your own drive or folder</span>
         <span className="dest-row__where mono" title={driveOn ? dest : undefined}>
-          {driveOn ? tildePath(dest) : "External drive, NAS or any folder"}
+          {driveOn ? tildePath(dest) : "External drive, or a NAS already connected"}
         </span>
         <button className="btn btn--sm btn--ghost dest-row__btn" onClick={chooseDrive}>{driveOn ? "Change…" : "Choose…"}</button>
       </div>
+      <div className={`dest-row${nasOn ? " dest-row--on" : ""}`} role="radio" aria-checked={nasOn}>
+        <span className="dest-row__mark"><Icon name="nas" size={17} /></span>
+        <span className="dest-row__name">NAS on your network</span>
+        <span className="dest-row__where" title={nasOn ? dest : undefined}>
+          {nasOn ? <bdi>{nasName}</bdi> : "Finds it for you, and connects it by itself"}
+        </span>
+        <button className="btn btn--sm btn--ghost dest-row__btn" onClick={() => setFinding(true)}>{nasOn ? "Change…" : "Find…"}</button>
+      </div>
+      {finding && <NasPicker onClose={() => setFinding(false)} onPicked={(d, name) => {
+        setFinding(false); setNasName(name); onPick(d, { kind: "nas" });
+      }} />}
       {folders.map((f) => {
         const c: DestChoice = { kind: "cloud", key: f.key };
         const isOn = on(c);

@@ -15,6 +15,13 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.3.1 (22 October 2026)
+
+### New
+- **Sort your backups your way.** Settings, Backups, How backups are sorted: pick up to three levels (program, year started, month started, genre, or the folder a project is kept in) and every backup goes in those folders on your backup drive, with an example from one of your own projects. Backups already on the drive move to match in one go, with Undo. Only backup copies move; your projects never do.
+- **Find my NAS.** Settings, Backups, Find my NAS…: Backups lists the NAS boxes on your network, you log in once and pick a shared folder, and that's it. Before each backup it connects the NAS by itself and gives it a minute to wake up; if it's still asleep it tries again 15 minutes later and Home says so. The login is kept locked on this computer.
+- **A NAS away from home.** A NAS at another house shows in the same list once this computer and the NAS are both on Tailscale (a free app), and works just like one at home. No Tailscale? Type the NAS's internet address (SFTP or WebDAV) and every backup is also copied there as a second copy.
+
 ## 0.3.0 (21 October 2026)
 
 ### New

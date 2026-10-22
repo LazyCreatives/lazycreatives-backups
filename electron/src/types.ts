@@ -152,6 +152,8 @@ export interface NasStatus {
   path: string;
   free_bytes: number;
   total_bytes: number;
+  nas_name?: string;          // the backup folder is on a NAS Backups connects by itself
+  retry_at?: string | null;   // a sleeping NAS gets another go at this time
 }
 export interface Overview {
   projects_protected: number;

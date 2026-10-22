@@ -12,6 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
+from ablebackup import nas
+from ablebackup.nas import on_nas
 from ablebackup.backup_engine import backup_project
 from ablebackup.catalog import Catalog
 from ablebackup.daws.registry import DAW_REGISTRY, adapter_for_id
@@ -19,6 +21,8 @@ from ablebackup.hashing import hash_file
 from ablebackup.locator import daw_data_folders, default_libraries, make_locator
 from ablebackup.models import ProjectScan
 from ablebackup.scanner import scan_one, scan_projects
+from ablebackup.sorting import (all_pools, dest_parent, get_sort, is_default, made_time,
+                                pool_for, project_folder_name)
 from ablebackup.verifier import verify_snapshot
 
 ProgressCb = Optional[Callable[[dict], None]]
@@ -672,9 +676,8 @@ def _manifest_meta(src: Path) -> dict:
     return {}
 
 
-def _pool_size(dest_root: Path) -> int:
+def _pool_size(pool: Path) -> int:
     """Actual bytes on disk in the dedup pool (the unique-file set)."""
-    pool = dest_root / "_pool"
     total = 0
     if pool.exists():
         for dirpath, _dirs, files in os.walk(pool):
@@ -691,7 +694,7 @@ def refresh_pool_cache(catalog: Catalog, dest: str) -> int:
     can read it instantly. Called in the background after backups and when stale."""
     if not dest or not Path(dest).is_dir():
         return 0
-    total = sum(_pool_size(Path(dest) / a.backup_root) for a in DAW_REGISTRY)
+    total = sum(_pool_size(p) for p in all_pools(Path(dest)))
     catalog.set_setting("pool_cache", {"actual_size": total, "at": time.time()})
     return total
 
@@ -735,6 +738,9 @@ def build_overview(catalog: Catalog, dest: str) -> dict:
                 nas["total_bytes"] = usage.total
             except OSError:
                 pass
+        box = on_nas(catalog, dest)  # the backup folder is on a NAS Backups connects itself
+        nas["nas_name"] = box.get("name", "") if box else ""
+        nas["retry_at"] = catalog.get_setting("nas_retry") if box and not nas["reachable"] else None
 
     cache = catalog.get_setting("pool_cache") or {}
     pool_known = "actual_size" in cache
@@ -992,6 +998,12 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
     (the user's include/exclude selection); otherwise every discovered project.
     label/portable/layout are the user's per-run choices from the review step.
     """
+    # A NAS that has gone to sleep or dropped off: connect it again with the saved
+    # login first, giving it a minute to wake up.
+    if nas.on_nas(catalog, dest) and not Path(dest).is_dir():
+        _emit(progress, {"type": "nas_waking"})
+        nas.ensure_connected(catalog, dest)
+        dest = nas.catalog_dest(catalog) or dest  # it may have come back at a new path
     # Never back up to a drive that isn't there: making the folder again would put
     # the "backup" on the computer's own disk (or fail with a misleading error).
     base = prepare_dest(catalog, dest)
@@ -1018,6 +1030,9 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
                                                       pointed=pointed))
 
     last_sigs = catalog.latest_signatures()
+    levels = get_sort(catalog)
+    found_genres = catalog.project_genre_map() if not is_default(levels) else {}
+    known_made = catalog.made_map()
     ok_count = 0
     error_count = 0
     errors: list[dict] = []  # which projects failed and why, for the "couldn't" message
@@ -1041,12 +1056,22 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
             catalog.mark_backed(p.project_id, p.mtime)
             _emit(progress, {"type": "project_skipped", "index": i, "project_name": p.name})
             continue
-        # Per-DAW destination root, so FL and Ableton backups stay separate.
+        # Per-DAW destination root, so FL and Ableton backups stay separate, unless
+        # the producer sorts them another way (Settings, How backups are sorted).
         adapter = adapter_for_id(p.daw_id)
         dest_root = base / (adapter.backup_root if adapter else "AbletonBackups")
+        made = min((t for t in (made_time(p.project_path), known_made.get(p.project_id)) if t),
+                   default=None)
+        if made and p.project_id:
+            catalog.remember_made(p.project_id, made)
+        sort_info = {"made": made, "folder": project_folder_name(p.project_dir, p.name)}
+        parent = None if is_default(levels) else dest_parent(
+            base, levels, daw=p.daw_id, made=sort_info["made"],
+            genre=(found_genres.get(p.project_id)), folder=sort_info["folder"])
         try:
             result = backup_project(p, dest_root, timestamp, portable=portable, layout=layout,
-                                    exports=exports)
+                                    exports=exports, project_parent=parent,
+                                    pool=pool_for(base, p.daw_id, levels), sort_info=sort_info)
         except Exception as e:  # isolate one project's failure from the rest
             if not base.is_dir():  # the drive was unplugged part way through
                 e = BackupDriveMissing()

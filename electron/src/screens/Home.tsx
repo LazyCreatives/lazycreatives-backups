@@ -92,6 +92,11 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
   // While the backup drive can't be found, look for it every few seconds; when it comes
   // back, its dot rings once and a note says so (the Back up button wakes up too).
   const missingDrive = !!ov?.nas.path && !ov.nas.reachable;
+  // A NAS Backups connects itself can be asleep: Back up still works, it wakes it first.
+  const canBackUp = !!ov && (ov.nas.reachable || !!ov.nas.nas_name);
+  const backTitle = (what: string) => ov?.nas.reachable ? what
+    : ov?.nas.nas_name ? `Your NAS isn't connected right now. Backups will connect it first, giving it a minute to wake up.`
+    : "Your backup drive isn't connected. Plug it in and try again.";
   useEffect(() => {
     if (!missingDrive) return;
     const t = window.setInterval(() => {
@@ -282,13 +287,13 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
           <button className="btn" onClick={onOpenHistory}>Browse the library</button>
           <button className="btn btn--primary" onClick={onOpenSettings}>Turn on backups</button>
         </>) : firstFind ? <>
-          <button className="btn" onClick={backItUp} disabled={!ov.nas.reachable}
-            title={ov.nas.reachable ? "Find every project, back it up and check each copy" : "Your backup drive isn't connected. Plug it in and try again."}>Back up now</button>
+          <button className="btn" onClick={backItUp} disabled={!canBackUp}
+            title={backTitle("Find every project, back it up and check each copy")}>Back up now</button>
           <button className="btn btn--primary" onClick={onFindProjects}>Find my projects</button>
         </> : <>
         {look === "crate" && !ov.schedule.enabled && <button className="btn" onClick={onOpenSettings}>Set a schedule</button>}
-        <button className="btn btn--primary" onClick={backItUp} disabled={working || !ov.nas.reachable}
-          title={ov.nas.reachable ? "Find every project in your folders, back it up and check each copy" : "Your backup drive isn't connected. Plug it in and try again."}>
+        <button className="btn btn--primary" onClick={backItUp} disabled={working || !canBackUp}
+          title={backTitle("Find every project in your folders, back it up and check each copy")}>
           {working ? "Backing up…"
             : folderWaiting > 0 && folderNew === 0 ? `Back up the ${fmtCount(folderWaiting)} changed`
             : folderWaiting > 0 ? `Back up ${fmtCount(folderWaiting)} ${folderWaiting === 1 ? "project" : "projects"}` : "Back up now"}
@@ -400,16 +405,19 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
     </button>
   );
 
+  const fmtClock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const foot = (
     <footer className="home-foot">
       <span title={ov.nas.path} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-        <span className={`dot${off ? "" : ov.nas.reachable ? " dot--ok" : " dot--error"}${driveBack ? " dot--back" : ""}`} />
+        <span className={`dot${off ? "" : ov.nas.reachable ? " dot--ok" : ov.nas.nas_name ? " dot--warn" : " dot--error"}${driveBack ? " dot--back" : ""}`} />
         {off ? <>Backups off. <button className="linkbtn" onClick={onOpenSettings}>Choose where they go</button></>
+          : ov.nas.nas_name ? (ov.nas.reachable ? "NAS connected"
+            : ov.nas.retry_at ? `NAS asleep. Trying again at ${fmtClock(ov.nas.retry_at)}` : "NAS asleep. It's connected when a backup starts")
           : ov.nas.reachable ? "Backup drive connected" : "Backup drive not found"}
         {ov.nas.path ? <span className="faint mono" style={{ fontSize: 12 }}>{shortPath(ov.nas.path)}</span> : null}
       </span>
       <span className="mono faint" style={{ fontSize: 12 }}>
-        {ov.pool_known ? `${fmtSize(ov.actual_size)} used · ${fmtSize(ov.nas.free_bytes)} free` : ""}
+        {ov.pool_known ? `${fmtSize(ov.actual_size)} used${ov.nas.reachable ? ` · ${fmtSize(ov.nas.free_bytes)} free` : ""}` : ""}
       </span>
       <span className="faint" style={{ fontSize: 12 }}>
         {ov.schedule.enabled

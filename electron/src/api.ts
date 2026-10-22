@@ -13,6 +13,14 @@ function token() {
   return (window as any).ablebackup?.token ?? "";
 }
 
+export type FoundNas = { name: string; host: string; address: string; maker: string; away?: boolean };
+export type NasShare = { name: string; comment: string };
+export type NasInfo = { name: string; host: string; share: string; user: string; path: string };
+
+export type SortLevel = "program" | "year" | "month" | "genre" | "folder";
+export type BackupSort = { levels: SortLevel[]; example: string[]; moves: number; undo?: boolean };
+export type SortDone = { levels: SortLevel[]; moved: number; failed: number; undo: boolean };
+
 export type LibraryList = { projects: LibraryItem[]; owners: string[]; count: number; unmatched_songs?: number };
 let libraryAsk: Promise<LibraryList> | null = null;
 let lastLibraryList: LibraryList | null = null;
@@ -159,6 +167,26 @@ export function makeApi() {
     },
     async rclone(): Promise<{ available: boolean; remotes: string[] }> { return req("GET", "/api/rclone"); },
     // Dropbox / Google Drive / iCloud / OneDrive folders on this computer (path null = not found).
+    // A NAS on the network: find it, log in once, connect a shared folder (Settings, Backups).
+    async nasStatus(): Promise<{ nas: NasInfo | null; connected: boolean }> { return req("GET", "/api/nas"); },
+    async findNas(): Promise<{ found: FoundNas[]; tailscale: { installed: boolean; running: boolean } }> { return req("POST", "/api/nas/find"); },
+    async nasRemote(b: { kind: "sftp" | "webdav"; host: string; port: number | null; user: string; password: string; folder: string }): Promise<{ mirror: string }> {
+      return req("POST", "/api/nas/remote", b);
+    },
+    async nasShares(host: string, user: string, password: string): Promise<{ host: string; shares: NasShare[]; pasted_share: string }> {
+      return req("POST", "/api/nas/shares", { host, user, password });
+    },
+    async nasConnect(b: { host: string; share: string; user: string; password: string; name: string; address: string }): Promise<{ dest: string; path: string }> {
+      return req("POST", "/api/nas/connect", b);
+    },
+    async forgetNas(): Promise<{ ok: boolean }> { return req("POST", "/api/nas/forget"); },
+    // How backups are sorted into folders on the backup drive (Settings, Backups).
+    async backupSort(): Promise<BackupSort> { return req("GET", "/api/backup-sort"); },
+    async backupSortPreview(levels: SortLevel[]): Promise<BackupSort> {
+      return req("POST", "/api/backup-sort/preview", { levels });
+    },
+    async setBackupSort(levels: SortLevel[]): Promise<SortDone> { return req("POST", "/api/backup-sort", { levels }); },
+    async undoBackupSort(): Promise<SortDone> { return req("POST", "/api/backup-sort/undo"); },
     async cloudFolders(): Promise<{ folders: CloudFolder[]; subdir: string }> {
       return req("GET", "/api/cloud/folders");
     },

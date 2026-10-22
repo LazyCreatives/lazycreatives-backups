@@ -103,16 +103,24 @@ STEMS_DIR = f"{EXPORTS_DIR}/Stems"
 
 def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
                    portable: bool = False, layout: str = "project_date",
-                   exports: list[dict] | None = None) -> BackupResult:
+                   exports: list[dict] | None = None, project_parent: Path | None = None,
+                   pool: Path | None = None, sort_info: dict | None = None) -> BackupResult:
     """Write one project to dest_root as a deduplicated dated snapshot.
 
     ``exports`` are the songs (and stems) exported from this project, as rows with
     ``path`` and ``kind``; each is copied in under "Exported songs". The originals
     are only read. One that has gone or can't be read is left out, never failing
-    the backup."""
-    pool = dest_root / "_pool"
-    use_hardlinks = supports_hardlinks(dest_root)
-    if layout == "date_project":
+    the backup.
+
+    ``project_parent`` is where the producer's chosen sort puts the project's folder
+    (``<drive>/2026/House``); without it the program's own folder layout is used.
+    ``pool`` is the store of unique files the snapshot links to."""
+    pool = pool or dest_root / "_pool"
+    use_hardlinks = supports_hardlinks(pool.parent)
+    if project_parent is not None:
+        claim_dir = _claimed_folder(project_parent, scan.name, scan.project_id)
+        final_dir = claim_dir / timestamp
+    elif layout == "date_project":
         claim_dir = _claimed_folder(dest_root / "by-date" / timestamp, scan.name, scan.project_id)
         final_dir = claim_dir
     else:
@@ -187,7 +195,7 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
     # placed above as refs, keeping the package's layout.
     if scan.project_path.is_dir():
         return _commit(scan, files, total_size, missing, use_hardlinks, portable,
-                       layout, timestamp, temp_dir, final_dir, claim_dir)
+                       layout, timestamp, temp_dir, final_dir, claim_dir, sort_info)
     proj_src = scan.project_path
     tmp_proj = None
     if portable:
@@ -210,12 +218,13 @@ def backup_project(scan: ProjectScan, dest_root: Path, timestamp: str,
     placed[scan.project_path.name] = proj_digest
     record(scan.project_path.name, proj_digest, sz, str(scan.project_path), True, False)
     return _commit(scan, files, total_size, missing, use_hardlinks, portable,
-                   layout, timestamp, temp_dir, final_dir, claim_dir)
+                   layout, timestamp, temp_dir, final_dir, claim_dir, sort_info)
 
 
 def _commit(scan: ProjectScan, files: list[dict], total_size: int, missing: list[str],
             use_hardlinks: bool, portable: bool, layout: str, timestamp: str,
-            temp_dir: Path, final_dir: Path, claim_dir: Path) -> BackupResult:
+            temp_dir: Path, final_dir: Path, claim_dir: Path,
+            sort_info: dict | None = None) -> BackupResult:
     """Write the manifest and swap the finished snapshot into place."""
     file_count = len(files)
     relinked_count = sum(1 for f in files if f["relinked"])
@@ -230,6 +239,9 @@ def _commit(scan: ProjectScan, files: list[dict], total_size: int, missing: list
         "used_hardlinks": use_hardlinks,
         "portable": portable,
         "layout": layout,
+        # what sorted it (when the project was started, the folder it is kept in),
+        # so a later change of sort can move it even once the project has gone
+        "sort": sort_info or {},
         "files": files,
     }
     (temp_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))

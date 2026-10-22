@@ -25,7 +25,7 @@ from ablebackup.api.schemas import (
     ActivateRequest, BackupRequest, CloudConnectRequest, CloudDisconnectRequest,
     Config, ExportFoldersRequest, ExportDropRequest, ExportIgnoreRequest, ExportLinkRequest,
     ExportUndoRequest, GenreRequest,
-    PhoneSwitch, PluginFoldersRequest, RestoreRequest, ScanRequest, StemFolderJoinRequest, StemGroupRequest,
+    NasConnect, NasLogin, NasRemote, PhoneSwitch, PluginFoldersRequest, RestoreRequest, ScanRequest, SortRequest, StemFolderJoinRequest, StemGroupRequest,
     StemPackRequest, TidyRequest,
     TidyUndoRequest,
 )
@@ -36,10 +36,12 @@ from ablebackup.service import (
     CLOUD_FOLDER_SUBDIR, CLOUD_PROVIDERS, CloudConnectSession, cloud_folders, build_overview, cloud_disconnect,
     default_timestamp, full_disk_access_ok, pool_cache_age, rclone_available,
     backfill_genres, project_genres, relearn_genres, rclone_remotes, refresh_pool_cache,
-    resolve_scan_roots, restore_snapshot, run_backup, safe_remote_name, scan_summary,
+    resolve_scan_roots, restore_snapshot, rclone_path, run_backup, safe_remote_name, scan_summary,
     share_snapshot, snapshot_diff, BackupDriveMissing, prepare_dest, remember_dest, drop_joined,
-    joined_stem_folders,
+    joined_stem_folders, _backup_lock as backup_lock,
 )
+from ablebackup import nas
+from ablebackup.sorting import UNDO_KEY as SORT_UNDO_KEY, apply_sort, get_sort, preview as sort_preview, undo_sort
 from ablebackup.resolver import _allowed_external_file
 from ablebackup.scanner import ParseCache, scan_one
 from ablebackup.songmatch import is_stem
@@ -272,6 +274,101 @@ def create_app(token: str, db_path: Path) -> FastAPI:
                 d.mkdir()
             except OSError:
                 pass  # shown as "can't reach this folder" on Home
+
+    # ---- a NAS on the network: find it, log in once, connect it (Settings, Backups) ----
+    @app.get("/api/nas", dependencies=[Depends(require_token)])
+    async def nas_status():
+        n = nas.remembered(app.state.catalog)
+        if not n:
+            return {"nas": None, "connected": False}
+        here = await asyncio.to_thread(nas._quick_isdir, Path(n["path"]))
+        return {"nas": {k: n.get(k, "") for k in ("name", "host", "share", "user", "path")}, "connected": here}
+
+    @app.post("/api/nas/find", dependencies=[Depends(require_token)])
+    async def nas_find():
+        home, away = await asyncio.gather(asyncio.to_thread(nas.discover), asyncio.to_thread(nas.tailscale))
+        seen = {f["address"] for f in home if f["address"]}
+        found = home + [p for p in away["peers"] if p["address"] not in seen]
+        return {"found": found, "tailscale": {"installed": away["installed"], "running": away["running"]}}
+
+    @app.post("/api/nas/remote", dependencies=[Depends(require_token)])
+    async def nas_remote(req: NasRemote):
+        def go():
+            where = nas.add_remote(req.kind, req.host, req.port, req.user, req.password, req.folder,
+                                   rclone_path(), rclone_remotes())
+            return {"mirror": where}
+        return await asyncio.to_thread(_nas_call, go)
+
+    def _nas_call(fn):
+        try:
+            return fn()
+        except nas.NasError as e:
+            raise HTTPException(400, str(e)) from None
+
+    @app.post("/api/nas/shares", dependencies=[Depends(require_token)])
+    async def nas_shares(req: NasLogin):
+        def go():
+            host = nas.clean_host(req.host)
+            return {"host": host, "shares": nas.list_shares(host, req.user, req.password),
+                    "pasted_share": nas.share_in(req.host)}
+        return await asyncio.to_thread(_nas_call, go)
+
+    @app.post("/api/nas/connect", dependencies=[Depends(require_token)])
+    async def nas_connect(req: NasConnect):
+        cat = app.state.catalog
+
+        def go():
+            host = nas.clean_host(req.host)
+            path = nas.connect(host, req.share, req.user, req.password)
+            dest = path / nas.SUBDIR
+            try:
+                dest.mkdir(exist_ok=True)
+            except OSError:
+                raise nas.NasError(f"Connected, but this login can't save files in {req.share}. "
+                                   "Pick another shared folder or a login that can.") from None
+            nas.remember(cat, host=host, address=req.address, share=req.share, user=req.user,
+                         password=req.password, path=path, name=req.name or host)
+            return {"dest": str(dest), "path": str(path)}
+        return await asyncio.to_thread(_nas_call, go)
+
+    @app.post("/api/nas/forget", dependencies=[Depends(require_token)])
+    def nas_forget():
+        nas.forget(app.state.catalog)
+        return {"ok": True}
+
+    # ---- how backups are sorted on the drive (Settings, Backups) ----
+    def _sort_base():
+        dest = (app.state.catalog.get_setting("config") or {}).get("dest", "")
+        return Path(dest) if dest and Path(dest).is_dir() else None
+
+    @app.get("/api/backup-sort", dependencies=[Depends(require_token)])
+    async def backup_sort():
+        cat = app.state.catalog
+        r = await asyncio.to_thread(sort_preview, cat, None, get_sort(cat))
+        return {**r, "undo": bool(cat.get_setting(SORT_UNDO_KEY))}
+
+    @app.post("/api/backup-sort/preview", dependencies=[Depends(require_token)])
+    async def backup_sort_preview(req: SortRequest):
+        return await asyncio.to_thread(sort_preview, app.state.catalog, _sort_base(), req.levels)
+
+    def _with_backups_held(fn):
+        if not backup_lock.acquire(blocking=False):
+            raise HTTPException(409, "A backup is running. Try again when it's done.")
+        try:
+            return fn()
+        finally:
+            backup_lock.release()
+
+    @app.post("/api/backup-sort", dependencies=[Depends(require_token)])
+    async def set_backup_sort(req: SortRequest):
+        cat = app.state.catalog
+        return await asyncio.to_thread(_with_backups_held,
+                                       lambda: apply_sort(cat, _sort_base(), req.levels))
+
+    @app.post("/api/backup-sort/undo", dependencies=[Depends(require_token)])
+    async def undo_backup_sort():
+        cat = app.state.catalog
+        return await asyncio.to_thread(_with_backups_held, lambda: undo_sort(cat))
 
     @app.get("/api/settings", dependencies=[Depends(require_token)])
     def get_settings() -> Config:

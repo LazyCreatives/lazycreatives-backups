@@ -14,6 +14,32 @@ class Config(BaseModel):
     backup_stems: bool = True  # stems go into backups with the exported songs
 
 
+class NasLogin(BaseModel):
+    host: str = Field(..., min_length=1, max_length=300)    # name, address or pasted \\NAS\Share
+    user: str = Field("", max_length=200)
+    password: str = Field("", max_length=500)
+
+
+class NasConnect(NasLogin):
+    share: str = Field(..., min_length=1, max_length=300)
+    name: str = Field("", max_length=300)                  # what the network calls it
+    address: str = Field("", max_length=100)
+
+
+class NasRemote(BaseModel):
+    kind: str = Field(..., max_length=10)                   # sftp | webdav
+    host: str = Field(..., min_length=1, max_length=300)
+    port: int | None = Field(None, ge=1, le=65535)
+    user: str = Field("", max_length=200)
+    password: str = Field("", max_length=500)
+    folder: str = Field("", max_length=500)                 # shared folder on the NAS
+
+
+class SortRequest(BaseModel):
+    # up to three of: program, year, month, genre, folder (cleaned on the way in)
+    levels: list[str] = Field(default_factory=list, max_length=8)
+
+
 class RestoreRequest(BaseModel):
     snapshot_id: int = Field(..., ge=0)
     target: str = Field(..., max_length=_PATH)  # folder to restore/share into

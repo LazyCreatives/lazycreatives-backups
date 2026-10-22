@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import qrcode from "qrcode-generator";
 import { CopyButton, askConfirm, openMenu, toast } from "../components/Desktop";
 import { PAUSE_ON_MINIMIZE, baseName, copyText, keep, pausesOnMinimize } from "../desktop";
-import { makeApi, type PhoneCode, type PhoneStatus } from "../api";
+import { makeApi, type NasInfo, type PhoneCode, type PhoneStatus } from "../api";
+import { NasPicker } from "../components/NasPicker";
 import type { Config, Overview } from "../types";
 import { Button } from "../components/Button";
 import { PageHeader } from "../components/PageHeader";
@@ -23,6 +24,7 @@ import { useEntitlement } from "../entitlement";
 import { fmtCount, fmtInterval, fmtNext, fmtDay, fmtSize } from "../format";
 import { osWords } from "../platform";
 import { useCloudFolders } from "../components/DestChoices";
+import { BackupSort } from "../components/BackupSort";
 import { EXPORT_FOLDER_FROM, SHORT_EXPORTS_DEFAULT, exportFolderRows, setShortExportSeconds, shortExportSeconds } from "../exportFolders";
 
 const api = makeApi();
@@ -66,6 +68,9 @@ export function Sources() {
   const canSchedule = allows("scheduled");
   const canCloud = allows("cloud_backup");
   const cloud = useCloudFolders();
+  const [findNas, setFindNas] = useState(false);
+  const [nasInfo, setNasInfo] = useState<NasInfo | null>(null);
+  useEffect(() => { api.nasStatus().then((r) => setNasInfo(r.nas)).catch(() => {}); }, []);
 
   function refreshNextRun() {
     api.overview().then((o) => setNextRun(o.schedule.next_run ?? null)).catch(() => {});
@@ -278,8 +283,27 @@ export function Sources() {
               <span className="faint drive__nums">{cfg.dest ? (ov && !ov.nas.reachable ? "Can't reach this folder right now" : "Folder set") : "Pick an external drive, a network drive or any folder"}</span>
             )}
           </div>
-          <Button variant="ghost" onClick={pickDest} disabled={!loaded}>{cfg.dest ? "Change…" : "Choose…"}</Button>
+          <span className="drive__btns">
+            <Button variant="ghost" onClick={() => setFindNas(true)} disabled={!loaded}>Find my NAS…</Button>
+            <Button variant="ghost" onClick={pickDest} disabled={!loaded}>{cfg.dest ? "Change…" : "Choose…"}</Button>
+          </span>
         </div>
+        {nasInfo && cfg.dest.startsWith(nasInfo.path) && (
+          <p className="set-note">On <bdi>{nasInfo.name}</bdi>, shared folder <bdi>{nasInfo.share}</bdi>. Backups connects it by itself before each backup, and gives it a minute to wake up.</p>
+        )}
+        {findNas && <NasPicker onClose={() => setFindNas(false)}
+          onRemote={(mirror, name) => {
+            setFindNas(false);
+            setCfg((c) => ({ ...c, mirrors: [...(c.mirrors ?? []).filter((m) => m !== mirror), mirror] }));
+            api.rclone().then(setRclone).catch(() => {});
+            toast(`Every backup will also be copied to ${name} over the internet.`);
+          }}
+          onPicked={(dest, name) => {
+          setFindNas(false);
+          setCfg((c) => ({ ...c, dest }));
+          api.nasStatus().then((r) => setNasInfo(r.nas)).catch(() => {});
+          toast(`Backups will go to ${name}.`);
+        }} />}
         {cloud.folders.some((f) => f.path) && (
           <div className="set-inline">
             <span className="set-note">Or use</span>
@@ -290,6 +314,12 @@ export function Sources() {
             })}
           </div>
         )}
+      </SetRow>
+
+      <SetRow title="How backups are sorted"
+        help="The folders your backups go in on the backup drive. Pick up to three. Your own projects never move."
+        info="Year and month are when the project was started. Your project folder is the folder you keep the project in, like Album ideas. Changing the sort moves the backups already on the drive to match, which is quick because nothing is copied. Copies in a second place keep their old folders.">
+        <BackupSort dest={cfg.dest} loaded={loaded} />
       </SetRow>
 
       <SetRow title={<>Second copy{!canCloud && <ProBadge label="STUDIO" />}</>}

@@ -1,5 +1,6 @@
 """The DAW adapter interface. One adapter per DAW; the rest of the pipeline is neutral."""
 import os
+import re
 from pathlib import Path
 from typing import Iterable, Protocol
 
@@ -11,6 +12,9 @@ BACKUP_ROOTS = {"AbletonBackups", "FLStudioBackups", "ReaperBackups",
                 "DAWprojectBackups", "AudacityBackups", "LogicBackups",
                 "StudioOneBackups", "BitwigBackups", "StemsBackups"}
 COMMON_SKIP = {"Backup", "Backups"} | BACKUP_ROOTS
+# A backup's own folder is named after when it was made ("2026-10-22_0013"). Scans
+# never look inside one, wherever the producer's chosen sort puts it on the drive.
+STAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{4}(\d{2})?$")
 
 # Trees that never hold DAW projects but are huge — pruning them keeps a whole-Mac
 # walk fast and TCC-quiet. Applied to every scan (these are never project homes);
@@ -40,6 +44,8 @@ def _keep_dirs(dirnames: list[str], skip_dirs: set[str]) -> list[str]:
         if d.startswith("."):                       # .git, .cache, .Trash, dotfiles
             continue
         if d.endswith(_BUNDLE_SUFFIXES):             # Foo.app / Photos Library.photoslibrary
+            continue
+        if STAMP_RE.match(d):                        # one backup copy, wherever it's sorted
             continue
         keep.append(d)
     return keep

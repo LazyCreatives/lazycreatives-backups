@@ -10,7 +10,7 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 datas, binaries, hiddenimports = [], [], []
 for pkg in ("uvicorn", "fastapi", "starlette", "apscheduler", "defusedxml",
-            "websockets", "pydantic", "imageio_ffmpeg"):
+            "websockets", "pydantic", "imageio_ffmpeg", "zeroconf", "smb", "nmb"):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b

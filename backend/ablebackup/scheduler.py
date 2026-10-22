@@ -4,11 +4,15 @@ from typing import Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from ablebackup import entitlement
+from datetime import datetime, timedelta
+
+from ablebackup import entitlement, nas
 from ablebackup.catalog import Catalog
 from ablebackup.service import BackupDriveMissing, backup_in_progress, run_backup
 
 _JOB_ID = "auto_backup"
+_RETRY_ID = "auto_backup_retry"
+RETRY_MINUTES = 15  # a NAS that didn't wake gets another go this much later
 
 
 class BackupScheduler:
@@ -65,7 +69,14 @@ class BackupScheduler:
         except BackupDriveMissing:
             # The drive is unplugged: skip this run without making any folders. Home
             # already says "Backup drive not found"; the next timed run tries again.
+            # A NAS that didn't wake up gets one more go a little later, and Home
+            # says when (one quiet note, not an alarm).
+            if nas.on_nas(self._catalog, dest) and self._scheduler.get_job(_RETRY_ID) is None:
+                when = datetime.now() + timedelta(minutes=RETRY_MINUTES)
+                self._scheduler.add_job(self._run_once, "date", run_date=when, id=_RETRY_ID)
+                self._catalog.set_setting("nas_retry", when.isoformat(timespec="minutes"))
             return
+        self._catalog.set_setting("nas_retry", None)
 
     def shutdown(self) -> None:
         self._scheduler.shutdown(wait=False)

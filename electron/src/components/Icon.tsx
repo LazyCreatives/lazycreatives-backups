@@ -56,6 +56,7 @@ const PATHS = {
   dot: "M12 17.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11Z",
   dotFilled: "M12 17.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11Z",
   rows: "M4 5h16M4 9.5h16M4 14h16M4 18.5h16",
+  nas: "M5 4h14v7H5ZM5 13h14v7H5ZM8.5 7.5h.01M8.5 16.5h.01M12 7.5h4M12 16.5h4",
   narrow: "M4 4h16v16H4ZM14 4v16",                     // the narrow window beside your music program
   pin: "M9 3h6M10 3v6l-3 4h10l-3-4V3M12 13v8",        // keep the narrow window on top
   palette: "M12 21a9 9 0 1 1 9-9c0 2-1.5 3-3 3h-2a2 2 0 0 0-1.5 3.3c.4.5.5 1 .5 1.4 0 .7-.9 1.3-3 1.3ZM7.5 11h.01M10 7.5h.01M14.5 7.5h.01",

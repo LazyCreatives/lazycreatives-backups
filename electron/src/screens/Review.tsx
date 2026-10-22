@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { makeApi } from "../api";
+import { makeApi, type SortLevel } from "../api";
+import { SORT_LEVELS } from "../components/BackupSort";
 import type { Config } from "../types";
 import type { PendingBackup } from "../App";
 import { Button } from "../components/Button";
@@ -27,7 +28,9 @@ export function Review({ pending, onStarted, onCancel }: {
   const [look] = useLook();
   const genreOf = useGenres();
 
+  const [sorted, setSorted] = useState<SortLevel[] | null>(null);  // the producer's own sort, if not the usual one
   useEffect(() => { api.getSettings().then(setCfg).catch(() => {}); }, []);
+  useEffect(() => { api.backupSort().then((s) => setSorted(s.levels.join() === "program" ? null : s.levels)).catch(() => {}); }, []);
 
   if (!pending) {
     return (
@@ -106,6 +109,12 @@ export function Review({ pending, onStarted, onCancel }: {
 
         <div className="set-row">
           <div className="set-row__label"><h2>Folders</h2><p>How backups are filed on the drive.</p></div>
+          {sorted ? (
+          <div className="set-row__body">
+            <span>Sorted by {sorted.map((l) => SORT_LEVELS.find(([k]) => k === l)?.[1].toLowerCase()).join(", then ")}, then project and date.</span>
+            <span className="faint" style={{ fontSize: 12 }}>Change it in Settings, Backups.</span>
+          </div>
+          ) : (
           <div className="set-row__body">
             <select value={layout} onChange={(e) => setLayout(e.target.value as "project_date" | "date_project")} style={{ alignSelf: "flex-start" }}>
               <option value="project_date">By project, then date (recommended)</option>
@@ -115,6 +124,7 @@ export function Review({ pending, onStarted, onCancel }: {
               {layout === "project_date" ? "projects/<name>/<date>/" : "by-date/<date>/<name>/"}
             </span>
           </div>
+          )}
         </div>
 
         <div className="set-row">
