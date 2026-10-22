@@ -15,6 +15,11 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.3.6 (22 October 2026)
+
+### Fixed
+- **Backups left running overnight now finish.** While a backup runs, the computer no longer goes to sleep by itself (the screen can still turn off), so it doesn't stop part way. And if the NAS drops off in the middle, Backups connects it again and carries on, instead of stopping the whole backup.
+
 ## 0.3.5 (22 October 2026)
 
 ### Fixed

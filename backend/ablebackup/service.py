@@ -14,6 +14,7 @@ from typing import Callable, Optional
 
 from ablebackup import nas
 from ablebackup.nas import on_nas
+from ablebackup.awake import keep_awake
 from ablebackup.backup_engine import backup_project
 from ablebackup.catalog import Catalog
 from ablebackup.daws.registry import DAW_REGISTRY, adapter_for_id
@@ -980,10 +981,21 @@ def run_backup(sources: list[Path], dest: Path, catalog: Catalog,
     on the same snapshot folder and corrupt/lose it (audit: scheduler-vs-manual
     overlap). The actual work is in _run_backup_locked.
     """
-    with _backup_lock:
+    with _backup_lock, keep_awake():
         return _run_backup_locked(
             sources, dest, catalog, timestamp, progress, als_paths, label,
             portable, layout, find_missing, libraries, should_cancel, mirrors, relink_map)
+
+
+def _back_up_one(p, base: Path, adapter, levels, found_genres, sort_info, timestamp,
+                 portable, layout, exports):
+    dest_root = base / (adapter.backup_root if adapter else "AbletonBackups")
+    parent = None if is_default(levels) else dest_parent(
+        base, levels, daw=p.daw_id, made=sort_info["made"],
+        genre=(found_genres.get(p.project_id)), folder=sort_info["folder"])
+    return backup_project(p, dest_root, timestamp, portable=portable, layout=layout,
+                          exports=exports, project_parent=parent,
+                          pool=pool_for(base, p.daw_id, levels), sort_info=sort_info)
 
 
 def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
@@ -1059,19 +1071,28 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
         # Per-DAW destination root, so FL and Ableton backups stay separate, unless
         # the producer sorts them another way (Settings, How backups are sorted).
         adapter = adapter_for_id(p.daw_id)
-        dest_root = base / (adapter.backup_root if adapter else "AbletonBackups")
         made = min((t for t in (made_time(p.project_path), known_made.get(p.project_id)) if t),
                    default=None)
         if made and p.project_id:
             catalog.remember_made(p.project_id, made)
         sort_info = {"made": made, "folder": project_folder_name(p.project_dir, p.name)}
-        parent = None if is_default(levels) else dest_parent(
-            base, levels, daw=p.daw_id, made=sort_info["made"],
-            genre=(found_genres.get(p.project_id)), folder=sort_info["folder"])
         try:
-            result = backup_project(p, dest_root, timestamp, portable=portable, layout=layout,
-                                    exports=exports, project_parent=parent,
-                                    pool=pool_for(base, p.daw_id, levels), sort_info=sort_info)
+            try:
+                result = _back_up_one(p, base, adapter, levels, found_genres, sort_info,
+                                      timestamp, portable, layout, exports)
+            except Exception:
+                # A NAS that dropped off part way (it went to sleep, or the Wi-Fi
+                # blinked): connect it again and try this project once more, instead
+                # of stopping the whole backup.
+                if base.is_dir() or not nas.on_nas(catalog, dest):
+                    raise
+                _emit(progress, {"type": "nas_waking"})
+                if not nas.ensure_connected(catalog, dest):
+                    raise
+                dest = nas.catalog_dest(catalog) or dest  # it may be back at a new path
+                base = Path(dest)
+                result = _back_up_one(p, base, adapter, levels, found_genres, sort_info,
+                                      timestamp, portable, layout, exports)
         except Exception as e:  # isolate one project's failure from the rest
             if not base.is_dir():  # the drive was unplugged part way through
                 e = BackupDriveMissing()
