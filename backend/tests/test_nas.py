@@ -361,3 +361,36 @@ def test_typed_folder_that_isnt_shared_names_the_real_ones(monkeypatch):
     monkeypatch.setattr(nas, "_run", fake_run)
     with pytest.raises(nas.NasError, match="MUSIC-NAS has no shared folder called LC-AUTOBACKUPS. Its shared folders are Music, Public Share, Home"):
         nas.connect("MUSIC-NAS.local", "LC-AUTOBACKUPS", "rob", "pw")
+
+
+def test_folder_names_are_made_safe():
+    assert nas.folder_name("") == nas.SUBDIR
+    assert nas.folder_name("  LC-AUTOBACKUPS ") == "LC-AUTOBACKUPS"
+    assert nas.folder_name("a/b:c*?") == "a b c"
+    assert nas.folder_name("...") == nas.SUBDIR
+
+
+def test_music_shares_are_tried_before_photos_and_time_machine():
+    shares = [{"name": n, "comment": ""} for n in ("TimeMachine", "Photos", "homes", "Public", "Music", "Backups")]
+    assert nas.share_order(shares) == ["Backups", "Music", "Public", "homes", "Photos", "TimeMachine"]
+
+
+def test_backups_picks_a_shared_folder_it_can_save_into(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from ablebackup.api.app import create_app
+    vols = tmp_path / "Volumes"
+    monkeypatch.setattr(nas, "list_shares", lambda *a: [{"name": "Photos", "comment": ""}, {"name": "Music", "comment": ""},
+                                                       {"name": "Public", "comment": ""}])
+
+    def connect(host, share, user, pw):
+        if share == "Music":
+            raise nas.NasError("No access")
+        (vols / share).mkdir(parents=True, exist_ok=True)
+        return vols / share
+    monkeypatch.setattr(nas, "connect", connect)
+    with TestClient(create_app(token="", db_path=tmp_path / "c.db")) as c:
+        r = c.post("/api/nas/connect", json={"host": "music-nas.local", "share": "", "user": "rob", "password": "pw",
+                                              "folder": "LC-AUTOBACKUPS", "name": "MUSIC-NAS"}).json()
+        assert r["share"] == "Public" and r["folder"] == "LC-AUTOBACKUPS"
+        assert (vols / "Public" / "LC-AUTOBACKUPS").is_dir()
+        assert c.get("/api/nas").json()["nas"]["share"] == "Public"

@@ -301,6 +301,29 @@ def list_shares(host: str, user: str, password: str) -> list[dict] | None:
     return sorted(out, key=lambda s: s["name"].lower())
 
 
+def folder_name(text: str) -> str:
+    """The folder Backups makes inside the shared folder: what the producer typed,
+    made safe for every computer, or "Lazy Creatives Backups"."""
+    t = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', " ", text or "").strip().strip(".").strip()
+    return re.sub(r"\s+", " ", t)[:80] or SUBDIR
+
+
+# Which shared folder Backups tries first when it picks one by itself.
+_SHARE_LIKES = (r"backup", r"music|audio|studio|project|sound|record", r"media|data|share|public|files|storage")
+_SHARE_DISLIKES = r"time ?machine|photo|picture|video|movie|film|tv|download|web|docker|home|surveillance|usb"
+
+
+def share_order(shares: list[dict]) -> list[str]:
+    """The NAS's shared folders, the likeliest place for music backups first."""
+    def rank(name: str) -> int:
+        low = name.lower()
+        for i, pat in enumerate(_SHARE_LIKES):
+            if re.search(pat, low):
+                return i
+        return len(_SHARE_LIKES) + (1 if re.search(_SHARE_DISLIKES, low) else 0)
+    return [s["name"] for s in sorted(shares, key=lambda s: (rank(s["name"]), s["name"].lower()))]
+
+
 # ---- connecting --------------------------------------------------------------
 def _as_script(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')

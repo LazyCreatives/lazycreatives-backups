@@ -21,7 +21,8 @@ class NasLogin(BaseModel):
 
 
 class NasConnect(NasLogin):
-    share: str = Field(..., min_length=1, max_length=300)
+    share: str = Field("", max_length=300)                 # empty: Backups picks one
+    folder: str = Field("", max_length=200)                # the folder made inside it
     name: str = Field("", max_length=300)                  # what the network calls it
     address: str = Field("", max_length=100)
 

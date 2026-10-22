@@ -320,16 +320,35 @@ def create_app(token: str, db_path: Path) -> FastAPI:
 
         def go():
             host = nas.clean_host(req.host)
-            path = nas.connect(host, req.share, req.user, req.password)
-            dest = path / nas.SUBDIR
-            try:
-                dest.mkdir(exist_ok=True)
-            except OSError:
-                raise nas.NasError(f"Connected, but this login can't save files in {req.share}. "
-                                   "Pick another shared folder or a login that can.") from None
-            nas.remember(cat, host=host, address=req.address, share=req.share, user=req.user,
-                         password=req.password, path=path, name=req.name or host)
-            return {"dest": str(dest), "path": str(path)}
+            folder = nas.folder_name(req.folder)
+            if req.share.strip():
+                tries = [req.share.strip()]
+            else:  # pick one by itself: the likeliest shared folder this login can save into
+                tries = nas.share_order(nas.list_shares(host, req.user, req.password) or [])[:4]
+                if not tries:
+                    raise nas.NasError(f"Backups couldn't see {host.split('.')[0]}'s shared folders. "
+                                       "Press Change and type the name of one.")
+            last: nas.NasError | None = None
+            for share in tries:
+                try:
+                    path = nas.connect(host, share, req.user, req.password)
+                except nas.NasError as e:
+                    last = e
+                    continue
+                dest = path / folder
+                try:
+                    dest.mkdir(exist_ok=True)
+                except OSError:
+                    last = nas.NasError(f"Connected, but this login can't save files in {share}. "
+                                        "Pick another shared folder or a login that can.")
+                    continue
+                nas.remember(cat, host=host, address=req.address, share=share, user=req.user,
+                             password=req.password, path=path, name=req.name or host)
+                return {"dest": str(dest), "path": str(path), "share": share, "folder": folder}
+            if len(tries) > 1:
+                raise nas.NasError(f"Backups couldn't save into any of {host.split('.')[0]}'s shared folders "
+                                   "with this login. Press Change to pick one, or log in as someone who can.")
+            raise last or nas.NasError("Couldn't connect that folder.")
         return await asyncio.to_thread(_nas_call, go)
 
     @app.post("/api/nas/forget", dependencies=[Depends(require_token)])

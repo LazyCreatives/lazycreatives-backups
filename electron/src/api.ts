@@ -176,7 +176,7 @@ export function makeApi() {
     async nasShares(host: string, user: string, password: string): Promise<{ host: string; shares: NasShare[]; listed?: boolean; pasted_share: string }> {
       return req("POST", "/api/nas/shares", { host, user, password });
     },
-    async nasConnect(b: { host: string; share: string; user: string; password: string; name: string; address: string }): Promise<{ dest: string; path: string }> {
+    async nasConnect(b: { host: string; share: string; folder?: string; user: string; password: string; name: string; address: string }): Promise<{ dest: string; path: string; share?: string; folder?: string }> {
       return req("POST", "/api/nas/connect", b);
     },
     async forgetNas(): Promise<{ ok: boolean }> { return req("POST", "/api/nas/forget"); },

@@ -7,8 +7,9 @@ import { Choice } from "./SetRow";
 
 const api = makeApi();
 
-type Step = "find" | "login" | "share" | "away" | "address";
-const STEP_NO: Partial<Record<Step, number>> = { find: 1, login: 2, share: 3 };
+type Step = "find" | "login" | "ready" | "share" | "away" | "address";
+const STEP_NO: Partial<Record<Step, number>> = { find: 1, login: 2, ready: 3, share: 3 };
+const DEFAULT_FOLDER = "Lazy Creatives Backups";
 const TAILSCALE = "https://tailscale.com/download";
 const openLink = (url: string) => (window as any).ablebackup?.openExternal?.(url);
 
@@ -34,6 +35,9 @@ export function NasPicker({ onPicked, onRemote, onClose }: {
   // false when the NAS wouldn't list its folders (or the login check looked wrong): type the name
   const [listed, setListed] = useState(true);
   const [typedShare, setTypedShare] = useState("");
+  const [folder, setFolder] = useState(DEFAULT_FOLDER);
+  // The place Backups picked by itself, shown before it's used ("Change" opens the list).
+  const [picked, setPicked] = useState<{ dest: string; share: string; folder: string } | null>(null);
   const [remote, setRemote] = useState({ kind: "sftp" as "sftp" | "webdav", host: "", port: "", folder: "" });
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -65,11 +69,18 @@ export function NasPicker({ onPicked, onRemote, onClose }: {
       setBox({ ...box!, host: r.host, name: box!.name === box!.host ? r.host : box!.name });
       setShares(r.shares);
       setListed(r.listed !== false);
-      go("share");
       // A pasted \\NAS\Music already says which folder: go straight on.
       const pasted = r.shares.find((s) => s.name.toLowerCase() === r.pasted_share.toLowerCase())?.name
         ?? (r.listed === false && r.pasted_share ? r.pasted_share : undefined);
-      if (pasted) await connect(pasted, r.host);
+      if (pasted) { go("share"); await connect(pasted, r.host); return; }
+      if (r.listed === false || !r.shares.length) { go("share"); return; }
+      // Pick the shared folder by itself; the producer only has to say "Done".
+      setBusy("auto");
+      try {
+        const c = await api.nasConnect({ host: r.host, share: "", folder: DEFAULT_FOLDER, user, password, name: box!.name, address: box!.address });
+        setPicked({ dest: c.dest, share: c.share ?? "", folder: c.folder ?? DEFAULT_FOLDER });
+        go("ready");
+      } catch (e: any) { go("share"); setErr(e.message); }
     } catch (e: any) {
       setErr(e.message);
       pwRef.current?.select();
@@ -78,7 +89,7 @@ export function NasPicker({ onPicked, onRemote, onClose }: {
   async function connect(share: string, host = box!.host) {
     setBusy(share); setErr(null);
     try {
-      const r = await api.nasConnect({ host, share, user, password, name: box!.name, address: box!.address });
+      const r = await api.nasConnect({ host, share, folder: folder.trim() || DEFAULT_FOLDER, user, password, name: box!.name, address: box!.address });
       onPicked(r.dest, `${box!.name} › ${share}`);
     } catch (e: any) { setErr(e.message); setBusy(null); }
   }
@@ -91,7 +102,7 @@ export function NasPicker({ onPicked, onRemote, onClose }: {
     } catch (e: any) { setErr(e.message); setBusy(null); }
   }
 
-  const title = { find: "Find your NAS", login: "Log in to your NAS", share: "Pick a shared folder",
+  const title = { find: "Find your NAS", login: "Log in to your NAS", ready: "Your backups go here", share: "Pick where backups go",
     away: "A NAS away from home", address: "Use its internet address" }[step];
   const sub = step === "login" || step === "share" ? box?.name : undefined;
   const away = (found ?? []).filter((n) => n.away);
@@ -167,14 +178,34 @@ export function NasPicker({ onPicked, onRemote, onClose }: {
               )}
             </div>
             <div className="set-inline">
-              <Button size="sm" type="submit" disabled={!!busy}>{busy ? "Logging in…" : "Log in"}</Button>
+              <Button size="sm" type="submit" disabled={!!busy}>{busy === "auto" ? "Finding a place…" : busy ? "Logging in…" : "Log in"}</Button>
               <Button size="sm" variant="quiet" type="button" disabled={!!busy} onClick={() => go("find")}>Back</Button>
             </div>
           </form>
         )}
 
+        {step === "ready" && picked && <>
+          <p className="sub nasp__say">Every backup goes in this folder on the NAS. Backups connects it by itself before each backup, and nothing else on the NAS is touched.</p>
+          <div className="nasp__where" role="group" aria-label="Where backups go">
+            <Icon name="nas" size={15} className="faint" />
+            <span className="col-trunc" title={box!.name}><bdi>{box!.name}</bdi></span>
+            <span className="faint" aria-hidden>›</span>
+            <span className="col-trunc" title={picked.share}><bdi>{picked.share}</bdi></span>
+            <span className="faint" aria-hidden>›</span>
+            <span className="col-trunc nasp__where-folder" title={picked.folder}><bdi>{picked.folder}</bdi></span>
+          </div>
+          <div className="set-inline">
+            <Button size="sm" onClick={() => onPicked(picked.dest, `${box!.name} › ${picked.share}`)} autoFocus>Done</Button>
+            <Button size="sm" variant="quiet" onClick={() => go("share")}>Change</Button>
+          </div>
+        </>}
+
         {step === "share" && <>
-          <p className="sub nasp__say">Backups makes a folder called Lazy Creatives Backups inside the one you pick. Nothing else on the NAS is touched.</p>
+          <p className="sub nasp__say">Pick one of the NAS's shared folders. Backups makes its own folder inside it, so nothing else there is touched.</p>
+          <label className="field nasp__folder">
+            <span>Name of the folder Backups makes</span>
+            <input className="input" value={folder} onChange={(e) => setFolder(e.target.value)} maxLength={80} spellCheck={false} />
+          </label>
           {!listed ? (
             <p className="nasp__none">The NAS didn't list its shared folders, so type the name of the one to use, written the way the NAS shows it. This computer checks the login when it connects.</p>
           ) : shares.length === 0 ? (
@@ -209,7 +240,7 @@ export function NasPicker({ onPicked, onRemote, onClose }: {
             </div>
           </form>
           {error}
-          <div className="set-inline"><Button size="sm" variant="quiet" disabled={!!busy} onClick={() => go("login")}>Back</Button></div>
+          <div className="set-inline"><Button size="sm" variant="quiet" disabled={!!busy} onClick={() => go(picked ? "ready" : "login")}>Back</Button></div>
         </>}
 
         {step === "away" && <>

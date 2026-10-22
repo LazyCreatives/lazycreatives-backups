@@ -380,6 +380,12 @@ html[data-theme="light"] .table--crate.plug-table > .plug-item > .row:hover {
 }
 .nasp__typed, .nasp__login { display: grid; gap: 4px; }
 .nasp__typed .field, .nasp__login .field { margin-bottom: 8px; }
+.nasp__where { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 12px 14px; margin: 4px 0 14px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-2); font-weight: 500; }
+.nasp__where > .col-trunc { min-width: 0; flex: 0 1 auto; }
+.nasp__where > svg { flex: none; }
+.nasp__where > .nasp__where-folder { flex: none; max-width: 45%; }
+.nasp__folder { margin-bottom: 10px; }
 .nasp__sure { justify-self: start; margin-top: 6px; font-size: 12px; min-height: 28px; }
 .nasp__login .field > label { font-weight: 500; }
 .nasp__pw { display: flex; gap: 8px; align-items: center; }

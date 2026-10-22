@@ -15,6 +15,11 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.3.4 (22 October 2026)
+
+### Better
+- **Find my NAS picks the place for you.** After you log in, Backups picks the NAS's shared folder (one for music or backups first) and shows where your backups will go. Press Done, or Change to pick another shared folder and name the folder Backups makes inside it.
+
 ## 0.3.3 (22 October 2026)
 
 ### Fixed
