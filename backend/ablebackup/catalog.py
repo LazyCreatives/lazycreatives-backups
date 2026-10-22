@@ -401,6 +401,28 @@ class Catalog:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def _here(self, alias: str = "s") -> tuple[str, tuple]:
+        """SQL that keeps only backups in the current backup place (Settings, Backup
+        drive). After switching to a new place (a NAS, another drive), backups left in
+        the old one don't count as safe and don't stop projects being backed up again
+        in the new one. Rows from before backups recorded their folder count anywhere."""
+        dest = (self.get_setting("config") or {}).get("dest") or ""
+        if not dest:
+            return "1", ()
+        place = os.path.normpath(dest)
+        prefix = place.rstrip("\\/") + os.sep
+        return (f"({alias}.dir IS NULL OR {alias}.dir = '' OR {alias}.dir = ? OR substr({alias}.dir, 1, ?) = ?)",
+                (place, len(prefix), prefix))
+
+    def move_dirs(self, old: str, new: str) -> None:
+        """The backup place came back at a new path ("/Volumes/Music-1"): follow it."""
+        old, new = os.path.normpath(old).rstrip("\\/"), os.path.normpath(new).rstrip("\\/")
+        with self._lock:
+            self.conn.execute(
+                "UPDATE snapshots SET dir = ? || substr(dir, ?) WHERE dir = ? OR substr(dir, 1, ?) = ?",
+                (new, len(old) + 1, old, len(old) + 1, old + os.sep))
+            self.conn.commit()
+
     def latest_signatures(self) -> dict:
         """project_id -> content signature of its most recent successful snapshot.
 
@@ -412,13 +434,14 @@ class Catalog:
         skipped (this is what stops endless duplicate backups of projects that have
         a permanently-missing sample). Only failed ('error') snapshots are excluded.
         """
+        here, args = self._here("x")
         with self._lock:
             rows = self.conn.execute(
                 "SELECT s.project_id, s.signature FROM snapshots s "
-                "JOIN (SELECT project_id, MAX(id) AS mid FROM snapshots "
-                "      WHERE status IN ('ok', 'partial') AND project_id IS NOT NULL "
+                "JOIN (SELECT project_id, MAX(id) AS mid FROM snapshots x "
+                f"      WHERE status IN ('ok', 'partial') AND project_id IS NOT NULL AND {here} "
                 "      GROUP BY project_id) l "
-                "  ON s.id = l.mid"
+                "  ON s.id = l.mid", args
             ).fetchall()
         return {r["project_id"]: r["signature"] for r in rows if r["signature"]}
 
@@ -574,16 +597,17 @@ class Catalog:
         """Every discovered project + its backed-up status (latest backup time and
         snapshot count), derived by matching snapshots on project_id OR name so both
         new (id-tagged) and legacy backups are recognised. This is the History list."""
+        here, args = self._here()
         with self._lock:
             rows = self.conn.execute(
                 "SELECT d.*, "
                 "  (SELECT MAX(s.timestamp) FROM snapshots s "
                 "     WHERE (s.project_id = d.project_id OR s.project_name = d.name) "
-                "       AND s.status IN ('ok','partial')) AS last_backup, "
+                f"       AND s.status IN ('ok','partial') AND {here}) AS last_backup, "
                 "  (SELECT COUNT(*) FROM snapshots s "
-                "     WHERE s.project_id = d.project_id OR s.project_name = d.name) AS snapshot_count "
+                f"     WHERE (s.project_id = d.project_id OR s.project_name = d.name) AND {here}) AS snapshot_count "
                 "FROM discovered d "
-                "ORDER BY d.owner, d.name"
+                "ORDER BY d.owner, d.name", args + args
             ).fetchall()
         out = []
         for r in rows:

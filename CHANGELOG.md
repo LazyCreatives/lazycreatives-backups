@@ -15,6 +15,11 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.3.5 (22 October 2026)
+
+### Fixed
+- **Switching to a new backup place (like a NAS) now backs everything up there.** Projects backed up only on the old drive used to count as safe and were skipped, so they never reached the new place. Now "safe" means backed up in the place you've picked, and the next backup copies every project there.
+
 ## 0.3.4 (22 October 2026)
 
 ### Better

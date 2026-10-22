@@ -510,6 +510,7 @@ def _moved(catalog: Catalog, n: dict, path: Path) -> None:
         return
     cfg["dest"] = str(path / rel)
     catalog.set_setting("config", cfg)
+    catalog.move_dirs(n["path"], str(path))  # its backups moved with it
     catalog.set_setting(NAS_KEY, {**n, "path": str(path)})
 
 
