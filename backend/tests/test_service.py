@@ -120,9 +120,9 @@ def test_run_backup_skips_unchanged_partial_project(tmp_path):
     cat.close()
 
 
-def test_portable_change_is_not_skipped(tmp_path):
-    # Backing up unchanged content but switching to portable must NOT be skipped —
-    # the user asked for a portable snapshot and must get one.
+def test_option_change_alone_makes_no_second_copy(tmp_path):
+    # An unchanged project isn't copied again just because a backup option changed:
+    # that left the same project on a NAS several times in different layouts.
     _build_project(tmp_path)
     dest = tmp_path / "NAS"
     cat = Catalog(tmp_path / "c.db")
@@ -130,7 +130,9 @@ def test_portable_change_is_not_skipped(tmp_path):
 
     run_backup([tmp_path], dest, cat, timestamp="t1", als_paths=als, portable=False)
     again = run_backup([tmp_path], dest, cat, timestamp="t2", als_paths=als, portable=True)
-    assert again["ok_count"] == 1 and again["skipped_count"] == 0
+    assert again["ok_count"] == 0 and again["skipped_count"] == 1
+    other = run_backup([tmp_path], dest, cat, timestamp="t3", als_paths=als, layout="date_project")
+    assert other["ok_count"] == 0 and other["skipped_count"] == 1
     cat.close()
 
 

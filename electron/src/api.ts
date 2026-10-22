@@ -13,7 +13,7 @@ function token() {
   return (window as any).ablebackup?.token ?? "";
 }
 
-export type FoundNas = { name: string; host: string; address: string; maker: string; away?: boolean };
+export type FoundNas = { name: string; host: string; address: string; maker: string; away?: boolean; via?: string };
 export type NasShare = { name: string; comment: string };
 export type NasInfo = { name: string; host: string; share: string; user: string; path: string };
 

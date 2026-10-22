@@ -136,7 +136,7 @@ export function NasPicker({ onPicked, onRemote, onClose }: {
                   <div key={n.host} className="row cols" role="listitem">
                     <Icon name="nas" size={15} className="faint" />
                     <span className="col-trunc nasp__name" title={n.name}><bdi>{n.name}</bdi></span>
-                    <span className="faint col-trunc nasp__maker">{n.away ? "Away (Tailscale)" : n.maker || "File sharing"}</span>
+                    <span className="faint col-trunc nasp__maker" title={n.via ? `Through ${n.via} (Tailscale)` : undefined}>{n.via ? `Through ${n.via} (Tailscale)` : n.away ? "Away (Tailscale)" : n.maker || "File sharing"}</span>
                     <span className="mono faint col-trunc nasp__addr" title={n.address}>{n.address}</span>
                     <span className="col-act"><Button size="sm" variant="ghost" onClick={() => choose(n)} aria-label={`Use ${n.name}`}>Use</Button></span>
                   </div>

@@ -15,6 +15,12 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.3.7 (22 October 2026)
+
+### Fixed
+- **Find my NAS finds a NAS through Tailscale.** It lists a NAS that has Tailscale on it, and also one at home that a computer there shares over Tailscale ("Through studio-mac"). Laptops and phones on Tailscale that don't share files are left out.
+- **Changing a backup option no longer makes another full copy.** A project that hasn't changed isn't backed up again just because you picked "Copy as-is" or a different folder layout, so the same project no longer piles up on the NAS several times.
+
 ## 0.3.6 (22 October 2026)
 
 ### Fixed

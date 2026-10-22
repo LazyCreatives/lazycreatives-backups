@@ -46,12 +46,13 @@ def project_signature(scan: ProjectScan, portable: bool = False, layout: str = "
                       exports: Optional[list[dict]] = None) -> str:
     """A content fingerprint of a project. Ableton rewrites the .als on every save,
     so we hash its actual content (robust to a same-size/same-second edit) plus each
-    present sample's size + mtime. The run's portable/layout choice is folded in so
-    that asking for a portable backup of an otherwise-unchanged project is NOT
-    skipped (it would leave the user without the portable snapshot they asked for).
-    Unchanged content + same options => same signature => no new snapshot."""
+    present sample's size + mtime. The run's portable/layout choice is left out: a
+    project that hasn't changed is never copied again just because a backup option
+    changed (that filled a NAS with the same project in several layouts).
+    Unchanged content => same signature => no new snapshot."""
     h = hashlib.sha1()
-    h.update(f"opts:{int(portable)}:{layout}|".encode())
+    # Kept as it always read for the usual options, so no project is copied again.
+    h.update(b"opts:1:project_date|")
     try:
         h.update(hash_file(scan.als_path).encode())
     except OSError:

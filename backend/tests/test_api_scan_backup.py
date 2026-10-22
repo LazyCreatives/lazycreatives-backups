@@ -232,9 +232,10 @@ def test_point_to_file_is_remembered(tmp_path, monkeypatch):
         assert again["missing_count"] == 1
 
         # A later backup, sent without any pick (like the scheduled one), keeps it.
-        # (Portable this time, so it isn't skipped as identical to the first.)
+        # (The sample changed, so it isn't skipped as identical to the first.)
+        chosen.write_bytes(b"the real lead, re-bounced")
         r = c.post("/api/backup", json={
-            "als_paths": [str(als)], "find_missing": True, "portable": True,
+            "als_paths": [str(als)], "find_missing": True,
             "timestamp": "2026-10-06_1900"})
         st = wait(c, r.json()["job_id"])
     assert st["state"] == "done"

@@ -160,10 +160,49 @@ def test_nas_away_from_home_shows_through_tailscale(tmp_path, monkeypatch):
     }}
     (tmp_path / "s.json").write_text(json.dumps(status))
     monkeypatch.setattr(nas, "tailscale_cli", lambda: _fake_cli(tmp_path, "tailscale", f"cat {tmp_path}/s.json\n"))
+    monkeypatch.setattr(nas, "_answers_smb", lambda ips, **k: {"100.101.1.2"} & set(ips))
     t = nas.tailscale()
     assert t["installed"] and t["running"]
     assert t["peers"] == [{"name": "TNAS", "host": "tnas.tail1234.ts.net", "address": "100.101.1.2",
                            "maker": "TerraMaster", "away": True}]
+
+
+def test_nas_behind_a_home_computer_sharing_its_network_over_tailscale(tmp_path, monkeypatch):
+    import json
+    status = {"BackendState": "Running", "Peer": {
+        "a": {"HostName": "studio-mac", "DNSName": "studio-mac.tail1234.ts.net.", "TailscaleIPs": ["100.101.1.5"],
+              "Online": True, "OS": "macOS", "PrimaryRoutes": ["192.168.1.0/24", "fd00::/64"]},
+        "b": {"HostName": "router", "TailscaleIPs": ["100.101.1.6"], "Online": True, "OS": "linux",
+              "PrimaryRoutes": ["0.0.0.0/0"]},   # an exit node: the whole internet, never scanned
+    }}
+    (tmp_path / "s.json").write_text(json.dumps(status))
+    monkeypatch.setattr(nas, "tailscale_cli", lambda: _fake_cli(tmp_path, "tailscale", f"cat {tmp_path}/s.json\n"))
+    asked = []
+    monkeypatch.setattr(nas, "_answers_smb", lambda ips, **k: asked.append(len(ips)) or {"192.168.1.20"} & set(ips))
+    monkeypatch.setattr(nas, "_reverse_names", lambda ips: ["TNAS-F4" for _ in ips])
+    t = nas.tailscale()
+    assert t["peers"] == [{"name": "TNAS-F4", "host": "192.168.1.20", "address": "192.168.1.20",
+                           "maker": "TerraMaster", "away": True, "via": "studio-mac"}]
+    assert asked == [2, 254]   # the two computers, then the one home network
+
+
+def test_home_network_addresses():
+    assert len(nas._hosts_in("192.168.1.0/24")) == 254
+    assert nas._hosts_in("10.0.0.0/8") == [] and nas._hosts_in("nonsense") == []
+
+
+def test_file_sharing_port_is_knocked(monkeypatch):
+    import socket as s
+    srv = s.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen()
+    port = srv.getsockname()[1]
+    real = nas.socket.create_connection
+    monkeypatch.setattr(nas.socket, "create_connection", lambda addr, timeout: real(("127.0.0.1", port) if addr[0] == "127.0.0.1" else ("127.0.0.2", 9), timeout=timeout))
+    try:
+        assert nas._answers_smb(["127.0.0.1", "127.0.0.2"], timeout=0.3) == {"127.0.0.1"}
+    finally:
+        srv.close()
 
 
 def test_no_tailscale_says_so(monkeypatch):

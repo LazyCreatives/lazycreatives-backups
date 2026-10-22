@@ -538,8 +538,9 @@ def tailscale_cli() -> str | None:
 
 
 def tailscale() -> dict:
-    """{installed, running, peers: [{name, host, address, maker, away}]}: the other
-    computers on this Tailscale network that are switched on, phones left out."""
+    """{installed, running, peers: [{name, host, address, maker, away, via?}]}: the
+    computers on this Tailscale network that are switched on and share files, and the
+    ones on a home network another computer shares over Tailscale (via: its name)."""
     import json
     cli = tailscale_cli()
     if not cli:
@@ -550,17 +551,85 @@ def tailscale() -> dict:
     except (OSError, subprocess.SubprocessError, ValueError):
         return {"installed": True, "running": False, "peers": []}
     running = data.get("BackendState") == "Running"
+    if not running:
+        return {"installed": True, "running": False, "peers": []}
     peers = []
+    routes: list[tuple[str, str]] = []  # (home network, the computer that shares it)
     for p in (data.get("Peer") or {}).values():
-        if not p.get("Online") or (p.get("OS") or "").lower() in _NOT_NAS_OS:
+        if not p.get("Online"):
+            continue
+        name = p.get("HostName") or (p.get("DNSName") or "").split(".")[0]
+        # A computer at home can share its whole home network over Tailscale (a
+        # "subnet router"): the NAS on it is then reachable without Tailscale on the NAS.
+        routes += [(r, name) for r in p.get("PrimaryRoutes") or [] if ":" not in r]
+        if (p.get("OS") or "").lower() in _NOT_NAS_OS:
             continue
         ips = [i for i in p.get("TailscaleIPs") or [] if ":" not in i]
-        name = p.get("HostName") or (p.get("DNSName") or "").split(".")[0]
         host = (p.get("DNSName") or "").rstrip(".") or (ips[0] if ips else name)
         peers.append({"name": name, "host": host, "address": ips[0] if ips else "",
                       "maker": maker_of(name), "away": True})
-    return {"installed": True, "running": running,
-            "peers": sorted(peers, key=lambda f: f["name"].lower()) if running else []}
+    # Only the ones that share files (a NAS, not every laptop on the Tailscale network).
+    sharing = _answers_smb([f["address"] for f in peers if f["address"]])
+    peers = [f for f in peers if f["address"] in sharing]
+    seen = {f["address"] for f in peers}
+    for net, via in routes:
+        hosts = _hosts_in(net)
+        if not hosts:
+            continue
+        ips = sorted(_answers_smb(hosts) - seen, key=_ip_key)
+        seen.update(ips)
+        for ip, name in zip(ips, _reverse_names(ips)):
+            peers.append({"name": name or ip, "host": ip, "address": ip, "maker": maker_of(name),
+                          "away": True, "via": via})
+    return {"installed": True, "running": True,
+            "peers": sorted(peers, key=lambda f: ("via" in f, f["name"].lower()))}
+
+
+def _ip_key(ip: str):
+    return tuple(int(x) for x in ip.split("."))
+
+
+def _hosts_in(net: str, most: int = 1024) -> list[str]:
+    """Every address in a shared home network ("192.168.1.0/24"); none for a big one."""
+    import ipaddress
+    try:
+        n = ipaddress.ip_network(net, strict=False)
+    except ValueError:
+        return []
+    if n.version != 4 or n.num_addresses > most + 2:
+        return []
+    return [str(h) for h in (n.hosts() if n.prefixlen < 31 else n)]
+
+
+def _answers_smb(ips: list[str], timeout: float = 0.8) -> set[str]:
+    """The addresses that answer on the file-sharing port (445), checked together."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def knock(ip):
+        try:
+            with socket.create_connection((ip, 445), timeout=timeout):
+                return ip
+        except OSError:
+            return None
+    if not ips:
+        return set()
+    with ThreadPoolExecutor(max_workers=min(128, len(ips))) as pool:
+        return {ip for ip in pool.map(knock, ips) if ip}
+
+
+def _reverse_names(ips: list[str]) -> list[str]:
+    """Each address's name on the network, or "" (looked up together: some take a while)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def name(ip):
+        try:
+            return socket.gethostbyaddr(ip)[0].split(".")[0]
+        except (OSError, UnicodeError):
+            return ""
+    if not ips:
+        return []
+    with ThreadPoolExecutor(max_workers=min(32, len(ips))) as pool:
+        return list(pool.map(name, ips))
 
 
 # The fallback with no extra app: the NAS's own internet address over SFTP or WebDAV,
