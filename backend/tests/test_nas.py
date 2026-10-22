@@ -289,3 +289,75 @@ def test_windows_tries_the_nas_name_in_front_of_the_user(monkeypatch):
     monkeypatch.setattr(nas, "_run", fake_run)
     assert str(nas.connect("TNAS", "Music", "robert", "pw")) == str(Path("\\\\TNAS\\Music"))
     assert [a[4] for a in calls] == ["/user:robert", "/user:TNAS\\robert"]
+
+
+SMBUTIL_VIEW = """Share                                           Type    Comments
+-------------------------------
+Music                                           Disk    Projects and stems
+Public Share                                    Disk
+IPC$                                            Pipe    IPC Service (TNAS)
+Home                                            Disk    Home directories
+4 shares listed
+"""
+
+NET_VIEW = """Shared resources at \\\\TNAS
+
+TerraMaster
+
+Share name  Type  Used as  Comment
+
+-------------------------------------------------------------------------------
+Music       Disk           Projects and stems
+Public      Disk
+The command completed successfully.
+
+"""
+
+
+def test_mac_share_list_is_read():
+    assert nas._table(SMBUTIL_VIEW, True) == [
+        {"name": "Music", "comment": "Projects and stems"},
+        {"name": "Public Share", "comment": ""},
+        {"name": "Home", "comment": "Home directories"},
+    ]
+
+
+def test_windows_share_list_is_read():
+    assert nas._table(NET_VIEW, True) == [{"name": "Music", "comment": "Projects and stems"},
+                                         {"name": "Public", "comment": ""}]
+
+
+def test_mac_lists_with_its_own_file_sharing(monkeypatch):
+    import subprocess
+    seen = []
+
+    def fake_run(args, **kw):
+        seen.append(args)
+        return subprocess.CompletedProcess(args, 0, SMBUTIL_VIEW, "")
+    monkeypatch.setattr(nas, "_MAC", True)
+    monkeypatch.setattr(nas, "_run", fake_run)
+    assert [x["name"] for x in nas.list_shares("MUSIC-NAS.local", "rob", "p@ss w")] == ["Music", "Public Share", "Home"]
+    assert seen[0] == ["smbutil", "view", "//rob:p%40ss%20w@MUSIC-NAS.local"]
+
+
+def test_mac_wrong_login_says_so(monkeypatch):
+    import subprocess
+    monkeypatch.setattr(nas, "_MAC", True)
+    monkeypatch.setattr(nas, "_run", lambda a, **k: subprocess.CompletedProcess(
+        a, 68, "", "smbutil: server rejected the connection: Authentication error"))
+    with pytest.raises(nas.NasError, match="name or password"):
+        nas.list_shares("MUSIC-NAS.local", "rob", "bad")
+
+
+def test_typed_folder_that_isnt_shared_names_the_real_ones(monkeypatch):
+    import subprocess
+
+    def fake_run(args, **kw):
+        if args[0] == "smbutil":
+            return subprocess.CompletedProcess(args, 0, SMBUTIL_VIEW, "")
+        return subprocess.CompletedProcess(args, 1, "", "error")
+    monkeypatch.setattr(nas, "_MAC", True)
+    monkeypatch.setattr(nas, "mount_path", lambda h, s: None)
+    monkeypatch.setattr(nas, "_run", fake_run)
+    with pytest.raises(nas.NasError, match="MUSIC-NAS has no shared folder called LC-AUTOBACKUPS. Its shared folders are Music, Public Share, Home"):
+        nas.connect("MUSIC-NAS.local", "LC-AUTOBACKUPS", "rob", "pw")

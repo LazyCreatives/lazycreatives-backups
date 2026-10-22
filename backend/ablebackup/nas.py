@@ -174,6 +174,74 @@ def split_user(user: str) -> tuple[str, str]:
     return "", u
 
 
+def _table(text: str, last_is_summary: bool) -> list[dict]:
+    """Rows of the share table that "smbutil view" (Mac) and "net view" (Windows) print:
+    a header, a line of dashes, then name / type / comment in fixed columns."""
+    lines = (text or "").splitlines()
+    dash = next((i for i, l in enumerate(lines) if re.match(r"^\s*-{8,}\s*$", l)), None)
+    if dash is None:
+        return []
+    head = next((lines[i] for i in range(dash - 1, -1, -1) if lines[i].strip()), "")
+    words = list(re.finditer(r"\S+(?: \S+)*", head))
+    type_col = words[1].start() if len(words) > 1 else 0
+    note_col = words[-1].start() if len(words) > 2 else 0
+    rows = [l for l in lines[dash + 1:] if l.strip()]
+    if last_is_summary and rows:
+        rows = rows[:-1]  # "3 shares listed" / "The command completed successfully."
+    out = []
+    for l in rows:
+        name = l[:type_col].strip() if type_col else l.split()[0]
+        rest = l[type_col:].split() if type_col else l.split()[1:]
+        kind = rest[0].lower() if rest else ""
+        if not name or name.endswith("$") or kind in ("pipe", "ipc", "print", "printq", "drucker"):
+            continue
+        comment = l[note_col:].strip() if note_col and len(l) > note_col else ""
+        out.append({"name": name, "comment": comment})
+    return out
+
+
+def _list_native(host: str, user: str, password: str) -> list[dict] | None:
+    """Ask the computer's own file sharing for the NAS's shared folders: it speaks every
+    SMB version the NAS might insist on. None when it can't be asked this way."""
+    from urllib.parse import quote
+    domain, name = split_user(user)
+    try:
+        if _MAC:
+            who = (quote(domain, safe="") + ";" if domain else "") + \
+                (quote(name, safe="") + ":" + quote(password or "", safe="") + "@" if name else "")
+            r = _run(["smbutil", "view", f"//{who}{host}"], timeout=40)
+            text = r.stdout + r.stderr
+            if r.returncode != 0:
+                if re.search(r"authenticat|rejected|permission|password", text, re.I):
+                    raise NasError("That name or password didn't work on the NAS.")
+                return None
+            return _table(r.stdout, last_is_summary=True)
+        if _WIN:
+            ipc = f"\\\\{host}\\IPC$"
+            users = [user.strip()] if not name or domain else [name, f"{host.split('.')[0]}\\{name}"]
+            joined = False
+            for u in users:
+                args = ["net", "use", ipc] + ([password, f"/user:{u}"] if u else []) + ["/persistent:no"]
+                r = _run(args, timeout=40)
+                code = _win_code(r.stdout + r.stderr)
+                if r.returncode == 0 or code == 1219:  # 1219: already connected with a login
+                    joined = r.returncode == 0
+                    break
+                if code not in (86, 1326):
+                    return None
+            else:
+                raise NasError("That name or password didn't work on the NAS.")
+            try:
+                r = _run(["net", "view", f"\\\\{host}"], timeout=40)
+                return _table(r.stdout, last_is_summary=True) if r.returncode == 0 else None
+            finally:
+                if joined:
+                    _run(["net", "use", ipc, "/delete", "/y"], timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return None
+
+
 def list_shares(host: str, user: str, password: str) -> list[dict] | None:
     """The NAS's shared folders this login can see: [{name, comment}].
 
@@ -181,6 +249,9 @@ def list_shares(host: str, user: str, password: str) -> list[dict] | None:
     app understands (some NAS boxes only speak newer SMB): the user then types the
     folder's name and the computer's own connect checks the login instead. A wrong
     login is only reported when the NAS itself turned it down."""
+    native = _list_native(host, user, password)
+    if native:
+        return native
     from smb.SMBConnection import SMBConnection
     ip = _resolve(host)
     domain, name = split_user(user)
@@ -286,7 +357,7 @@ def connect(host: str, share: str, user: str, password: str) -> Path:
                     return Path(unc)
                 if code not in (86, 1326):
                     break
-            raise NasError(_win_error(code))
+            raise NasError((code == 67 and _no_such_share(host, share, user, password)) or _win_error(code))
         if _MAC:
             url = f"smb://{host}/{share}"
             script = f'mount volume "{_as_script(url)}"'
@@ -294,13 +365,15 @@ def connect(host: str, share: str, user: str, password: str) -> Path:
                 script += f' as user name "{_as_script(user.strip())}" with password "{_as_script(password)}"'
             r = _run(["osascript", "-e", script], timeout=90)
             if r.returncode != 0:
-                raise NasError("The Mac couldn't connect that folder. Check the name and password.")
+                raise NasError(_no_such_share(host, share, user, password)
+                               or "The Mac couldn't connect that folder. Check the name and password.")
         else:
             domain, name = split_user(user)
             r = _run(["gio", "mount", f"smb://{host}/{share}"], timeout=90,
                      stdin=f"{name}\n{domain or 'WORKGROUP'}\n{password}\n")
             if r.returncode != 0 and "already mounted" not in r.stderr.lower():
-                raise NasError("Couldn't connect that folder. Check the name and password.")
+                raise NasError(_no_such_share(host, share, user, password)
+                               or "Couldn't connect that folder. Check the name and password.")
     except FileNotFoundError:
         raise NasError("This computer has no way to connect network folders from here. "
                        "Connect it in your file manager, then pick it with Choose….") from None
@@ -312,6 +385,19 @@ def connect(host: str, share: str, user: str, password: str) -> Path:
             return p
         time.sleep(0.5)
     raise NasError("Connected, but the folder didn't show up on this computer.")
+
+
+def _no_such_share(host: str, share: str, user: str, password: str) -> str | None:
+    """When the folder typed isn't one of the NAS's shared folders, say so and name them."""
+    try:
+        shares = [x["name"] for x in (list_shares(host, user, password) or [])]
+    except NasError:
+        return None
+    if not shares or share.lower() in (x.lower() for x in shares):
+        return None
+    some = ", ".join(shares[:4]) + (" and others" if len(shares) > 4 else "")
+    return (f"{host.split('.')[0]} has no shared folder called {share}. Its shared folders are {some}: "
+            "pick one, and Backups makes its own folder inside it.")
 
 
 def _win_code(text: str) -> int | None:

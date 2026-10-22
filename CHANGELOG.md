@@ -15,6 +15,11 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.3.3 (22 October 2026)
+
+### Fixed
+- **Find my NAS couldn't list the NAS's shared folders on some Macs and PCs.** It now asks the computer's own file sharing for them, the same way Finder and File Explorer do. If you type a folder that isn't one of the NAS's shared folders, it now says so and names the ones it has.
+
 ## 0.3.2 (22 October 2026)
 
 ### Fixed
