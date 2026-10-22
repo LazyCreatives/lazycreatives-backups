@@ -194,3 +194,98 @@ def test_nas_address_that_refuses_is_not_kept(tmp_path):
 def test_no_rclone_says_what_to_do():
     with pytest.raises(nas.NasError, match="rclone"):
         nas.add_remote("sftp", "h.example.com", None, "u", "p", "", None, [])
+
+
+@pytest.mark.parametrize("typed,expect", [
+    ("robert", ("", "robert")),
+    ("  robert ", ("", "robert")),
+    ("TNAS\\robert", ("TNAS", "robert")),
+    ("robert@TNAS", ("TNAS", "robert")),
+    ("rob@example.com", ("", "rob@example.com")),
+])
+def test_user_names_with_the_nas_in_front(typed, expect):
+    assert nas.split_user(typed) == expect
+
+
+class _FakeSMB:
+    """Stands in for pysmb: takes the login only with the domain in `ok_domain`."""
+    tried: list = []
+    ok_domain = ""
+    blow_up = False
+
+    def __init__(self, user, password, my_name, remote_name, domain="", **kw):
+        self.domain, self.user = domain, user
+
+    def connect(self, ip, port, timeout=0):
+        _FakeSMB.tried.append((self.user, self.domain))
+        if _FakeSMB.blow_up:
+            raise RuntimeError("SMB dialect not supported")
+        return self.domain == _FakeSMB.ok_domain
+
+    def listShares(self, timeout=0):
+        class S:
+            name, comments, isSpecial, isTemporary, type = "Music", "", False, False, 0
+        return [S()]
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def fake_smb(monkeypatch):
+    import smb.SMBConnection
+    monkeypatch.setattr(smb.SMBConnection, "SMBConnection", _FakeSMB)
+    monkeypatch.setattr(nas, "_resolve", lambda h: "192.168.1.20")
+    _FakeSMB.tried, _FakeSMB.ok_domain, _FakeSMB.blow_up = [], "", False
+    return _FakeSMB
+
+
+def test_login_is_tried_with_the_workgroup_and_nas_name_before_saying_its_wrong(fake_smb):
+    fake_smb.ok_domain = "TNAS"
+    assert nas.list_shares("tnas.local", " robert ", "pw") == [{"name": "Music", "comment": ""}]
+    assert fake_smb.tried == [("robert", ""), ("robert", "WORKGROUP"), ("robert", "TNAS")]
+
+
+def test_a_really_wrong_login_still_says_so(fake_smb):
+    fake_smb.ok_domain = "nope"
+    with pytest.raises(nas.NasError, match="name or password"):
+        nas.list_shares("tnas.local", "robert", "bad")
+
+
+def test_a_nas_this_app_cant_talk_to_is_not_called_a_wrong_password(fake_smb):
+    fake_smb.blow_up = True
+    assert nas.list_shares("tnas.local", "robert", "pw") is None
+
+
+def test_shares_api_says_when_the_folder_name_must_be_typed(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from ablebackup.api.app import create_app
+    monkeypatch.setattr(nas, "list_shares", lambda *a: None)
+    with TestClient(create_app(token="", db_path=tmp_path / "c.db")) as c:
+        r = c.post("/api/nas/shares", json={"host": "tnas.local", "user": "rob", "password": "pw"}).json()
+    assert r["listed"] is False and r["shares"] == []
+
+
+@pytest.mark.parametrize("text,code", [
+    ("System error 1326 has occurred.\r\n\r\nThe user name or password is incorrect.", 1326),
+    ("Systemfehler 86 aufgetreten.", 86),
+    ("\\\\192.168.1.86\\Music: System error 53 has occurred.", 53),
+    ("", None),
+])
+def test_windows_error_numbers_are_read_in_any_language(text, code):
+    assert nas._win_code(text) == code
+
+
+def test_windows_tries_the_nas_name_in_front_of_the_user(monkeypatch):
+    import subprocess
+    calls = []
+
+    def fake_run(args, **kw):
+        calls.append(args)
+        ok = args[4] == "/user:TNAS\\robert"
+        return subprocess.CompletedProcess(args, 0 if ok else 2, "", "" if ok else "System error 1326 has occurred.")
+    monkeypatch.setattr(nas, "_WIN", True)
+    monkeypatch.setattr(nas, "mount_path", lambda h, s: None)
+    monkeypatch.setattr(nas, "_run", fake_run)
+    assert str(nas.connect("TNAS", "Music", "robert", "pw")) == str(Path("\\\\TNAS\\Music"))
+    assert [a[4] for a in calls] == ["/user:robert", "/user:TNAS\\robert"]

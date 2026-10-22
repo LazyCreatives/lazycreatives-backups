@@ -31,6 +31,9 @@ export function NasPicker({ onPicked, onRemote, onClose }: {
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [shares, setShares] = useState<NasShare[]>([]);
+  // false when the NAS wouldn't list its folders (or the login check looked wrong): type the name
+  const [listed, setListed] = useState(true);
+  const [typedShare, setTypedShare] = useState("");
   const [remote, setRemote] = useState({ kind: "sftp" as "sftp" | "webdav", host: "", port: "", folder: "" });
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -61,14 +64,15 @@ export function NasPicker({ onPicked, onRemote, onClose }: {
       const r = await api.nasShares(box!.host, user, password);
       setBox({ ...box!, host: r.host, name: box!.name === box!.host ? r.host : box!.name });
       setShares(r.shares);
+      setListed(r.listed !== false);
       go("share");
       // A pasted \\NAS\Music already says which folder: go straight on.
-      const pasted = r.shares.find((s) => s.name.toLowerCase() === r.pasted_share.toLowerCase());
-      if (pasted) await connect(pasted.name, r.host);
+      const pasted = r.shares.find((s) => s.name.toLowerCase() === r.pasted_share.toLowerCase())?.name
+        ?? (r.listed === false && r.pasted_share ? r.pasted_share : undefined);
+      if (pasted) await connect(pasted, r.host);
     } catch (e: any) {
       setErr(e.message);
-      setPassword("");
-      pwRef.current?.focus();
+      pwRef.current?.select();
     } finally { setBusy(null); }
   }
   async function connect(share: string, host = box!.host) {
@@ -156,6 +160,11 @@ export function NasPicker({ onPicked, onRemote, onClose }: {
                 <Button size="sm" variant="quiet" type="button" onClick={() => setShow(!show)} aria-pressed={show}>{show ? "Hide" : "Show"}</Button>
               </span>
               {err && <span id="nasp-err" className="set-note set-note--bad" role="alert">{err}</span>}
+              {err && /name or password/.test(err) && (
+                <button type="button" className="linkbtn nasp__sure" onClick={() => { setShares([]); setListed(false); go("share"); }}>
+                  Sure they're right? Type the shared folder's name instead
+                </button>
+              )}
             </div>
             <div className="set-inline">
               <Button size="sm" type="submit" disabled={!!busy}>{busy ? "Logging in…" : "Log in"}</Button>
@@ -166,7 +175,9 @@ export function NasPicker({ onPicked, onRemote, onClose }: {
 
         {step === "share" && <>
           <p className="sub nasp__say">Backups makes a folder called Lazy Creatives Backups inside the one you pick. Nothing else on the NAS is touched.</p>
-          {shares.length === 0 ? (
+          {!listed ? (
+            <p className="nasp__none">The NAS didn't list its shared folders, so type the name of the one to use, written the way the NAS shows it. This computer checks the login when it connects.</p>
+          ) : shares.length === 0 ? (
             <p className="nasp__none">This login can't see any shared folders. Make one on the NAS, or log in as someone who can.</p>
           ) : (
             <div className="table nasp-share-cols">
@@ -187,6 +198,16 @@ export function NasPicker({ onPicked, onRemote, onClose }: {
               </div>
             </div>
           )}
+          <form className="nasp__typed" onSubmit={(e) => { e.preventDefault(); if (typedShare.trim()) connect(typedShare.trim().replace(/^[\\/]+|[\\/]+$/g, "")); }}>
+            <label className="field">
+              <span>{listed && shares.length ? "Not listed? Type its name" : "Shared folder's name"}</span>
+              <input className="input" value={typedShare} onChange={(e) => setTypedShare(e.target.value)}
+                placeholder="Music" spellCheck={false} autoFocus={!listed} />
+            </label>
+            <div className="set-inline">
+              <Button size="sm" type="submit" disabled={!typedShare.trim() || !!busy}>{busy === typedShare.trim() ? "Connecting…" : "Use"}</Button>
+            </div>
+          </form>
           {error}
           <div className="set-inline"><Button size="sm" variant="quiet" disabled={!!busy} onClick={() => go("login")}>Back</Button></div>
         </>}

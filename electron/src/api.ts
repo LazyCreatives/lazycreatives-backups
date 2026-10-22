@@ -173,7 +173,7 @@ export function makeApi() {
     async nasRemote(b: { kind: "sftp" | "webdav"; host: string; port: number | null; user: string; password: string; folder: string }): Promise<{ mirror: string }> {
       return req("POST", "/api/nas/remote", b);
     },
-    async nasShares(host: string, user: string, password: string): Promise<{ host: string; shares: NasShare[]; pasted_share: string }> {
+    async nasShares(host: string, user: string, password: string): Promise<{ host: string; shares: NasShare[]; listed?: boolean; pasted_share: string }> {
       return req("POST", "/api/nas/shares", { host, user, password });
     },
     async nasConnect(b: { host: string; share: string; user: string; password: string; name: string; address: string }): Promise<{ dest: string; path: string }> {

@@ -15,6 +15,11 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.3.2 (22 October 2026)
+
+### Fixed
+- **NAS login said the name or password was wrong when it wasn't.** Backups now also tries the login the way some NAS boxes want it (with the NAS's name in front, like TNAS\robert), only says the password is wrong when the NAS really turned it down, and if the NAS won't list its shared folders you can type the folder's name instead.
+
 ## 0.3.1 (22 October 2026)
 
 ### New

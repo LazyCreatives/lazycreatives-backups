@@ -309,7 +309,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     async def nas_shares(req: NasLogin):
         def go():
             host = nas.clean_host(req.host)
-            return {"host": host, "shares": nas.list_shares(host, req.user, req.password),
+            shares = nas.list_shares(host, req.user, req.password)
+            return {"host": host, "shares": shares or [], "listed": shares is not None,
                     "pasted_share": nas.share_in(req.host)}
         return await asyncio.to_thread(_nas_call, go)
 

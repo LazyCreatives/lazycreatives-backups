@@ -162,24 +162,59 @@ def _resolve(host: str) -> str:
         raise NasError(f"Couldn't find {host} on the network. Check it's switched on and on the same network.") from None
 
 
-def list_shares(host: str, user: str, password: str) -> list[dict]:
-    """The NAS's shared folders this login can see: [{name, comment}]."""
+def split_user(user: str) -> tuple[str, str]:
+    """("TNAS\\robert" or "robert@TNAS") -> ("TNAS", "robert"); a plain name has no domain."""
+    u = (user or "").strip()
+    if "\\" in u:
+        d, _, n = u.partition("\\")
+        return d.strip(), n.strip()
+    if "@" in u and "." not in u.split("@", 1)[1]:  # robert@TNAS, not an email address
+        n, _, d = u.partition("@")
+        return d.strip(), n.strip()
+    return "", u
+
+
+def list_shares(host: str, user: str, password: str) -> list[dict] | None:
+    """The NAS's shared folders this login can see: [{name, comment}].
+
+    None when the NAS took the login but wouldn't talk about its folders in a way this
+    app understands (some NAS boxes only speak newer SMB): the user then types the
+    folder's name and the computer's own connect checks the login instead. A wrong
+    login is only reported when the NAS itself turned it down."""
     from smb.SMBConnection import SMBConnection
     ip = _resolve(host)
-    conn = SMBConnection(user or "guest", password or "", "lazycreatives", host.split(".")[0].upper(),
-                         use_ntlm_v2=True, is_direct_tcp=True)
-    try:
-        ok = conn.connect(ip, 445, timeout=10)
-    except (OSError, socket.timeout):
-        raise NasError(f"No answer from {host}. If it's asleep, give it a minute and try again.") from None
-    except Exception:
-        ok = False
-    if not ok:
-        raise NasError("That name or password didn't work on the NAS.")
+    domain, name = split_user(user)
+    nas_name = host.split(".")[0].upper() if not re.search(r"^[\d.]+$|:", host) else ""
+    # Some NAS boxes only accept the login with their workgroup or own name in front.
+    domains = list(dict.fromkeys([domain, "WORKGROUP", nas_name] if not domain else [domain]))
+    conn = None
+    refused = False
+    for d in domains:
+        c = SMBConnection(name or "guest", password or "", "lazycreatives", nas_name or "NAS",
+                          domain=d, use_ntlm_v2=True, is_direct_tcp=True)
+        try:
+            if c.connect(ip, 445, timeout=10):
+                conn = c
+                break
+            refused = True
+        except (OSError, socket.timeout):
+            raise NasError(f"No answer from {host}. If it's asleep, give it a minute and try again.") from None
+        except Exception:
+            return None
+        finally:
+            if conn is not c:
+                try:
+                    c.close()
+                except Exception:
+                    pass
+    if conn is None:
+        if refused:
+            raise NasError("That name or password didn't work on the NAS.")
+        return None
     try:
         shares = conn.listShares(timeout=15)
     except Exception:
-        raise NasError("Logged in, but the NAS wouldn't list its shared folders.") from None
+        return None
     finally:
         try:
             conn.close()
@@ -240,24 +275,30 @@ def connect(host: str, share: str, user: str, password: str) -> Path:
     try:
         if _WIN:
             unc = f"\\\\{host}\\{share}"
-            args = ["net", "use", unc]
-            if user:
-                args += [password, f"/user:{user}"]
-            r = _run(args + ["/persistent:yes"], timeout=60)
-            if r.returncode != 0 and "1219" not in (r.stdout + r.stderr):  # 1219: already connected
-                raise NasError(_win_error(r.stdout + r.stderr))
-            return Path(unc)
+            domain, name = split_user(user)
+            users = [user.strip()] if not user.strip() or domain else \
+                [name, f"{host.split('.')[0]}\\{name}"]  # some NAS boxes want TNAS\robert
+            for u in users:
+                args = ["net", "use", unc] + ([password, f"/user:{u}"] if u else [])
+                r = _run(args + ["/persistent:yes"], timeout=60)
+                code = _win_code(r.stdout + r.stderr)
+                if r.returncode == 0 or code == 1219:  # 1219: already connected
+                    return Path(unc)
+                if code not in (86, 1326):
+                    break
+            raise NasError(_win_error(code))
         if _MAC:
             url = f"smb://{host}/{share}"
             script = f'mount volume "{_as_script(url)}"'
-            if user:
-                script += f' as user name "{_as_script(user)}" with password "{_as_script(password)}"'
+            if user.strip():
+                script += f' as user name "{_as_script(user.strip())}" with password "{_as_script(password)}"'
             r = _run(["osascript", "-e", script], timeout=90)
             if r.returncode != 0:
                 raise NasError("The Mac couldn't connect that folder. Check the name and password.")
         else:
+            domain, name = split_user(user)
             r = _run(["gio", "mount", f"smb://{host}/{share}"], timeout=90,
-                     stdin=f"{user}\nWORKGROUP\n{password}\n")
+                     stdin=f"{name}\n{domain or 'WORKGROUP'}\n{password}\n")
             if r.returncode != 0 and "already mounted" not in r.stderr.lower():
                 raise NasError("Couldn't connect that folder. Check the name and password.")
     except FileNotFoundError:
@@ -273,12 +314,20 @@ def connect(host: str, share: str, user: str, password: str) -> Path:
     raise NasError("Connected, but the folder didn't show up on this computer.")
 
 
-def _win_error(text: str) -> str:
-    if "86" in text or "1326" in text:
+def _win_code(text: str) -> int | None:
+    """The number in "System error 1326 has occurred." (the words change with the language)."""
+    m = re.search(r"(?<![\d.])(\d{1,10})(?![\d.])", text or "")  # not part of an address
+    return int(m.group(1)) if m else None
+
+
+def _win_error(code: int | None) -> str:
+    if code in (86, 1326):
         return "That name or password didn't work on the NAS."
-    if "53" in text or "67" in text:
+    if code in (53, 67):
         return "Couldn't find that NAS or folder on the network."
-    return "Windows couldn't connect that folder."
+    if code == 5:
+        return "This login isn't allowed into that shared folder. Pick another, or log in as someone who can."
+    return f"Windows couldn't connect that folder (error {code})." if code else "Windows couldn't connect that folder."
 
 
 # ---- remembered NAS ------------------------------------------------------------
