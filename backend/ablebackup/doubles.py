@@ -11,6 +11,7 @@ import json
 import shutil
 from pathlib import Path
 
+from ablebackup import mirrors
 from ablebackup.catalog import Catalog
 from ablebackup.sorting import tidy_empty
 
@@ -91,7 +92,7 @@ def remove(catalog: Catalog, ids: list[int] | None = None) -> dict:
     extras = [e for g in find(catalog)["groups"] for e in g["extras"]]
     if ids is not None:
         extras = [e for e in extras if e["id"] in set(ids)]
-    removed, failed, freed, gone_ids, parents = 0, 0, 0, [], []
+    removed, failed, freed, gone_ids, parents, gone = 0, 0, 0, [], [], []
     for e in extras:
         d = Path(e["dir"])
         if base not in d.parents or not (d / "manifest.json").is_file():
@@ -105,8 +106,10 @@ def remove(catalog: Catalog, ids: list[int] | None = None) -> dict:
         removed += 1
         freed += e["frees"]
         gone_ids.append(e["id"])
+        gone.append(str(d))
         parents.append(d.parent)
     catalog.delete_snapshots(gone_ids)
     tidy_empty(base, parents)
+    mirrors.remove(catalog, base, gone)  # and from the Second copy
     return {"removed": removed, "failed": failed, "freed": freed}
 

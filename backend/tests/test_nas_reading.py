@@ -130,11 +130,14 @@ def test_the_same_backup_in_two_layouts_is_found_and_the_extra_removed(tmp_path)
 def test_a_changed_project_and_a_named_backup_are_kept(tmp_path):
     src, als, dest, cat = _backed(tmp_path)
     run_backup([src], dest, cat, timestamp="2026-10-20_1200", portable=True)
-    (src / "Night Drive Project" / "Samples" / "loop.wav").write_bytes(b"new take")
+    (src / "Night Drive Project" / "Samples" / "loop.wav").write_bytes(b"a new, longer take")
     run_backup([src], dest, cat, timestamp="2026-10-21_1200", portable=True)
     _force(cat)
     run_backup([src], dest, cat, timestamp="2026-10-22_1200", portable=True, label="before mix")
-    assert doubles.find(cat)["count"] == 0
+    # the first one holds the old take; the named one stays, its unnamed twin is the extra
+    g, = doubles.find(cat)["groups"]
+    assert g["keep"]["timestamp"] == "2026-10-22_1200"
+    assert [e["timestamp"] for e in g["extras"]] == ["2026-10-21_1200"]
 
 
 def test_only_backups_backups_made_are_removed(tmp_path):
@@ -200,3 +203,114 @@ def test_a_project_share_back_at_a_new_path_is_followed(tmp_path, monkeypatch):
     assert nas.ensure_folders(cat, [old / "2024"], wait=1, step=0.01) == []
     assert cat.get_setting("config")["sources"] == [str(new / "2024")]
     assert nas.remembered(cat)["shares"]["Projects"] == str(new)
+
+
+def test_a_backup_follows_a_project_share_back_at_a_new_path(tmp_path, monkeypatch):
+    cat, _share = _nas(tmp_path)
+    old = tmp_path / "Volumes" / "Projects"
+    new = tmp_path / "Volumes" / "Projects-1"
+    cat.set_setting(nas.NAS_KEY, {**nas.remembered(cat), "shares": {"Projects": str(old)}})
+    dest = tmp_path / "Backups"
+    dest.mkdir()
+    cat.set_setting("config", {"sources": [str(old)], "dest": str(dest)})
+
+    def wake(*a):
+        _project(new, "Night Drive")
+        return new
+    monkeypatch.setattr(nas, "connect", wake)
+    # the old place, from before the NAS dropped off, and a project picked there
+    run_backup([old], dest, cat, als_paths=[str(old / "Night Drive Project" / "Night Drive.als")])
+    assert [s["project_name"] for s in cat.snapshots_here()] == ["Night Drive"]
+    assert nas.follow([str(old / "a"), old / "b", "/elsewhere"], {str(old): str(new)}) == \
+        [str(new / "a"), new / "b", "/elsewhere"]
+
+
+# ---- the Second copy keeps the same folders -----------------------------------------
+def test_sorting_and_removing_extras_happen_on_the_second_copy_too(tmp_path):
+    src, als, dest, cat = _backed(tmp_path)
+    second = tmp_path / "Dropbox"
+    second.mkdir()
+    cat.set_setting("config", {**cat.get_setting("config"), "mirrors": [str(second)]})
+    run_backup([src], dest, cat, timestamp="2026-10-20_1200", mirrors=[str(second)])
+    _force(cat)
+    run_backup([src], dest, cat, timestamp="2026-10-21_1200", mirrors=[str(second)])
+    on_second = lambda: sorted(str(p.parent.relative_to(second)) for p in second.rglob("manifest.json"))
+    assert on_second() == ["AbletonBackups/projects/Night Drive/2026-10-20_1200",
+                           "AbletonBackups/projects/Night Drive/2026-10-21_1200"]
+
+    sorting.apply_sort(cat, dest, ["year"])
+    year = cat.snapshots_here()[0]["dir"]
+    assert on_second() == sorted(str(Path(s["dir"]).relative_to(dest)) for s in cat.snapshots_here())
+    assert Path(year).relative_to(dest).parts[0].isdigit()
+    assert not (second / "AbletonBackups" / "projects").exists()  # emptied folders tidied
+
+    doubles.remove(cat)
+    assert on_second() == [str(Path(s["dir"]).relative_to(dest)) for s in cat.snapshots_here()]
+
+    sorting.undo_sort(cat)
+    assert on_second() == ["AbletonBackups/projects/Night Drive/2026-10-21_1200"]
+    assert als.is_file()
+
+
+def test_the_sort_shows_what_moves_and_examples_for_each_choice(tmp_path):
+    src, als, dest, cat = _backed(tmp_path)
+    run_backup([src], dest, cat, timestamp="2026-10-20_1200")
+    v = sorting.preview(cat, dest, ["genre"])
+    assert v["moves"] == 1
+    m, = v["move_list"]
+    assert m["name"] == "Night Drive" and m["stamp"] == "2026-10-20_1200"
+    assert m["from"] == ["AbletonBackups", "projects", "Night Drive"]
+    assert m["to"][-1] == "Night Drive" and len(m["to"]) == 2
+    assert sorting.preview(cat, dest, ["genre"], with_moves=False)["move_list"] == []
+
+
+def test_the_folder_view_shows_a_few_real_projects_in_different_folders(tmp_path):
+    src, als, dest, cat = _backed(tmp_path)
+    for year, genre, name in [("2024", "House", "Glow"), ("2025", "Techno", "Pulse"), ("2025", "Techno", "Low Sun")]:
+        _project(src / year / genre, name)
+    from ablebackup.service import scan_summary
+    projects = scan_summary([src])
+    cat.upsert_discovered([{"project_id": p["project_id"], "name": p["name"], "path": p["als_path"],
+                            "dir": p["project_dir"], "daw": p["daw"], "owner": "system", "size": 1,
+                            "mtime": p["mtime"], "missing_count": 0} for p in projects], "2026-10-22_1200")
+    tree = sorting.example_tree(cat, ["path"], most=3)
+    assert len(tree) == 3
+    assert {tuple(t[:-1]) for t in tree} >= {("2024", "House"), ("2025", "Techno")}
+    v = sorting.preview(cat, dest, ["program"])
+    assert v["tree"][0][:2] == ["AbletonBackups", "projects"] and v["projects"] == 4
+
+
+def test_a_nas_folder_that_turns_the_login_down_is_said_and_sign_in_fixes_it(tmp_path, monkeypatch):
+    """On a second computer the NAS can turn the saved login down: the scan says so
+    (instead of quietly finding nothing) and signing in again lets it read the folder."""
+    import time
+    from fastapi.testclient import TestClient
+    from ablebackup.api.app import create_app
+    db = tmp_path / "c.db"
+    cat = Catalog(db)
+    share = tmp_path / "Volumes" / "Music"
+    share.mkdir(parents=True)
+    nas.remember(cat, host="100.90.248.35", address="", share="Music", user="rob",
+                 password="old", path=share, name="TNAS")
+    public = tmp_path / "Volumes" / "public"
+    cat.set_setting(nas.NAS_KEY, {**nas.remembered(cat), "shares": {"public": str(public)}})
+    cat.set_setting("config", {"sources": [str(public)], "dest": ""})
+
+    def connect(host, sh, user, password):
+        if password != "new":
+            raise nas.NasLoginError(nas.LOGIN_REFUSED)
+        if sh == "public" and not public.exists():
+            _project(public, "Night Drive")
+        return public if sh == "public" else share
+    monkeypatch.setattr(nas, "connect", connect)
+    with TestClient(create_app(token="", db_path=db)) as c:
+        t = time.monotonic()
+        r = c.post("/api/scan", json={}).json()
+        assert time.monotonic() - t < 10  # a turned-down login isn't waited out
+        assert r["projects"] == [] and r["nas_unreached"] == [
+            {"share": "public", "reason": nas.LOGIN_REFUSED, "login": True}]
+        bad = c.post("/api/nas/sign-in", json={"user": "rob", "password": "wrong"})
+        assert bad.status_code == 400 and "password" in bad.json()["detail"]
+        assert c.post("/api/nas/sign-in", json={"user": "rob", "password": "new"}).json()["ok"]
+        r = c.post("/api/scan", json={}).json()
+        assert [p["name"] for p in r["projects"]] == ["Night Drive"] and r["nas_unreached"] == []

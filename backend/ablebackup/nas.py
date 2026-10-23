@@ -43,9 +43,18 @@ class NasError(Exception):
     """A plain-English reason for the screen ("That password didn't work")."""
 
 
-def _run(args: list[str], timeout: float = 30, stdin: str | None = None) -> subprocess.CompletedProcess:
+class NasLoginError(NasError):
+    """The NAS turned the name and password down: signing in again is the way out."""
+
+
+LOGIN_REFUSED = "That name or password didn't work on the NAS."
+
+
+def _run(args: list[str], timeout: float = 30, stdin: str | None = None,
+         encoding: str | None = None) -> subprocess.CompletedProcess:
     kw = {"creationflags": 0x08000000} if _WIN else {}  # no console window on Windows
-    return subprocess.run(args, input=stdin, capture_output=True, text=True, timeout=timeout, **kw)
+    return subprocess.run(args, input=stdin, capture_output=True, text=True, timeout=timeout,
+                          encoding=encoding, errors="replace", **kw)
 
 
 # ---- finding -----------------------------------------------------------------
@@ -213,7 +222,7 @@ def _list_native(host: str, user: str, password: str) -> list[dict] | None:
             text = r.stdout + r.stderr
             if r.returncode != 0:
                 if re.search(r"authenticat|rejected|permission|password", text, re.I):
-                    raise NasError("That name or password didn't work on the NAS.")
+                    raise NasLoginError(LOGIN_REFUSED)
                 return None
             return _table(r.stdout, last_is_summary=True)
         if _WIN:
@@ -230,7 +239,7 @@ def _list_native(host: str, user: str, password: str) -> list[dict] | None:
                 if code not in (86, 1326):
                     return None
             else:
-                raise NasError("That name or password didn't work on the NAS.")
+                raise NasLoginError(LOGIN_REFUSED)
             try:
                 r = _run(["net", "view", f"\\\\{host}"], timeout=40)
                 return _table(r.stdout, last_is_summary=True) if r.returncode == 0 else None
@@ -280,7 +289,7 @@ def list_shares(host: str, user: str, password: str) -> list[dict] | None:
                     pass
     if conn is None:
         if refused:
-            raise NasError("That name or password didn't work on the NAS.")
+            raise NasLoginError(LOGIN_REFUSED)
         return None
     try:
         shares = conn.listShares(timeout=15)
@@ -378,10 +387,19 @@ def connect(host: str, share: str, user: str, password: str) -> Path:
                 args = ["net", "use", unc] + ([password, f"/user:{u}"] if u else [])
                 r = _run(args + ["/persistent:yes"], timeout=60)
                 code = _win_code(r.stdout + r.stderr)
+                if code == 1219 and not _quick_isdir(Path(unc)):
+                    # 1219: Windows is already joined to this NAS, but that old link
+                    # doesn't get in any more (the NAS turned its login down, or it
+                    # was made with another name). Let it go and sign in afresh.
+                    _drop_links(host)
+                    r = _run(args + ["/persistent:yes"], timeout=60)
+                    code = _win_code(r.stdout + r.stderr)
                 if r.returncode == 0 or code == 1219:  # 1219: already connected
                     return Path(unc)
                 if code not in (86, 1326):
                     break
+            if code in (86, 1326):
+                raise NasLoginError(LOGIN_REFUSED)
             raise NasError((code == 67 and _no_such_share(host, share, user, password)) or _win_error(code))
         if _MAC:
             url = f"smb://{host}/{share}"
@@ -412,6 +430,30 @@ def connect(host: str, share: str, user: str, password: str) -> Path:
     raise NasError("Connected, but the folder didn't show up on this computer.")
 
 
+def _drop_links(host: str) -> None:
+    """Let go of Windows's links to this NAS that have no drive letter (the ones apps
+    like this make). A drive letter the producer set up in File Explorer is left alone."""
+    try:
+        out = _run(["net", "use"], timeout=20).stdout
+    except (OSError, subprocess.SubprocessError):
+        return
+    for unc in links_to(host, out):
+        _run(["net", "use", unc, "/delete", "/y"], timeout=20)
+
+
+def links_to(host: str, net_use: str) -> list[str]:
+    """The \\\\NAS\\folder links in what "net use" lists that have no drive letter."""
+    found = []
+    for line in net_use.splitlines():
+        m = re.search(r"(\\\\[^\\\s]+\\\S.*?)(?=\s{2,}|\s*$)", line)  # a name can have spaces
+        if not m or m.group(1)[2:].split("\\")[0].lower() != host.lower():
+            continue
+        if re.search(r"(?<![\w\\])[A-Za-z]:(?!\S)", line[:m.start()]):
+            continue  # a drive letter (Z:): the producer's own
+        found.append(m.group(1))
+    return found
+
+
 def _no_such_share(host: str, share: str, user: str, password: str) -> str | None:
     """When the folder typed isn't one of the NAS's shared folders, say so and name them."""
     try:
@@ -433,7 +475,7 @@ def _win_code(text: str) -> int | None:
 
 def _win_error(code: int | None) -> str:
     if code in (86, 1326):
-        return "That name or password didn't work on the NAS."
+        return LOGIN_REFUSED
     if code in (53, 67):
         return "Couldn't find that NAS or folder on the network."
     if code == 5:
@@ -552,10 +594,16 @@ def on_nas_path(catalog: Catalog, path) -> bool:
     return bool(n and path and _share_for(n, str(path)))
 
 
-def ensure_folders(catalog: Catalog, paths, wait: float = 45.0, step: float = 5.0) -> list[str]:
+def ensure_folders(catalog: Catalog, paths, wait: float = 45.0, step: float = 5.0,
+                   moved: dict | None = None, why: dict | None = None) -> list[str]:
     """Connect the NAS shared folders these folders are on, if they aren't there,
     waiting while the NAS wakes. Folders that came back at a new path ("Music-1")
-    are followed in Settings. Returns the folders (as they are now) still missing."""
+    are followed in Settings, and put in ``moved`` (old mount -> new) so the caller
+    can follow its own copies with ``follow``. Returns the folders (as they are now)
+    still missing; ``why`` gets each shared folder that couldn't be connected and the
+    NasError that said why. A turned-down login isn't waited out: it won't change."""
+    moved = {} if moved is None else moved
+    why = {} if why is None else why
     n = remembered(catalog)
     paths = [str(p) for p in paths if p]
     if not n:
@@ -570,13 +618,18 @@ def ensure_folders(catalog: Catalog, paths, wait: float = 45.0, step: float = 5.
     password = _password(catalog)
     deadline = time.monotonic() + wait
     left = dict(need)
-    moved: dict[str, str] = {}
     while left:
         for share, mount in list(left.items()):
             try:
                 new = connect(n["host"], share, n.get("user", ""), password)
-            except NasError:
+            except NasLoginError as e:
+                why[share] = e
+                del left[share]
                 continue
+            except NasError as e:
+                why[share] = e
+                continue
+            why.pop(share, None)
             del left[share]
             if str(new) != mount:
                 _share_moved(catalog, share, mount, str(new))
@@ -585,14 +638,42 @@ def ensure_folders(catalog: Catalog, paths, wait: float = 45.0, step: float = 5.
             break
         time.sleep(step)
 
-    def now(p: str) -> str:
+    return [q for q in follow(paths, moved) if _share_for(remembered(catalog) or n, q) and not _quick_isdir(Path(q))]
+
+
+def sign_in(catalog: Catalog, user: str, password: str) -> None:
+    """Log in to the remembered NAS again (this computer was turned down with the saved
+    login, or the password changed on the NAS). The new login is kept once one of its
+    shared folders lets it in."""
+    n = remembered(catalog)
+    if not n:
+        raise NasError("Connect your NAS first: Settings, Backups, Find my NAS.")
+    shares = [n.get("share", "")] + [s for s in (n.get("shares") or {}) if s != n.get("share")]
+    last: NasError = NasLoginError(LOGIN_REFUSED)
+    for share in [s for s in shares if s]:
+        try:
+            connect(n["host"], share, user, password)
+        except NasLoginError as e:
+            raise e from None  # the same login won't work on the next folder either
+        except NasError as e:
+            last = e
+            continue
+        catalog.set_setting(NAS_KEY, {**n, "user": user})
+        catalog.set_setting(SECRET_KEY, secretbox.lock(password, _key_dir(catalog)) if password else None)
+        return
+    raise last
+
+
+def follow(paths, moved: dict):
+    """The same paths after shared folders came back at new mounts (from ensure_folders)."""
+    def now(p):
         for old, new in moved.items():
             try:
-                return str(Path(new) / Path(p).relative_to(old))
+                return type(p)(Path(new) / Path(p).relative_to(old))
             except ValueError:
                 pass
         return p
-    return [now(p) for p in paths if _share_for(n, p) and not _quick_isdir(Path(now(p)))]
+    return [now(p) for p in paths]
 
 
 def _share_moved(catalog: Catalog, share: str, old: str, new: str) -> None:
@@ -663,7 +744,9 @@ def tailscale() -> dict:
     if not cli:
         return {"installed": False, "running": False, "peers": []}
     try:
-        r = _run([cli, "status", "--json"], timeout=8)
+        # Tailscale writes UTF-8 whatever the Windows language: a device called
+        # "Robert’s iPhone" must not stop the whole list from being read.
+        r = _run([cli, "status", "--json"], timeout=8, encoding="utf-8")
         data = json.loads(r.stdout or "{}")
     except (OSError, subprocess.SubprocessError, ValueError):
         return {"installed": True, "running": False, "peers": []}
@@ -686,8 +769,11 @@ def tailscale() -> dict:
         peers.append({"name": name, "host": host, "address": ips[0] if ips else "",
                       "maker": maker_of(name), "away": True})
     # Only the ones that share files (a NAS, not every laptop on the Tailscale network).
-    sharing = _answers_smb([f["address"] for f in peers if f["address"]])
-    peers = [f for f in peers if f["address"] in sharing]
+    # Away from home the first answer can come the long way round (through Tailscale's
+    # relays) while the direct route is found, so they get longer than at home; and a
+    # NAS-maker's box is kept even when it was slow to answer.
+    sharing = _answers_smb([f["address"] for f in peers if f["address"]], timeout=3.0)
+    peers = [f for f in peers if f["address"] in sharing or (f["address"] and f["maker"])]
     seen = {f["address"] for f in peers}
     for net, via in routes:
         hosts = _hosts_in(net)

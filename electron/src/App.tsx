@@ -12,6 +12,7 @@ import { ConfirmHost, ContextMenuHost, DropZone, Exit, ShortcutsPanel, ToastHost
 import { GenrePickHost } from "./components/GenrePick";
 import { FolderPickHost } from "./components/ProjectFolders";
 import { CoverPickHost } from "./components/CoverPick";
+import { NasSignInHost } from "./components/NasSignIn";
 import { setCoverSource } from "./coverArt";
 import { baseName, folderOf, isInside, keep, pageNumber, recall, useDesktopCommands, useEscapeToClose, useFileDrop, useIconProgress, type Dropped } from "./desktop";
 import { makeApi, makeCoverSource } from "./api";
@@ -361,6 +362,7 @@ export default function App() {
       <GenrePickHost />
       <FolderPickHost />
       <CoverPickHost />
+      <NasSignInHost />
       <LivePalette items={paletteItems} />
       <DropZone show={dragging && !(songDrag && tab === "library")}
         {...(songDrag

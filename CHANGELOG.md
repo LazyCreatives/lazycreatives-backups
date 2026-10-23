@@ -15,6 +15,24 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.4.1 (23 October 2026)
+
+### New
+- **Share albums and folders with your other computers.** Switch on "Share albums and folders" (Settings, Backups) and your albums, Folders and project folders are kept on the backup drive, so Backups on another computer using the same drive or NAS shows the same ones. Each computer finds the songs in its own projects; one it hasn't got shows "Not on this computer". Off until you switch it on.
+
+### Better
+- **Clearer choice of how backups are sorted.** Settings, Backups now has a row of choices (Like my folders, By program, By year then genre, or My own) above a big view of your backup drive, showing your own projects in the folders they would go in. A dot marks how your folders are sorted already. Before anything moves, it lists which backups move and where to.
+- **Your Second copy keeps the same folders.** Changing the sort, Undo, and removing extra copies now do the same on your Second copy, so the two never drift apart. The separate "by date" folder choice on the Back up screen is gone, so backups are always filed one way.
+
+### Fixed
+- **A NAS that refuses its saved password no longer breaks Home and Settings.** On Windows, if the NAS login changed or the NAS was away, Home, Settings and Back up showed errors. Now the backup place shows as not found with a plain message, and the NAS login is tried again.
+- **The engine closes with the app on Windows.** If the app is shut down suddenly, the backup engine now closes too, instead of being left running in the background.
+- **Projects on a NAS that comes back under a new name are still found.** When the computer reconnects a NAS shared folder as "Projects-1", scans, backups and Open now look there instead of skipping those projects.
+- **Opening a project on a NAS that's switched off says so.** Instead of nothing happening, a message asks you to check the NAS is on.
+- **A NAS folder that turns your login down is no longer skipped without a word.** On a second computer the NAS can refuse the saved login. Scan now says which NAS folder it couldn't get into, with a Log in again button, and Open offers the same. Windows also lets go of an old NAS link that stopped working and logs in afresh.
+- **Find my NAS finds a NAS away from home more often.** A NAS reached through Tailscale gets longer to answer, and a NAS whose maker is known is listed even when it answers slowly.
+- **Songs on a NAS keep playing through a network blip.** If the NAS stops answering for a moment, the song picks up where it was instead of stopping with an error.
+
 ## 0.4.0 (22 October 2026)
 
 ### New

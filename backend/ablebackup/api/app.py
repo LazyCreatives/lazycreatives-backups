@@ -13,20 +13,21 @@ from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSock
 from fastapi.middleware.cors import CORSMiddleware
 
 from ablebackup import (audiolen, covers, entitlement, exports, markers, phone, playback, plugins,
-                        stempacks, tidy, waveform)
+                        stempacks, steadyplay, tidy, waveform)
 from ablebackup.albums import LOSSLESS, Albums
 from ablebackup.samples import album_skip as album_song_skip, seconds_cached as song_seconds
 from ablebackup.albums_api import make_router as albums_router
 from ablebackup.folders import Folders
 from ablebackup.folders_api import make_router as folders_router
+from ablebackup.shared import Sharing
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
 from ablebackup.api.schemas import (
-    DoublesRemove, NasReady, NasShare,
+    DoublesRemove, NasReady, NasShare, NasSignIn,
     ActivateRequest, BackupRequest, CloudConnectRequest, CloudDisconnectRequest,
     Config, ExportFoldersRequest, ExportDropRequest, ExportIgnoreRequest, ExportLinkRequest,
     ExportUndoRequest, GenreRequest,
-    NasConnect, NasLogin, NasRemote, PhoneSwitch, PluginFoldersRequest, RestoreRequest, ScanRequest, SortRequest, StemFolderJoinRequest, StemGroupRequest,
+    NasConnect, NasLogin, NasRemote, PhoneSwitch, SharedSwitch, PluginFoldersRequest, RestoreRequest, ScanRequest, SortRequest, StemFolderJoinRequest, StemGroupRequest,
     StemPackRequest, TidyRequest,
     TidyUndoRequest,
 )
@@ -73,12 +74,28 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         t.start()
         if app.state.phone._state()["enabled"]:
             app.state.phone.start()   # "Let my phone connect" was left on
+        if app.state.sharing.on:
+            app.state.sharing.start()  # "Share with my other computers" was left on
         yield
+        app.state.sharing.stop()
         app.state.phone.stop()
         scheduler.shutdown()
         catalog.close()
 
     app = FastAPI(title="ablebackup", lifespan=lifespan)
+
+    # Anything else that trips over a NAS refusing the saved login (or gone from the
+    # network) gets a plain answer instead of a crash the screen can't explain.
+    from fastapi.responses import JSONResponse
+    from ablebackup.netpaths import NETWORK_WINERRORS
+
+    @app.exception_handler(OSError)
+    async def _network_folder(request: Request, exc: OSError):
+        if getattr(exc, "winerror", None) in NETWORK_WINERRORS:
+            return JSONResponse(status_code=503, content={"detail": (
+                "Your NAS didn't let Backups in. If its password changed, connect it again in "
+                "Settings, Backups. If it's switched off or away, try again when it's back.")})
+        raise exc
     # The Electron renderer runs at a different origin (dev: http://localhost:5173,
     # packaged: file://) than the sidecar, so the browser sends CORS preflight
     # OPTIONS requests. Auth is via the X-Auth-Token header (not cookies), so it is
@@ -318,14 +335,26 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     async def nas_open_share(req: NasShare):
         return await asyncio.to_thread(_nas_call, lambda: {"path": str(nas.open_share(app.state.catalog, req.share))})
 
+    @app.post("/api/nas/sign-in", dependencies=[Depends(require_token)])
+    async def nas_sign_in(req: NasSignIn):
+        """Log in to the remembered NAS again, when it turned the saved login down."""
+        def go():
+            nas.sign_in(app.state.catalog, req.user, req.password)
+            return {"ok": True}
+        return await asyncio.to_thread(_nas_call, go)
+
     @app.post("/api/nas/ready", dependencies=[Depends(require_token)])
     async def nas_ready(req: NasReady):
         """Before opening a project kept on the NAS: connect it if it dropped off."""
         cat = app.state.catalog
         if not nas.on_nas_path(cat, req.path):
-            return {"ok": True}
-        missing = await asyncio.to_thread(nas.ensure_folders, cat, [str(Path(req.path).parent)], 30.0)
-        return {"ok": not missing and Path(req.path).exists()}
+            return {"ok": True, "reached": True, "path": req.path}
+        moved: dict = {}
+        why: dict = {}
+        missing = await asyncio.to_thread(nas.ensure_folders, cat, [str(Path(req.path).parent)], 30.0, 5.0, moved, why)
+        path = nas.follow([req.path], moved)[0]  # the share may be back at a new path
+        return {"ok": not missing and Path(path).exists(), "reached": not missing, "path": path,
+                "login": any(isinstance(e, nas.NasLoginError) for e in why.values())}
 
     @app.post("/api/nas/shares", dependencies=[Depends(require_token)])
     async def nas_shares(req: NasLogin):
@@ -473,7 +502,10 @@ def create_app(token: str, db_path: Path) -> FastAPI:
                 pass  # no event loop bound (e.g. bare TestClient) — skip live ticks
 
         find_missing = req.find_missing and _allows("auto_relink")
-        nas.ensure_folders(app.state.catalog, sources, 20.0)  # project folders on a sleeping NAS
+        moved: dict = {}  # project folders on a sleeping NAS, maybe back at a new path
+        why: dict = {}    # the NAS shared folders that couldn't be connected, and why
+        nas.ensure_folders(app.state.catalog, sources, 20.0, moved=moved, why=why)
+        sources = nas.follow(sources, moved)
         stats: dict = {}
         projects = scan_summary(
             sources, progress=progress, find_missing=find_missing,
@@ -503,7 +535,11 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         return {"projects": projects, "scope": req.scope or "sources",
                 "full_disk_access": full_disk_access_ok(),
                 "skipped_dirs": stats.get("skipped_dirs", 0),
-                "skipped_examples": stats.get("skipped_examples", [])}
+                "skipped_examples": stats.get("skipped_examples", []),
+                # Said on screen, so a NAS folder that turned this computer away isn't
+                # quietly left out of the scan.
+                "nas_unreached": [{"share": share, "reason": str(e), "login": isinstance(e, nas.NasLoginError)}
+                                  for share, e in why.items()]}
 
     @app.get("/api/library", dependencies=[Depends(require_token)])
     def library():
@@ -926,6 +962,21 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     folders = Folders()
     app.include_router(folders_router(require_token, folders))
 
+    # ---- albums, Folders and project folders shared through the backup place (see shared.py) ----
+    app.state.sharing = Sharing(catalog, albums, folders)
+
+    @app.get("/api/shared", dependencies=[Depends(require_token)])
+    def shared_status():
+        return app.state.sharing.status()
+
+    @app.put("/api/shared", dependencies=[Depends(require_token)])
+    def shared_switch(req: SharedSwitch):
+        return app.state.sharing.switch(req.on)
+
+    @app.post("/api/shared/now", dependencies=[Depends(require_token)])
+    def shared_now():
+        return app.state.sharing.share_now()
+
     # ---- your phone: browse and fetch songs over home Wi-Fi (see phone.py) ----
     app.state.phone = phone.from_env(catalog)
     phone.make_phone_app(app.state.phone, catalog, albums, _known_song, folders)
@@ -964,6 +1015,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         if not _known_song(path):
             raise HTTPException(status_code=404, detail="not a linked export")
         try:
+            if not decode and playback.native(path):  # straight from the file, riding out NAS blips
+                return steadyplay.response(path, request.headers.get("range"))
             return playback.response(path, request.headers.get("range"), force=bool(decode))
         except playback.CannotPlay:
             raise HTTPException(status_code=415, detail="this file can't be played") from None

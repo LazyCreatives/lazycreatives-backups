@@ -335,26 +335,48 @@ html[data-theme="light"] .table--crate.plug-table > .plug-item > .row:hover {
 /* Your collection: the count column grows with its longest number, so "1,234,567" never runs past the edge */
 .coll__row { grid-template-columns: minmax(70px, 120px) minmax(0, 1fr) max(40px, calc(var(--coll-digits, 4) * 7.4px + 4px)); }
 
-/* Settings, Backups: how backups are sorted. Level pickers in a row, the example
-   path under them, then what changing it will do. */
-.bsort { display: grid; gap: 12px; min-width: 0; }
+/* Settings, Backups: how backups are sorted. A row of choices (and your own levels),
+   one folder view of the drive, then what changing it will do. */
+.bsort { display: grid; gap: 12px; min-width: 0; container: bsort / inline-size; }
 .bsort__levels { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; }
 .bsort__level { display: grid; gap: 5px; min-width: 0; }
 .bsort__word { font-size: 12px; color: var(--text-dim); font-weight: 500; }
 .bsort__level select { min-width: 170px; max-width: 100%; }
-.bsort__fixed { flex-basis: 100%; font-size: 12px; }
-.bsort__preview { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); min-width: 0; }
-.bsort__eg { font-size: 12px; }
-.bsort__tree { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; min-width: 0; }
-.bsort__node { display: flex; align-items: flex-start; gap: 7px; font-size: 13px; color: var(--text); overflow-wrap: anywhere; min-width: 0; }
-.bsort__node--own { color: var(--text-dim); }
-.bsort__icon { flex: none; margin-top: 3px; color: var(--text-faint); }
 .bsort__go { display: grid; gap: 8px; }
-.bsort__match { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; min-width: 0;
-  border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface-2); }
-.bsort__match > .bsort__icon { margin-top: 0; }
-.bsort__match-text { flex: 1 1 260px; min-width: 0; margin: 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
-.bsort__match-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+/* The ready-made sorts: a row of choices above one folder view of the drive. */
+.bsort__choices { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.bsort__choice { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; max-width: 100%; padding: 6px 14px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius); background: transparent; color: var(--text-dim);
+  font: 500 13px var(--font); text-align: start; cursor: pointer; }
+.bsort__choice:hover:not(:disabled) { color: var(--text); border-color: var(--border-interactive); }
+.bsort__choice:disabled { cursor: default; opacity: .7; }
+.bsort__choice--on, .bsort__choice--on:hover:not(:disabled) { color: var(--text); background: var(--accent-soft); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.bsort__now { flex: none; font-size: 11px; font-weight: 500; padding: 1px 7px; border-radius: 999px; background: var(--surface-3); color: var(--text-dim); border: 1px solid var(--border); }
+.bsort__view { margin: 0; min-width: 0; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-2); overflow: hidden; }
+.bsort__vbar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.bsort__vbar > .bsort__vicon { align-self: center; }
+.bsort__vdrive { font-weight: 600; font-size: 14px; color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.bsort__vsay { flex: 1 1 240px; font-size: 13px; color: var(--text-dim); min-width: 0; }
+.bsort__vlist { list-style: none; margin: 0; padding: 0; min-width: 0; }
+.bsort__vlist--top { padding: 6px 0; max-height: 440px; overflow-y: auto; }
+.bsort__vrow { display: flex; align-items: center; gap: 8px; min-height: 30px; padding-inline-end: 14px; font-size: 13px; color: var(--text); min-width: 0; }
+.bsort__vrow--project { color: var(--text-dim); }
+.bsort__vicon { flex: none; color: var(--accent-2); }
+.bsort__vrow--project .bsort__vicon { color: var(--text-faint); }
+.bsort__vname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bsort__vcount { flex-basis: 100%; font-size: 12px; }
+.bsort__now--use { color: var(--text); border-color: var(--border-strong); }
+.bsort-moves__name { display: grid; min-width: 0; }
+.bsort-moves__name > .faint { font-size: 11px; }
+.bsort__vempty { margin: 0; padding: 14px; font-size: 13px; }
+[data-look="crate"] .bsort__view { border-radius: 2px; }
+[data-look="crate"] .bsort__choice { border-radius: 2px; }
+/* What moves when the sort changes, before anything does. */
+.bsort-moves .row { display: grid; align-items: center; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1.3fr); }
+.bsort-moves .row > span:not(:first-child) { font-size: 12px; }
+.bsort-moves__path { min-width: 0; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.bsort-moves--to .row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); }
+@container bsort (max-width: 520px) { .bsort-moves:not(.bsort-moves--to) .row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); } .bsort-moves:not(.bsort-moves--to) .row > :nth-child(2) { display: none; } }
 .doubles { display: grid; gap: 10px; min-width: 0; }
 .doubles-cols .row { display: grid; align-items: center; gap: 10px; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1.4fr); }
 .doubles-cols .row > span:not(:first-child) { font-size: 12px; }

@@ -570,6 +570,27 @@ def has_lossless(path: str) -> bool:
         return False
 
 
+# What a song needs when its file can't be opened here.
+GONE = {"File moved or deleted", "Not on this computer"}
+
+
+def elsewhere(path: str) -> bool:
+    """A song kept by another computer (albums can be shared through the backup place):
+    a path for another kind of computer, or one whose top folders ("/Users/sam",
+    "D:\\Music") aren't on this one."""
+    if not path:
+        return False
+    win = "\\" in path or (len(path) > 1 and path[1] == ":")
+    if win != (sys.platform == "win32"):
+        return True
+    parts = Path(path).parts
+    top = Path(*parts[:3]) if len(parts) > 3 else Path(path).parent
+    try:
+        return not top.is_dir()
+    except OSError:
+        return True
+
+
 def file_checks(song: dict) -> list[str]:
     """Plain-English things a song still needs, from its file and title."""
     out = []
@@ -579,7 +600,7 @@ def file_checks(song: dict) -> list[str]:
     except OSError:
         exists = False
     if not exists:
-        return ["File moved or deleted"]
+        return ["Not on this computer" if elsewhere(path) else "File moved or deleted"]
     if not has_lossless(path):
         out.append("Needs a WAV")
     if _UNTITLED.match((song.get("title") or "").strip()):
@@ -653,7 +674,7 @@ def judge_album(album: dict, backups_db: Path | None) -> dict:
             s["genre"] = p["genre"] or s.get("genre") or ""
             s["bpm"] = round(p["bpm"]) if p["bpm"] and 10 <= p["bpm"] <= 999 else None  # misreads blank
             s["working"] = p["changed_since_export"]
-            if p["changed_since_export"] and needs != ["File moved or deleted"]:
+            if p["changed_since_export"] and not set(needs) & GONE:
                 needs.append("Still working on it")
         else:
             s.setdefault("project_id", None)

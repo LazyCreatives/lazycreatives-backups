@@ -185,16 +185,70 @@ def all_pools(base: Path) -> list[Path]:
 
 
 # ---- what to show ----------------------------------------------------------------
-def preview(catalog: Catalog, base: Path | None, levels) -> dict:
+SHOW_MOVES = 6
+
+
+def preview(catalog: Catalog, base: Path | None, levels, with_moves: bool = True) -> dict:
     """An example path for one real project (the most recently backed up, else any
-    found one), and how many backups would move to fit the new sort."""
+    found one), how many backups would move to fit the new sort, and the first few
+    of them (from where, to where, without the drive and the date)."""
     levels = clean_levels(levels)
     ex = _example_project(catalog)
     parts = level_folders(levels, **ex["info"]) if not is_default(levels) else \
         [_program_root(ex["info"]["daw"]), "projects"]
-    moves = plan_moves(catalog, base, levels) if base and base.is_dir() else []
+    moves = plan_moves(catalog, base, levels) if with_moves and base and base.is_dir() else []
+    shown = []
+    for m in moves[:SHOW_MOVES]:
+        old, new = Path(m["old"]), Path(m["new"])
+        try:
+            shown.append({"name": old.parent.name, "stamp": old.name,
+                          "from": list(old.parent.relative_to(base).parts),
+                          "to": list(new.parent.relative_to(base).parts)})
+        except ValueError:
+            continue
     return {"levels": levels, "example": parts + [ex["name"], ex["stamp"]],
-            "moves": len(moves)}
+            "moves": len(moves), "move_list": shown, "tree": example_tree(catalog, levels),
+            "projects": _project_count(catalog)}
+
+
+def _project_count(catalog: Catalog) -> int:
+    with catalog._lock:
+        return int(catalog.conn.execute("SELECT COUNT(*) FROM discovered").fetchone()[0])
+
+
+def example_tree(catalog: Catalog, levels, most: int = 4) -> list[list[str]]:
+    """A few real projects and the folders each would sit in, for the folder view:
+    the newest ones, picked so as many different folders show as possible."""
+    levels = clean_levels(levels)
+    roots = _roots(catalog)
+    with catalog._lock:
+        rows = [dict(r) for r in catalog.conn.execute(
+            "SELECT project_id, name, path, dir, daw, genre, mtime, made FROM discovered "
+            "ORDER BY mtime DESC LIMIT 60")]
+    paths: list[list[str]] = []
+    for d in rows:
+        info = {"daw": d["daw"], "made": d.get("made") or made_time(d["path"], d["mtime"]),
+                "genre": d["genre"], "folder": project_folder_name(d["dir"], d["name"]),
+                "path": project_path(roots, d["dir"], d["name"])}
+        parts = level_folders(levels, **info) if not is_default(levels) else \
+            [_program_root(d["daw"]), "projects"]
+        paths.append(parts + [safe_folder(d["name"], "Project")])
+    if not paths:
+        ex = _example_project(catalog)
+        return [(level_folders(levels, **ex["info"]) if not is_default(levels)
+                 else [_program_root(ex["info"]["daw"]), "projects"]) + [ex["name"]]]
+    picked: list[list[str]] = []
+    seen: set[tuple] = set()
+    for p in paths:  # one per folder first, then fill up with the rest
+        if tuple(p[:-1]) not in seen and len(picked) < most:
+            seen.add(tuple(p[:-1]))
+            picked.append(p)
+    for p in paths:
+        if len(picked) >= most:
+            break
+        if p not in picked:
+            picked.append(p)
+    return sorted(picked, key=lambda p: [x.casefold() for x in p])
 
 
 def _program_root(daw: str | None) -> str:
@@ -346,6 +400,9 @@ def move_backups(catalog: Catalog, base: Path, moves: list[dict], progress=None)
         if progress:
             progress(i + 1, len(moves))
     tidy_empty(base, [Path(m["old"]).parent for m in done])
+    if done:  # the Second copy keeps the same folders
+        from ablebackup import mirrors
+        mirrors.move(catalog, base, done)
     return {"moved": done, "failed": failed}
 
 
@@ -456,7 +513,7 @@ def is_backup_stamp(name: str) -> bool:
 
 
 __all__ = ["LEVELS", "DEFAULT_SORT", "BACKUP_ROOTS", "clean_levels", "get_sort", "is_default",
-           "dest_parent", "pool_for", "all_pools", "preview", "plan_moves", "apply_sort",
+           "dest_parent", "example_tree", "pool_for", "all_pools", "preview", "plan_moves", "apply_sort",
            "undo_sort", "made_time", "project_folder_name", "project_path", "safe_folder", "is_backup_stamp"]
 
 

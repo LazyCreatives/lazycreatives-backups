@@ -1019,7 +1019,11 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
         dest = nas.catalog_dest(catalog) or dest  # it may have come back at a new path
     # Project folders kept on the NAS too: connect those as well.
     if any(nas.on_nas_path(catalog, s) for s in sources):
-        nas.ensure_folders(catalog, sources)
+        moved: dict = {}
+        nas.ensure_folders(catalog, sources, moved=moved)
+        if moved:  # the share came back as "Projects-1": look for the projects there
+            sources = nas.follow(sources, moved)
+            als_paths = nas.follow(als_paths, moved) if als_paths is not None else None
     # Never back up to a drive that isn't there: making the folder again would put
     # the "backup" on the computer's own disk (or fail with a misleading error).
     base = prepare_dest(catalog, dest)

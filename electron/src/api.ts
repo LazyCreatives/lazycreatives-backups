@@ -16,12 +16,16 @@ function token() {
 export type FoundNas = { name: string; host: string; address: string; maker: string; away?: boolean; via?: string };
 export type NasShare = { name: string; comment: string };
 export type NasInfo = { name: string; host: string; share: string; user: string; path: string };
+// A NAS shared folder a scan couldn't get into, and why (login: it turned the saved login down).
+export type NasUnreached = { share: string; reason: string; login: boolean };
 export type SortMatch = { levels: SortLevel[]; kinds: SortLevel[]; where: "backups" | "projects"; example: string[] };
 export type DoubleCopy = { id: number; timestamp: string; dir: string; size: number; frees?: number };
 export type Doubles = { groups: { project_name: string; keep: DoubleCopy; extras: DoubleCopy[] }[]; count: number; size: number };
 
 export type SortLevel = "program" | "year" | "month" | "genre" | "folder" | "path";
-export type BackupSort = { levels: SortLevel[]; example: string[]; moves: number; undo?: boolean };
+// One backup the new sort would move: its folders on the drive before and after.
+export type SortMove = { name: string; stamp: string; from: string[]; to: string[] };
+export type BackupSort = { levels: SortLevel[]; example: string[]; moves: number; move_list?: SortMove[]; tree?: string[][]; projects?: number; undo?: boolean };
 export type SortDone = { levels: SortLevel[]; moved: number; failed: number; undo: boolean };
 
 export type LibraryList = { projects: LibraryItem[]; owners: string[]; count: number; unmatched_songs?: number };
@@ -95,6 +99,10 @@ export function makeApi() {
     async checkAlbumSong(path: string): Promise<SongCheck> {
       return req("GET", `/api/albums/check?path=${encodeURIComponent(path)}`);
     },
+    // Albums, Folders and project folders shared with your other computers through the backup place.
+    async sharedStatus(): Promise<SharedStatus> { return req("GET", "/api/shared"); },
+    async sharedSwitch(on: boolean): Promise<SharedStatus> { return req("PUT", "/api/shared", { on }); },
+    async sharedNow(): Promise<SharedStatus> { return req("POST", "/api/shared/now"); },
     // Your phone: pair a phone and let it browse and fetch songs over home Wi-Fi.
     async phoneStatus(): Promise<PhoneStatus> { return req("GET", "/api/phone"); },
     async phoneSwitch(enabled: boolean): Promise<PhoneStatus> { return req("PUT", "/api/phone", { enabled }); },
@@ -108,7 +116,7 @@ export function makeApi() {
       return (await req("POST", "/api/scan", { sources, find_missing: findMissing })).projects;
     },
     // Scan by scope (sources|home|volumes); persists to the library.
-    async scanMac(scope: string, findMissing = false): Promise<{ projects: ProjectSummary[]; scope: string; full_disk_access: boolean; skipped_dirs: number; skipped_examples: string[] }> {
+    async scanMac(scope: string, findMissing = false): Promise<{ projects: ProjectSummary[]; scope: string; full_disk_access: boolean; skipped_dirs: number; skipped_examples: string[]; nas_unreached?: NasUnreached[] }> {
       return req("POST", "/api/scan", { scope, find_missing: findMissing });
     },
     // Every screen that asks at the same moment shares one answer (the list is big
@@ -187,7 +195,9 @@ export function makeApi() {
     // with the saved login, connect one, and connect it again before opening a project.
     async nasMyShares(): Promise<{ shares: string[]; listed: boolean }> { return req("POST", "/api/nas/my-shares"); },
     async nasOpenShare(share: string): Promise<{ path: string }> { return req("POST", "/api/nas/open-share", { share }); },
-    async nasReady(path: string): Promise<{ ok: boolean }> { return req("POST", "/api/nas/ready", { path }); },
+    async nasReady(path: string): Promise<{ ok: boolean; reached?: boolean; path?: string; login?: boolean }> { return req("POST", "/api/nas/ready", { path }); },
+    // Log in to the remembered NAS again, when it turned the saved login down.
+    async nasSignIn(user: string, password: string): Promise<{ ok: boolean }> { return req("POST", "/api/nas/sign-in", { user, password }); },
     // "Sort like this?": how the folders already there are arranged, when it's clear.
     async backupSortDetect(): Promise<{ match: SortMatch | null }> { return req("GET", "/api/backup-sort/detect"); },
     // Same backup twice (Settings, Backups): copies that hold exactly the same thing.
@@ -322,6 +332,17 @@ export function makeCoverSource(): CoverSource {
 }
 
 export interface PhoneDevice { id: string; name: string; paired_at: number; last_seen: number }
+// "Share with my other computers" (Settings, Backups): what the last share did.
+export interface SharedStatus {
+  on: boolean;
+  place: string;           // the shared folder in the backup place ('' when there's none)
+  at?: number;             // when it last looked (seconds)
+  error?: string;
+  waiting?: string;        // the backup drive isn't there right now: it waits, nothing's wrong
+  took?: number;           // albums, Folders and project folders it took in from the others
+  computers?: string[];    // the other computers sharing there
+}
+
 export interface PhoneStatus {
   enabled: boolean; running: boolean; address: string; port: number; computer: string;
   devices: PhoneDevice[];

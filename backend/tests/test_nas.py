@@ -167,6 +167,23 @@ def test_nas_away_from_home_shows_through_tailscale(tmp_path, monkeypatch):
                            "maker": "TerraMaster", "away": True}]
 
 
+def test_a_nas_away_that_is_slow_to_answer_still_shows(tmp_path, monkeypatch):
+    """Away from home the NAS's first answer can be slow; a NAS maker's box still shows,
+    and a phone named with curly quotes doesn't stop the list being read."""
+    import json
+    status = {"BackendState": "Running", "Peer": {
+        "a": {"HostName": "TNAS-F4", "DNSName": "tnas-f4.tail1234.ts.net.", "TailscaleIPs": ["100.90.248.35"], "Online": True, "OS": "linux"},
+        "b": {"HostName": "Robert\u2019s laptop \U0001F3B5", "DNSName": "roberts-laptop.tail1234.ts.net.", "TailscaleIPs": ["100.90.1.9"], "Online": True, "OS": "windows"},
+    }}
+    (tmp_path / "s.json").write_bytes(json.dumps(status, ensure_ascii=False).encode("utf-8"))
+    monkeypatch.setattr(nas, "tailscale_cli", lambda: _fake_cli(tmp_path, "tailscale", f"cat {tmp_path}/s.json\n"))
+    waited = []
+    monkeypatch.setattr(nas, "_answers_smb", lambda ips, timeout=0.8: waited.append(timeout) or set())
+    t = nas.tailscale()
+    assert t["running"] and waited[0] >= 3
+    assert [f["name"] for f in t["peers"]] == ["TNAS-F4"]
+
+
 def test_nas_behind_a_home_computer_sharing_its_network_over_tailscale(tmp_path, monkeypatch):
     import json
     status = {"BackendState": "Running", "Peer": {
@@ -330,6 +347,29 @@ def test_windows_tries_the_nas_name_in_front_of_the_user(monkeypatch):
     assert [a[4] for a in calls] == ["/user:robert", "/user:TNAS\\robert"]
 
 
+def test_windows_lets_go_of_an_old_link_that_no_longer_gets_in(monkeypatch):
+    """1219 means Windows is already joined to the NAS; when that old link can't open the
+    folder any more, it is dropped and the saved login is used afresh."""
+    import subprocess
+    calls, dropped = [], []
+
+    def fake_run(args, **kw):
+        calls.append(args)
+        if args == ["net", "use"]:
+            return subprocess.CompletedProcess(args, 0, "OK   \\\\TNAS\\BACKUPS   Microsoft Windows Network\n", "")
+        if "/delete" in args:
+            dropped.append(args[2])
+            return subprocess.CompletedProcess(args, 0, "", "")
+        fresh = bool(dropped)
+        return subprocess.CompletedProcess(args, 0 if fresh else 2, "", "" if fresh else "System error 1219 has occurred.")
+    monkeypatch.setattr(nas, "_WIN", True)
+    monkeypatch.setattr(nas, "mount_path", lambda h, s: None)
+    monkeypatch.setattr(nas, "_quick_isdir", lambda p, timeout=4.0: False)
+    monkeypatch.setattr(nas, "_run", fake_run)
+    assert str(nas.connect("TNAS", "public", "robert", "pw")) == str(Path("\\\\TNAS\\public"))
+    assert dropped == ["\\\\TNAS\\BACKUPS"]
+
+
 SMBUTIL_VIEW = """Share                                           Type    Comments
 -------------------------------
 Music                                           Disk    Projects and stems
@@ -433,3 +473,20 @@ def test_backups_picks_a_shared_folder_it_can_save_into(tmp_path, monkeypatch):
         assert r["share"] == "Public" and r["folder"] == "LC-AUTOBACKUPS"
         assert (vols / "Public" / "LC-AUTOBACKUPS").is_dir()
         assert c.get("/api/nas").json()["nas"]["share"] == "Public"
+
+
+def test_only_links_without_a_drive_letter_are_let_go():
+    out = "\n".join([
+        "New connections will be remembered.",
+        "",
+        "Status       Local     Remote                    Network",
+        "-------------------------------------------------------------------------------",
+        "OK                     \\\\100.90.248.35\\BACKUPS   Microsoft Windows Network",
+        "Unavailable            \\\\100.90.248.35\\My Music  Microsoft Windows Network",
+        "OK           Z:        \\\\100.90.248.35\\public    Microsoft Windows Network",
+        "OK                     \\\\other-nas\\BACKUPS       Microsoft Windows Network",
+        "                       \\\\100.90.248.35\\IPC$",
+        "The command completed successfully.",
+    ])
+    assert nas.links_to("100.90.248.35", out) == [
+        "\\\\100.90.248.35\\BACKUPS", "\\\\100.90.248.35\\My Music", "\\\\100.90.248.35\\IPC$"]

@@ -175,6 +175,8 @@ def test_sort_api(tmp_path, monkeypatch):
         assert r["levels"] == ["program"] and r["undo"] is False
         p = c.post("/api/backup-sort/preview", json={"levels": ["year", "folder"]}, headers=h).json()
         assert p["example"][-2:] == ["Low Sun", "2026-10-20_0900"] and p["moves"] == 1
+        assert p["move_list"][0]["to"][-1] == "Low Sun"
+        assert p["tree"][0][-1] == "Low Sun"
         a = c.post("/api/backup-sort", json={"levels": ["year", "folder"]}, headers=h).json()
         assert a["moved"] == 1 and a["undo"] is True
         assert c.get("/api/backup-sort", headers=h).json()["undo"] is True

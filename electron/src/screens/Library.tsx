@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { pickCover } from "../components/CoverPick";
-import { lastLibrary, makeApi } from "../api";
+import { lastLibrary, makeApi, type NasUnreached } from "../api";
+import { askNasSignIn } from "../components/NasSignIn";
 import { openProjectFile } from "../openProject";
 import type { LibraryItem } from "../types";
 import type { ScanProgress } from "../useProgress";
@@ -160,6 +161,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
   const [scanning, setScanning] = useState(false);
   const [fdaOk, setFdaOk] = useState(true);
   const [skipped, setSkipped] = useState(0);     // dirs the last scan couldn't read
+  const [unreached, setUnreached] = useState<NasUnreached[]>([]);  // NAS folders it couldn't get into
   const [busy, setBusy] = useState<Set<string>>(new Set());
   // projects whose backup from this page just finished and checked out: their status
   // settles to "Safe" with a small seal for a moment
@@ -368,6 +370,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
       // scanMac handles every scope incl. "sources"; returns skipped-dir count + FDA.
       const r = await api.scanMac(where, true);
       setSkipped(r.skipped_dirs || 0);
+      setUnreached(r.nas_unreached || []);
       setFdaOk(r.full_disk_access);
       load();
     } catch (e: any) { setErr(e.message || "Couldn't finish looking for projects. Check your project folders are plugged in, then press Scan now again."); }
@@ -639,7 +642,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
           </>
         )} />
 
-      {(showProgress || ((skipped > 0 || !fdaOk) && !scanning) || err) && <div className="lib-scan">
+      {(showProgress || ((skipped > 0 || !fdaOk || unreached.length > 0) && !scanning) || err) && <div className="lib-scan">
         {showProgress && (
           <div style={{ flexBasis: "100%", marginTop: 4 }}>
             {scan.phase === "searching" || (!scan.phase && scanning) ? (
@@ -683,6 +686,16 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
                 </Button>
               </div>
             )}
+          </div>
+        )}
+        {unreached.length > 0 && !scanning && (
+          <div className="locked-note" role="status" style={{ flexBasis: "100%", flexDirection: "column", alignItems: "stretch", gap: 9 }}>
+            <div style={{ fontSize: 12 }}>{unreachedWords(unreached)}</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {unreached.some((u) => u.login)
+                ? <Button variant="ghost" size="sm" onClick={() => askNasSignIn(() => runScan("sources"))}>Log in to the NAS again</Button>
+                : <Button variant="ghost" size="sm" onClick={() => runScan("sources")}>Try again</Button>}
+            </div>
           </div>
         )}
         {err && <div className="sub" style={{ color: "var(--danger)", flexBasis: "100%", margin: 0, fontSize: 12 }}>{err}</div>}
@@ -1243,4 +1256,13 @@ function ScanMenu({ scope, scanning, onScan }: { scope: string; scanning: boolea
       )}
     </div>
   );
+}
+
+// What a scan says about NAS folders it couldn't get into, so they aren't quietly left out.
+function unreachedWords(list: NasUnreached[]): string {
+  const names = list.map((u) => u.share);
+  const which = names.length === 1 ? `the NAS folder “${names[0]}”` : names.length === 2 ? `the NAS folders “${names[0]}” and “${names[1]}”`
+    : `${names.length} NAS folders`;
+  if (list.some((u) => u.login)) return `Your NAS turned down the saved login on this computer, so projects in ${which} weren't looked at.`;
+  return `No answer from ${which}, so projects in ${names.length === 1 ? "it" : "them"} weren't looked at. Check the NAS is on and connected.`;
 }

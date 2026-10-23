@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import qrcode from "qrcode-generator";
 import { CopyButton, askConfirm, openMenu, toast } from "../components/Desktop";
 import { PAUSE_ON_MINIMIZE, baseName, copyText, keep, pausesOnMinimize } from "../desktop";
-import { makeApi, type NasInfo, type PhoneCode, type PhoneStatus } from "../api";
+import { makeApi, type NasInfo, type PhoneCode, type PhoneStatus, type SharedStatus } from "../api";
+import { sharedNote } from "../sharedNote";
 import { NasPicker } from "../components/NasPicker";
 import type { Config, Overview } from "../types";
 import { Button } from "../components/Button";
@@ -330,9 +331,9 @@ export function Sources() {
       </SetRow>
 
       <SetRow title="How backups are sorted"
-        help="The folders your backups go in on the backup drive. Pick up to three. Your own projects never move."
-        info="Year and month are when the project was started. Your project folder is the folder you keep the project in, like Album ideas. Changing the sort moves the backups already on the drive to match, which is quick because nothing is copied. Copies in a second place keep their old folders.">
-        <BackupSort dest={cfg.dest} loaded={loaded} />
+        help="Pick the folders your backups go in on the backup drive. Your own projects never move."
+        info="Like my project folders copies the folders your projects are kept in, like 2024, then House. Year and month are when the project was started. Changing the sort moves the backups already on the drive to match, which is quick because nothing is copied, and your Second copy moves the same way. Undo puts them back.">
+        <BackupSort dest={cfg.dest} loaded={loaded} second={mirrors.length > 0} />
       </SetRow>
 
       <SetRow title="Same backup twice"
@@ -390,6 +391,8 @@ export function Sources() {
           ? "Songs and stems are kept. Restore brings them back in an Exported songs folder."
           : "Only the songs are kept. Restore brings them back in an Exported songs folder."}</p>
       </SetRow>
+
+      <ShareComputers hasDest={!!cfg.dest} loaded={loaded} computer={words.computer} />
 
       <SetRow title={<>Automatic backup{!canSchedule && <ProBadge />}</>}
         help={`Leave the app running (it lives in your ${words.tray}) and it backs up on its own.`}>
@@ -477,6 +480,51 @@ export function Sources() {
       </>}
       </SetPanel>
     </div>
+  );
+}
+
+// Share albums and folders: albums, Folders and project folders kept in the
+// backup place (often a NAS), so Backups on another computer shows the same ones.
+// Off until switched on. The backend shares by itself every half minute.
+function ShareComputers({ hasDest, loaded, computer }: { hasDest: boolean; loaded: boolean; computer: string }) {
+  const [st, setSt] = useState<SharedStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    const get = () => api.sharedStatus().then((s) => live && setSt(s)).catch(() => {});
+    get();
+    const t = window.setInterval(() => { get(); tick((n) => n + 1); }, 15000);
+    return () => { live = false; window.clearInterval(t); };
+  }, []);
+  async function flip(on: boolean) {
+    setBusy(true);
+    try {
+      let s = await api.sharedSwitch(on);
+      if (on) s = await api.sharedNow();
+      setSt(s);
+    } catch (e) { toast(`Couldn't change it: ${(e as Error).message}`); }
+    finally { setBusy(false); }
+  }
+  async function now() {
+    setBusy(true);
+    try { setSt(await api.sharedNow()); } catch (e) { toast(`Couldn't share: ${(e as Error).message}`); }
+    finally { setBusy(false); }
+  }
+  const note = sharedNote(st, hasDest, computer);
+  return (
+    <SetRow title="Share albums and folders"
+      help="Your albums, Folders and project folders, kept on the backup drive so Backups on your other computers shows the same ones. Handy with a NAS."
+      info={`Each computer keeps one small file in a "Lazy Creatives shared" folder on the backup drive, so it's backed up too. The newest change wins. Songs are found again on each computer by name and size; one it hasn't got shows Not on this computer. A project folder joins only when that computer can open it. Nothing is copied, moved or changed except these lists.`}>
+      <OnOff label="Share albums and folders" on={!!st?.on} onChange={(v) => void flip(v)}
+        disabled={!loaded || busy || !st || (!hasDest && !st.on)} />
+      <p className={`set-note${note.bad ? " set-note--bad" : st?.on && st.at && !st.waiting ? " set-note--ok" : ""}`} role="status">{note.text}</p>
+      {st?.on && hasDest && (
+        <div className="set-inline">
+          <Button variant="ghost" size="sm" onClick={now} disabled={busy}>{busy ? "Sharing…" : "Share now"}</Button>
+        </div>
+      )}
+    </SetRow>
   );
 }
 
