@@ -36,10 +36,6 @@ class NasRemote(BaseModel):
     folder: str = Field("", max_length=500)                 # shared folder on the NAS
 
 
-class NasShare(BaseModel):
-    share: str = Field(..., max_length=300)
-
-
 class NasSignIn(BaseModel):
     user: str = Field("", max_length=300)
     password: str = Field("", max_length=1000)

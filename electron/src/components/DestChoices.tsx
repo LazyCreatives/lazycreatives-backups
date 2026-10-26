@@ -4,6 +4,7 @@ import type { CloudFolder } from "../types";
 import { currentOs, osWords } from "../platform";
 import { Icon } from "./Icon";
 import { NasPicker } from "./NasPicker";
+import { pickFolder } from "../pickFolder";
 
 const api = makeApi();
 
@@ -51,7 +52,7 @@ export function DestChoices({ dest, choice, onPick }: {
 }) {
   const { folders, destFor } = useCloudFolders();
   const words = osWords();
-  const pick = async () => (await (window as any).ablebackup?.pickFolder?.()) as string | undefined;
+  const pick = async () => (await pickFolder()) ?? undefined;
 
   async function chooseDrive() {
     const dir = await pick();

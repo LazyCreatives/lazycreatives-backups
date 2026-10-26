@@ -23,6 +23,18 @@ def reports_on(pref_path: str | None) -> bool:
         return True
 
 
+def harmless(event, hint) -> bool:
+    """Noise that isn't a fault: on Windows, asyncio logs an error whenever the window
+    drops a connection first (a song skipped mid-stream, a screen closed). Nothing broke."""
+    if event.get("logger") != "asyncio":
+        return False
+    exc = (hint or {}).get("exc_info")
+    if exc and isinstance(exc[1], ConnectionResetError):
+        return True
+    values = (event.get("exception") or {}).get("values") or []
+    return any(v.get("type") == "ConnectionResetError" for v in values)
+
+
 def start() -> bool:
     """Start Sentry when the app asked for it. Returns True when reports are set up."""
     dsn = os.environ.get("LC_SENTRY_DSN", "")
@@ -34,8 +46,8 @@ def start() -> bool:
         return False
     pref = os.environ.get("LC_CRASH_PREF")
 
-    def before_send(event, _hint):
-        return event if reports_on(pref) else None
+    def before_send(event, hint):
+        return event if reports_on(pref) and not harmless(event, hint) else None
 
     sentry_sdk.init(
         dsn=dsn,

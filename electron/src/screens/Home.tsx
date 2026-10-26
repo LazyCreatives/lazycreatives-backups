@@ -27,6 +27,7 @@ import "../home.css";
 import "../label.css";  // the printed numbers (.proj-spec), shared with the project page
 
 const api = makeApi();
+import { pickFolder } from "../pickFolder";
 const bridge = () => (window as any).ablebackup;
 const HOME_ROWS = 8;  // rows per Home list before "Show all"
 
@@ -182,7 +183,7 @@ export function Home({ backup, onBackupNow, onFindProjects, onOpenSettings, onRe
 
   // "Look in a folder": pick a folder you think the samples are in, then hunt there.
   async function lookInFolder(it: LibraryItem) {
-    const dir = await (window as any).ablebackup?.pickFolder?.();
+    const dir = await pickFolder();
     if (dir) fixOne(it, dir);
   }
 

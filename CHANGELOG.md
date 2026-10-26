@@ -15,6 +15,14 @@ How to keep this up to date:
 
 ## Unreleased
 
+## 0.4.2 (26 October 2026)
+
+### Fixed
+- **Folders on your NAS can be picked with Add folder.** Picking a folder on the NAS (for samples, projects, exports or anything else) could say it couldn't connect, because Windows or the Mac didn't have the NAS login that Backups keeps. Now Add folder lets your computer into the NAS first, so one button works for every folder. Folders picked on the NAS are connected again by themselves when the NAS wakes, and a sleeping NAS is woken before missing samples are searched for there. The separate "Add a folder on" NAS button is gone.
+
+### Better
+- **Crash reports leave out things that aren't faults.** Windows shutting the app down, and the window letting go of a song early, no longer send a crash report.
+
 ## 0.4.1 (23 October 2026)
 
 ### New

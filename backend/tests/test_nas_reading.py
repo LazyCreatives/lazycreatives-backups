@@ -164,16 +164,46 @@ def _nas(tmp_path):
     return cat, share
 
 
-def test_a_project_share_is_connected_and_remembered(tmp_path, monkeypatch):
+def test_a_folder_picked_on_the_nas_is_remembered(tmp_path, monkeypatch):
     cat, share = _nas(tmp_path)
-    projects = tmp_path / "Volumes" / "Projects"
-    monkeypatch.setattr(nas, "connect", lambda h, s, u, p: (projects.mkdir(exist_ok=True), projects)[1])
-    assert nas.open_share(cat, "Projects") == projects
-    assert nas.remembered(cat)["shares"] == {"Projects": str(projects)}
-    assert nas.on_nas_path(cat, projects / "2024")
-    # connecting the backups share again keeps it
+    # Windows: picked through its own picker, by the NAS's name or its address
+    assert nas.adopt(cat, [r"\\tnas.local\Projects\2024", r"\\192.168.1.20\Samples\Splice",
+                           r"\\other-pc\Music\x", str(share / "B")]) == ["Projects", "Samples"]
+    assert nas.remembered(cat)["shares"] == {"Projects": r"\\tnas.local\Projects",
+                                             "Samples": r"\\192.168.1.20\Samples"}
+    # the Mac: a shared folder the picker connected under /Volumes
+    mounts = ("//rob@tnas.local/Sample%20Packs on /Volumes/Sample Packs (smbfs, nodev, nosuid)\n"
+              "/dev/disk3s1 on /Volumes/USB (apfs, local)\n")
+    monkeypatch.setattr(nas, "_run", lambda *a, **k: type("R", (), {"stdout": mounts})())
+    assert nas.adopt(cat, ["/Volumes/Sample Packs/Splice", "/Volumes/USB/Kits"]) == ["Sample Packs"]
+    assert nas.remembered(cat)["shares"]["Sample Packs"] == "/Volumes/Sample Packs"
+    # connecting the backups share again keeps them
     nas.remember(cat, host="tnas.local", address="", share="Music", user="rob", password="pw", path=share)
-    assert nas.remembered(cat)["shares"] == {"Projects": str(projects)}
+    assert set(nas.remembered(cat)["shares"]) == {"Projects", "Samples", "Sample Packs"}
+
+
+def test_the_picker_is_let_into_the_nas_first(tmp_path, monkeypatch):
+    cat, _share = _nas(tmp_path)
+    tried = []
+
+    def connect(h, s, u, p):
+        tried.append((h, s, p))
+        return tmp_path
+    monkeypatch.setattr(nas, "connect", connect)
+    monkeypatch.setattr(nas, "list_shares", lambda *a: [{"name": "Music"}, {"name": "Samples"}])
+    monkeypatch.setattr(nas, "_WIN", True)
+    assert nas.before_pick(cat) == {"nas": True, "login": False}
+    assert tried == [("tnas.local", "Music", "pw"), ("192.168.1.20", "Music", "pw")]
+    tried.clear()
+    monkeypatch.setattr(nas, "_WIN", False)
+    nas.before_pick(cat)
+    assert sorted(s for _h, s, _p in tried) == ["Music", "Samples"]
+
+    def refused(*a):
+        raise nas.NasLoginError(nas.LOGIN_REFUSED)
+    monkeypatch.setattr(nas, "connect", refused)
+    assert nas.before_pick(cat)["login"] is True
+    assert nas.before_pick(Catalog(tmp_path / "none.db")) == {"nas": False}
 
 
 def test_a_dropped_project_share_is_connected_again_before_a_scan(tmp_path, monkeypatch):
@@ -223,6 +253,40 @@ def test_a_backup_follows_a_project_share_back_at_a_new_path(tmp_path, monkeypat
     assert [s["project_name"] for s in cat.snapshots_here()] == ["Night Drive"]
     assert nas.follow([str(old / "a"), old / "b", "/elsewhere"], {str(old): str(new)}) == \
         [str(new / "a"), new / "b", "/elsewhere"]
+
+
+def test_a_sample_share_back_at_a_new_path_is_followed(tmp_path, monkeypatch):
+    cat, share = _nas(tmp_path)
+    old = tmp_path / "Volumes" / "Samples"
+    new = tmp_path / "Volumes" / "Samples-1"
+    cat.set_setting(nas.NAS_KEY, {**nas.remembered(cat), "shares": {"Samples": str(old)}})
+    cat.set_setting("config", {"sources": [], "libraries": [str(old / "Splice")], "dest": ""})
+    monkeypatch.setattr(nas, "connect", lambda *a: ((new / "Splice").mkdir(parents=True), new)[1])
+    assert nas.ensure_folders(cat, [old / "Splice"], wait=1, step=0.01) == []
+    assert cat.get_setting("config")["libraries"] == [str(new / "Splice")]
+
+
+def test_a_backup_connects_a_sample_share_to_find_missing_samples(tmp_path, monkeypatch):
+    import ablebackup.service as service
+    cat, _share = _nas(tmp_path)
+    old = tmp_path / "Volumes" / "Samples"
+    new = tmp_path / "Volumes" / "Samples-1"
+    cat.set_setting(nas.NAS_KEY, {**nas.remembered(cat), "shares": {"Samples": str(old)}})
+    src = tmp_path / "Projects"
+    _project(src, "Night Drive")
+    dest = tmp_path / "Backups"
+    dest.mkdir()
+    asked, searched = [], []
+    monkeypatch.setattr(nas, "connect", lambda h, s, u, p: (asked.append(s), (new / "Splice").mkdir(parents=True), new)[2])
+    real = service._build_locator
+    monkeypatch.setattr(service, "_build_locator", lambda s, libs: (searched.append(list(libs)), real(s, libs))[1])
+    run_backup([src], dest, cat, find_missing=True, libraries=[str(old / "Splice")])
+    assert asked == ["Samples"]                    # the NAS was asleep: connected first
+    assert searched == [[str(new / "Splice")]]     # and searched where it came back
+    # a backup that doesn't look for missing samples leaves the NAS alone
+    asked.clear()
+    run_backup([src], dest, cat, libraries=[str(tmp_path / "Volumes" / "Samples-2" / "x")])
+    assert asked == []
 
 
 # ---- the Second copy keeps the same folders -----------------------------------------

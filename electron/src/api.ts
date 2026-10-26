@@ -191,10 +191,10 @@ export function makeApi() {
       return req("POST", "/api/nas/connect", b);
     },
     async forgetNas(): Promise<{ ok: boolean }> { return req("POST", "/api/nas/forget"); },
-    // Project folders kept on the NAS (Settings, Project folders): its shared folders
-    // with the saved login, connect one, and connect it again before opening a project.
-    async nasMyShares(): Promise<{ shares: string[]; listed: boolean }> { return req("POST", "/api/nas/my-shares"); },
-    async nasOpenShare(share: string): Promise<{ path: string }> { return req("POST", "/api/nas/open-share", { share }); },
+    // Just before the computer's own folder picker opens: let it into the NAS with
+    // the saved login, so a folder on the NAS can be picked (see pickFolder.ts).
+    async nasBeforePick(): Promise<{ nas: boolean; login?: boolean }> { return req("POST", "/api/nas/before-pick"); },
+    // Before opening a project kept on the NAS: connect it again if it dropped off.
     async nasReady(path: string): Promise<{ ok: boolean; reached?: boolean; path?: string; login?: boolean }> { return req("POST", "/api/nas/ready", { path }); },
     // Log in to the remembered NAS again, when it turned the saved login down.
     async nasSignIn(user: string, password: string): Promise<{ ok: boolean }> { return req("POST", "/api/nas/sign-in", { user, password }); },

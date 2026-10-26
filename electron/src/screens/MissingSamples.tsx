@@ -5,6 +5,7 @@ import { makeApi } from "../api";
 import type { LibraryItem } from "../types";
 import { Button } from "../components/Button";
 import "../missing.css";
+import { pickFolder } from "../pickFolder";
 
 const api = makeApi();
 const bridge = () => (window as any).ablebackup;
@@ -70,7 +71,7 @@ export function MissingSamples({ item, onChanged }: { item: LibraryItem; onChang
   const fixNow = () =>
     runBackup({}, "fix", "Found and backed up what we could. {n} still need you to point to them.");
   async function lookInFolder() {
-    const dir = await bridge()?.pickFolder?.();
+    const dir = await pickFolder();
     if (dir) runBackup({ libraries: [dir] }, "folder", "Searched that folder. {n} still missing.");
   }
   async function pointToFile(m: Miss) {

@@ -8,6 +8,7 @@ import { fadeSwitch } from "../fade";
 import { SlothSpot } from "../components/SlothSpot";
 import { DestChoices, type DestChoice } from "../components/DestChoices";
 import "../setup.css";
+import { pickFolder } from "../pickFolder";
 
 const api = makeApi();
 
@@ -43,7 +44,7 @@ export function Setup({ onDone }: { onDone: (c: Config, skipped: boolean) => voi
     setTicked(next);
   }
   async function addSource() {
-    const dir = await (window as any).ablebackup.pickFolder();
+    const dir = await pickFolder();
     if (!dir) return;
     if (found?.some((f) => f.path === dir)) { setTicked(new Set(ticked).add(dir)); return; }
     if (!extra.includes(dir)) setExtra([...extra, dir]);

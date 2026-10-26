@@ -405,7 +405,6 @@ html[data-theme="light"] .table--crate.plug-table > .plug-item > .row:hover {
 .nasp-cols .row { grid-template-columns: 18px minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) auto; }
 .nasp-share-cols .row { grid-template-columns: 18px minmax(0, 1fr) minmax(0, 1.4fr) auto; }
 .nasp__maker, .nasp__addr, .nasp__comment { font-size: 12px; }
-.nasf-cols .row { display: grid; align-items: center; gap: 10px; grid-template-columns: 18px minmax(0, 1fr) auto; }
 .nasp__rows { max-height: 240px; overflow-y: auto; }
 @container (max-width: 520px) {
   .nasp-cols .row { grid-template-columns: 18px minmax(0, 1.3fr) minmax(0, 1fr) auto; }
@@ -434,4 +433,3 @@ html[data-theme="light"] .table--crate.plug-table > .plug-item > .row:hover {
 .nasp__n { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--surface-3); color: var(--text-dim); font-size: 12px; font-variant-numeric: tabular-nums; }
 .nasp__after { grid-column: 2; justify-self: start; }
 .drive__btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.set-nasbtn { min-width: 0; max-width: 34ch; }

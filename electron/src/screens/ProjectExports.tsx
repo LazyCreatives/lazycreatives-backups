@@ -11,6 +11,7 @@ import { osWords } from "../platform";
 import { fmtSize, fmtDay, stemsOnly } from "../format";
 import { isShortExport, shortExportSeconds } from "../exportFolders";
 import { StemSets } from "./StemSets";
+import { pickFolder } from "../pickFolder";
 
 const api = makeApi();
 const bridge = () => (window as any).ablebackup;
@@ -97,7 +98,7 @@ export function ProjectExports({ item, onChanged, onOpenStems }: {
     if (p) run(() => api.linkExport(p, item.project_id));
   }
   async function addFolder() {
-    const p: string | null = await bridge()?.pickFolder?.();
+    const p: string | null = await pickFolder();
     if (p) run(() => api.setExportFolders([...(folders?.folders ?? []), p]));
   }
   function removeFolder(p: string) {

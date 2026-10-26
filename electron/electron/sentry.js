@@ -64,9 +64,13 @@ function reportWindowError(info) {
   Sentry.captureException(err, { tags: { where: "window" } });
 }
 
+// Windows ending a process from outside (shutting down or restarting for an update,
+// signing out, Task Manager) isn't a crash, so it isn't reported.
+const STOPPED_FROM_OUTSIDE = /exit code (1073807364|3221225786)\b/;
+
 // A note from main.js when the window or engine stops (report.recordProblem's cases).
 function reportStopped(where, text) {
-  if (!Sentry) return;
+  if (!Sentry || STOPPED_FROM_OUTSIDE.test(String(text))) return;
   Sentry.captureMessage(String(text).slice(0, 4000), { level: "error", tags: { where } });
 }
 

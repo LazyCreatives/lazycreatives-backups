@@ -1024,6 +1024,11 @@ def _run_backup_locked(sources: list[Path], dest: Path, catalog: Catalog,
         if moved:  # the share came back as "Projects-1": look for the projects there
             sources = nas.follow(sources, moved)
             als_paths = nas.follow(als_paths, moved) if als_paths is not None else None
+    # Sample folders on the NAS, when they'll be searched for missing samples.
+    if find_missing and libraries and any(nas.on_nas_path(catalog, lib) for lib in libraries):
+        moved = {}
+        nas.ensure_folders(catalog, libraries, moved=moved)
+        libraries = nas.follow(libraries, moved)
     # Never back up to a drive that isn't there: making the folder again would put
     # the "backup" on the computer's own disk (or fail with a misleading error).
     base = prepare_dest(catalog, dest)

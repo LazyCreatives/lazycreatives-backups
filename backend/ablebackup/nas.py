@@ -544,35 +544,103 @@ def ensure_connected(catalog: Catalog, dest, wait: float = 75.0, step: float = 5
 
 
 # ---- project folders on the NAS ----------------------------------------------------
-# The producer can keep projects on the NAS too (Settings, Project folders, Add a
-# folder on the NAS). Backups connects that shared folder with the saved login,
+# The producer can keep projects and samples on the NAS too (picked with Add folder,
+# see before_pick and adopt). Backups connects those shared folders with the saved login,
 # before a scan or backup and before opening a project from it, exactly as it does
 # for the backup folder. It only ever reads them.
 def _password(catalog: Catalog) -> str:
     return secretbox.unlock(catalog.get_setting(SECRET_KEY), _key_dir(catalog)) or ""
 
 
-def my_shares(catalog: Catalog) -> list[str] | None:
-    """The remembered NAS's shared folders, music ones first (None: couldn't ask)."""
+# ---- the computer's own folder picker -----------------------------------------------
+# Every "Add folder" / "Choose…" opens the computer's own folder picker. That picker
+# only gets into the NAS if this computer has the NAS login, which Backups keeps
+# itself, so Windows said it couldn't connect. Before a picker opens, Backups lets the
+# computer in with the saved login; after a folder on the NAS is picked, its shared
+# folder is remembered, so it's connected again by itself when the NAS wakes.
+def before_pick(catalog: Catalog) -> dict:
+    """Let this computer into the remembered NAS, so its folder picker can open it."""
     n = remembered(catalog)
     if not n:
+        return {"nas": False}
+    user, password = n.get("user", ""), _password(catalog)
+    try:
+        if _WIN:
+            # Windows signs in once per NAS name: the name Backups knows and its
+            # address (typed in the picker as \\100.90.248.35) are two names.
+            for host in dict.fromkeys(h for h in (n["host"], n.get("address", "")) if h):
+                try:
+                    connect(host, n["share"], user, password)
+                except NasLoginError:
+                    raise
+                except NasError:
+                    continue
+        else:  # Mac and Linux: connect its shared folders, so the picker lists them
+            names = share_order(list_shares(n["host"], user, password) or []) or [n["share"]]
+            for share in names[:8]:
+                try:
+                    connect(n["host"], share, user, password)
+                except NasLoginError:
+                    raise
+                except NasError:
+                    continue
+    except NasLoginError:
+        return {"nas": True, "login": True}
+    except NasError:
+        pass
+    return {"nas": True, "login": False}
+
+
+_MOUNT_ROOTS = ("/Volumes/", "/run/user/", "/media/", "/mnt/")
+
+
+def _picked_share(names: set[str], path: str) -> tuple[str, str] | None:
+    """(shared folder, where it's connected) for a folder picked on the NAS, or None."""
+    m = re.match(r"^(?:\\\\|//)([^\\/]+)[\\/]+([^\\/]+)", path)
+    if m:  # Windows: \\NAS\share\...
+        if m.group(1).lower() in names:
+            return m.group(2), f"\\\\{m.group(1)}\\{m.group(2)}"
         return None
-    found = list_shares(n["host"], n.get("user", ""), _password(catalog))
-    return None if found is None else share_order(found)
+    if not path.startswith(_MOUNT_ROOTS):
+        return None
+    g = re.search(r"/gvfs/smb-share:server=([^,/]+),share=([^,/]+)", path)
+    if g:
+        if g.group(1).lower() in names:
+            return g.group(2), path[:g.end()]
+        return None
+    try:
+        out = _run(["mount"], timeout=8).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    best = None
+    for line in out.splitlines():
+        mm = re.match(r"^(?://|)(?:[^@\s]*@)?([^/\s]+)/(\S+) on (.+?) (?:\(|type )", line)
+        if not mm or mm.group(1).lower() not in names and mm.group(1).lower().split(".")[0] not in names:
+            continue
+        where = mm.group(3)
+        if (path == where or path.startswith(where.rstrip("/") + "/")) and (not best or len(where) > len(best[1])):
+            best = (mm.group(2).replace("%20", " "), where)
+    return best
 
 
-def open_share(catalog: Catalog, share: str) -> Path:
-    """Connect one of the NAS's shared folders and remember it for project folders."""
+def adopt(catalog: Catalog, paths) -> list[str]:
+    """Folders picked on the NAS: remember their shared folders. Returns the ones added."""
     n = remembered(catalog)
     if not n:
-        raise NasError("Connect your NAS first: Settings, Backups, Find my NAS.")
-    share = share.strip().strip("/\\")
-    if not share:
-        raise NasError("Pick a shared folder.")
-    path = connect(n["host"], share, n.get("user", ""), _password(catalog))
-    n = remembered(catalog) or n
-    catalog.set_setting(NAS_KEY, {**n, "shares": {**n.get("shares", {}), share: str(path)}})
-    return path
+        return []
+    names = {x.lower() for x in (n["host"], n["host"].split(".")[0], n.get("address", "")) if x}
+    shares = dict(n.get("shares") or {})
+    added = []
+    for p in paths:
+        if not p or _share_for({**n, "shares": shares}, str(p)):
+            continue
+        hit = _picked_share(names, str(p))
+        if hit and hit[0] not in shares:
+            shares[hit[0]] = hit[1]
+            added.append(hit[0])
+    if added:
+        catalog.set_setting(NAS_KEY, {**n, "shares": shares})
+    return added
 
 
 def _share_for(n: dict, path: str) -> tuple[str, str] | None:
@@ -692,6 +760,8 @@ def _share_moved(catalog: Catalog, share: str, old: str, new: str) -> None:
         except ValueError:
             return p
     cfg["sources"] = [follow(p) for p in cfg.get("sources") or []]
+    if cfg.get("libraries"):  # sample folders on the same shared folder
+        cfg["libraries"] = [follow(p) for p in cfg["libraries"]]
     catalog.set_setting("config", cfg)
 
 

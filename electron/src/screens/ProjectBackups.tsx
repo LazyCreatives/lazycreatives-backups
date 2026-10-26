@@ -10,6 +10,7 @@ import { fmtSize, fmtDate, shortPath, sourceLabel, fmtCount } from "../format";
 import { runRelinkBackup, pointSampleToFile } from "../relink";
 import "../missing.css";
 import { osWords } from "../platform";
+import { pickFolder } from "../pickFolder";
 
 const api = makeApi();
 function reveal(p?: string) { if (p) (window as any).ablebackup?.revealPath?.(p); }
@@ -107,7 +108,7 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
     if (!picked) throw new Error("__cancelled__");
   });
   const lookInFolder = () => fix("folder", async () => {
-    const dir = await (window as any).ablebackup?.pickFolder?.();
+    const dir = await pickFolder();
     if (!dir) throw new Error("__cancelled__");
     await runRelinkBackup(projectPath!, { libraries: [dir] });
   });
@@ -147,7 +148,7 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
     finally { setVerifying((s) => { const n = new Set(s); n.delete(id); return n; }); }
   }
   async function restore(id: number) {
-    const target = await (window as any).ablebackup?.pickFolder?.();
+    const target = await pickFolder();
     if (!target) return;
     setRestoring((s) => new Set(s).add(id));
     setRestored((m) => { const n = { ...m }; delete n[id]; return n; });
@@ -170,7 +171,7 @@ export function ProjectBackups({ projectName, projectPath, onFixed }: {
   }
 
   async function share(id: number) {
-    const target = await (window as any).ablebackup?.pickFolder?.();
+    const target = await pickFolder();
     if (!target) return;
     setSharing((s) => new Set(s).add(id));
     setShared((m) => { const n = { ...m }; delete n[id]; return n; });

@@ -7,6 +7,7 @@ import { Icon } from "../components/Icon";
 import { usePlayerState } from "../components/Player";
 import { fmtDay, fmtSize } from "../format";
 import { playStems, stopStems, useStemMix } from "../stemMixer";
+import { pickFolder } from "../pickFolder";
 
 const api = makeApi();
 const bridge = () => (window as any).ablebackup;
@@ -16,7 +17,7 @@ const fmtWhen = (secs: number) => fmtDay(secs * 1000, { time: true });
 // Zip one stem set (stems in a folder per group, the song, the instrumental and a
 // BPM and key sheet) into a new file in a folder the producer picks.
 export async function makeStemPack(projectId: string, s: StemSet): Promise<void> {
-  const target: string | null = await bridge()?.pickFolder?.();
+  const target: string | null = await pickFolder();
   if (!target) return;
   try {
     const { job_id } = await api.stemPack(projectId, s.id, target);

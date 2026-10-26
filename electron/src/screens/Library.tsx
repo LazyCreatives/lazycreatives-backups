@@ -44,6 +44,7 @@ import { SONGS_LINKED, SongDropTarget, useSongDrop, useSongDragActive } from "..
 import { FolderShelf, pickFolders } from "../components/ProjectFolders";
 import { addToFolder, inFolder, startProjectDrag, takeOutOfFolder, useFolders } from "../projectFolders";
 import "../library.css";
+import { pickFolder } from "../pickFolder";
 
 const api = makeApi();
 
@@ -444,7 +445,7 @@ export function Library({ scan, openProject, onOpen, onClose, scanOnOpen = false
 
   // Point the finder at a folder you think this project's samples are in.
   async function lookInFolder(item: LibraryItem) {
-    const dir = await bridge()?.pickFolder?.();
+    const dir = await pickFolder();
     if (dir) findSamples(item, dir);
   }
 

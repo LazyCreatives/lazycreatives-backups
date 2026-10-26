@@ -14,6 +14,7 @@ import { useLook } from "../look";
 import { fmtCount, fmtDay, shortPath } from "../format";
 import { baseName, keep, recall } from "../desktop";
 import "../plugins.css";
+import { pickFolder } from "../pickFolder";
 
 const api = makeApi();
 const ALL_FORMATS: PluginFormat[] = ["VST3", "AU", "CLAP", "VST2", "AAX", "LV2"];
@@ -105,7 +106,7 @@ export function Plugins({ onOpenProject }: { onOpenProject: (name: string) => vo
     finally { setBusy(false); }
   }
   async function addFolder() {
-    const dir = await (window as any).ablebackup?.pickFolder?.();
+    const dir = await pickFolder();
     if (dir && !yours.includes(dir)) saveFolders([...yours, dir], `Added ${baseName(dir)}. Backups looked in it for plugins.`);
   }
 

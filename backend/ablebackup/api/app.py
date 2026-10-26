@@ -23,7 +23,7 @@ from ablebackup.shared import Sharing
 from ablebackup.api.auth import require_token, ws_token_ok
 from ablebackup.api.progress import ProgressHub
 from ablebackup.api.schemas import (
-    DoublesRemove, NasReady, NasShare, NasSignIn,
+    DoublesRemove, NasReady, NasSignIn,
     ActivateRequest, BackupRequest, CloudConnectRequest, CloudDisconnectRequest,
     Config, ExportFoldersRequest, ExportDropRequest, ExportIgnoreRequest, ExportLinkRequest,
     ExportUndoRequest, GenreRequest,
@@ -323,17 +323,10 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         except nas.NasError as e:
             raise HTTPException(400, str(e)) from None
 
-    # Project folders on the NAS (Settings, Project folders, Add a folder on the NAS).
-    @app.post("/api/nas/my-shares", dependencies=[Depends(require_token)])
-    async def nas_my_shares():
-        def go():
-            found = nas.my_shares(app.state.catalog)
-            return {"shares": found or [], "listed": found is not None}
-        return await asyncio.to_thread(_nas_call, go)
-
-    @app.post("/api/nas/open-share", dependencies=[Depends(require_token)])
-    async def nas_open_share(req: NasShare):
-        return await asyncio.to_thread(_nas_call, lambda: {"path": str(nas.open_share(app.state.catalog, req.share))})
+    @app.post("/api/nas/before-pick", dependencies=[Depends(require_token)])
+    async def nas_before_pick():
+        """Just before the computer's own folder picker opens: let it into the NAS."""
+        return await asyncio.to_thread(nas.before_pick, app.state.catalog)
 
     @app.post("/api/nas/sign-in", dependencies=[Depends(require_token)])
     async def nas_sign_in(req: NasSignIn):
@@ -468,6 +461,8 @@ def create_app(token: str, db_path: Path) -> FastAPI:
             config.interval_minutes = 0  # automatic backup is Pro-only
         _make_dest(config.dest)
         remember_dest(app.state.catalog, config.dest)  # so a later unplug is noticed
+        # folders picked on the NAS: their shared folders are connected again by themselves
+        nas.adopt(app.state.catalog, [*config.sources, *(config.libraries or []), *(config.mirrors or [])])
         app.state.catalog.set_setting("config", config.model_dump())
         app.state.scheduler.set_interval(config.interval_minutes)
         return config
@@ -504,12 +499,16 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         find_missing = req.find_missing and _allows("auto_relink")
         moved: dict = {}  # project folders on a sleeping NAS, maybe back at a new path
         why: dict = {}    # the NAS shared folders that couldn't be connected, and why
-        nas.ensure_folders(app.state.catalog, sources, 20.0, moved=moved, why=why)
+        libraries = list(cfg.get("libraries", []))
+        # sample folders on the NAS are connected too, when they'll be searched
+        nas.ensure_folders(app.state.catalog, [*sources, *(libraries if find_missing else [])],
+                           20.0, moved=moved, why=why)
         sources = nas.follow(sources, moved)
+        libraries = nas.follow(libraries, moved)
         stats: dict = {}
         projects = scan_summary(
             sources, progress=progress, find_missing=find_missing,
-            libraries=cfg.get("libraries", []), stats=stats,
+            libraries=libraries, stats=stats,
             learned=app.state.catalog.genre_examples(),
             pointed=app.state.catalog.all_pointed(),
             # unchanged project files aren't read again (their samples still are)
@@ -714,6 +713,7 @@ def create_app(token: str, db_path: Path) -> FastAPI:
     def exports_set_folders(req: ExportFoldersRequest):
         folders = list(dict.fromkeys(f for f in req.folders if f.strip()))
         app.state.catalog.set_setting("export_folders", folders)
+        nas.adopt(app.state.catalog, folders)  # picked on the NAS: connect it again by itself
         if req.ignored is not None:
             app.state.catalog.set_setting(
                 "ignored_export_folders", list(dict.fromkeys(f for f in req.ignored if f.strip())))
@@ -1064,7 +1064,10 @@ def create_app(token: str, db_path: Path) -> FastAPI:
         if find and scan.missing:
             saved = app.state.catalog.get_setting("config") or {}
             sources = [str(s) for s in saved.get("sources", [])]
-            locate = _build_locator(sources, saved.get("libraries", []))
+            libraries = [str(s) for s in saved.get("libraries", [])]
+            moved: dict = {}  # sample folders on a sleeping NAS: connect them first
+            nas.ensure_folders(app.state.catalog, libraries, 20.0, moved=moved)
+            locate = _build_locator(sources, nas.follow(libraries, moved))
             found = scan_one(p, locate=locate)  # same scan, but allowed to relink
             still_missing = {r.expected_path or r.name for r in found.missing}
             recoverable = {(r.expected_path or r.name) for r in scan.missing
